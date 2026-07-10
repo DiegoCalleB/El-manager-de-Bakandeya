@@ -1,0 +1,72 @@
+import { ThemeName, ThemeColors } from '../types';
+
+export const THEMES: Record<ThemeName, ThemeColors> = {
+  backstage_neon: {
+    name: 'Backstage Neon (Electro-Rock)',
+    bg: 'bg-neutral-950 text-neutral-100',
+    card: 'bg-neutral-900/90 border-neutral-800',
+    border: 'border-neutral-800',
+    primary: 'bg-cyan-500 hover:bg-cyan-600 text-neutral-950 shadow-lg shadow-cyan-500/20',
+    primaryHover: 'hover:bg-cyan-400',
+    text: 'text-neutral-100',
+    textMuted: 'text-neutral-400',
+    accent: 'text-fuchsia-500',
+    accentBg: 'bg-fuchsia-500/10 border-fuchsia-500/20 text-fuchsia-400',
+    badgeGreen: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+    badgeYellow: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+    badgeRed: 'bg-rose-500/10 border-rose-500/20 text-rose-400',
+    badgeBlue: 'bg-sky-500/10 border-sky-500/20 text-sky-400',
+    neonShadow: 'shadow-[0_0_15px_rgba(6,182,212,0.15)]'
+  },
+  roots_ska: {
+    name: 'Roots & Ska (Reggae-Ska Fusion)',
+    bg: 'bg-stone-950 text-stone-100',
+    card: 'bg-stone-900/95 border-stone-800',
+    border: 'border-stone-800',
+    primary: 'bg-amber-500 hover:bg-amber-600 text-stone-950 shadow-lg shadow-amber-500/20',
+    primaryHover: 'hover:bg-amber-400',
+    text: 'text-stone-100',
+    textMuted: 'text-stone-400',
+    accent: 'text-emerald-500',
+    accentBg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+    badgeGreen: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+    badgeYellow: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+    badgeRed: 'bg-red-500/10 border-red-500/20 text-red-400',
+    badgeBlue: 'bg-yellow-600/10 border-yellow-600/20 text-yellow-500',
+    neonShadow: 'shadow-[0_0_15px_rgba(245,158,11,0.1)]'
+  },
+  indie_velvet: {
+    name: 'Indie Velvet (Alternative-Indie)',
+    bg: 'bg-slate-950 text-slate-100',
+    card: 'bg-slate-900/95 border-slate-800',
+    border: 'border-slate-800',
+    primary: 'bg-rose-500 hover:bg-rose-600 text-slate-950 shadow-lg shadow-rose-500/20',
+    primaryHover: 'hover:bg-rose-400',
+    text: 'text-slate-100',
+    textMuted: 'text-slate-400',
+    accent: 'text-indigo-400',
+    accentBg: 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300',
+    badgeGreen: 'bg-teal-500/10 border-teal-500/20 text-teal-400',
+    badgeYellow: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
+    badgeRed: 'bg-pink-500/10 border-pink-500/20 text-pink-400',
+    badgeBlue: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
+    neonShadow: 'shadow-[0_0_15px_rgba(244,63,94,0.12)]'
+  },
+  brutalist_fuzz: {
+    name: 'Ska Brutalist (Punk-Poster)',
+    bg: 'bg-zinc-950 text-zinc-100',
+    card: 'bg-zinc-900 border-2 border-zinc-100',
+    border: 'border-2 border-zinc-100',
+    primary: 'bg-yellow-400 hover:bg-yellow-500 text-zinc-950 font-black tracking-wider uppercase border-2 border-zinc-100 shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]',
+    primaryHover: 'hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(255,255,255,1)]',
+    text: 'text-zinc-100',
+    textMuted: 'text-zinc-400',
+    accent: 'text-yellow-400',
+    accentBg: 'bg-yellow-400/10 border border-yellow-400 text-yellow-400',
+    badgeGreen: 'bg-emerald-500/10 border border-emerald-500 text-emerald-400',
+    badgeYellow: 'bg-amber-500/10 border border-amber-500 text-amber-400',
+    badgeRed: 'bg-rose-500/10 border border-rose-500 text-rose-400',
+    badgeBlue: 'bg-zinc-800 border border-zinc-600 text-zinc-300',
+    neonShadow: 'shadow-none'
+  }
+};
