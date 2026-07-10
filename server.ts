@@ -55,14 +55,50 @@ function saveState(state: any) {
 
 // Get Google Sheets API client using service account credentials from environment
 function getSheetsClient() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
-  if (!email || !privateKey) {
+  let email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+  if (!privateKey) {
     return null;
   }
   
   try {
-    const formattedKey = privateKey.replace(/\\n/g, "\n");
+    let formattedKey = privateKey.trim();
+    
+    // Check if the private key is actually a full Service Account JSON
+    if (formattedKey.startsWith("{") && formattedKey.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(formattedKey);
+        if (parsed.private_key) {
+          formattedKey = parsed.private_key;
+        }
+        if (parsed.client_email && !email) {
+          email = parsed.client_email;
+        }
+      } catch (e) {
+        console.warn("Attempted to parse private key as JSON but failed:", e);
+      }
+    }
+    
+    // Remove surrounding quotes if they were added in the environment configuration
+    if ((formattedKey.startsWith('"') && formattedKey.endsWith('"')) || 
+        (formattedKey.startsWith("'") && formattedKey.endsWith("'"))) {
+      formattedKey = formattedKey.substring(1, formattedKey.length - 1);
+    }
+    
+    // Replace literal escaped newlines with actual newline characters
+    formattedKey = formattedKey.replace(/\\n/g, "\n").replace(/\\\\n/g, "\n").replace(/\r/g, "").trim();
+    
+    // Ensure the key has proper PEM headers
+    if (!formattedKey.includes("-----BEGIN PRIVATE KEY-----") && !formattedKey.includes("-----BEGIN RSA PRIVATE KEY-----")) {
+      // It might be just the base64 string, let's wrap it
+      formattedKey = `-----BEGIN PRIVATE KEY-----\n${formattedKey}\n-----END PRIVATE KEY-----`;
+    }
+    
+    if (!email) {
+      console.error("Google Service Account Email is missing.");
+      return null;
+    }
+    
     const auth = new google.auth.JWT({
       email: email,
       key: formattedKey,
@@ -606,6 +642,11 @@ RECUERDA: La banda nunca envía emails directamente desde la app (lo hace un age
 
 // Vite middleware integration for full-stack SPA
 async function startServer() {
+  if (process.env.VERCEL) {
+    // On Vercel, we let Vercel serve static assets and just export the app for serverless function handling
+    return;
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -626,3 +667,5 @@ async function startServer() {
 }
 
 startServer();
+
+export default app;
