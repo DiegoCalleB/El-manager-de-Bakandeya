@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { google } from "googleapis";
@@ -85,14 +86,48 @@ function getSheetsClient() {
       formattedKey = formattedKey.substring(1, formattedKey.length - 1);
     }
     
-    // Replace literal escaped newlines with actual newline characters
-    formattedKey = formattedKey.replace(/\\n/g, "\n").replace(/\\\\n/g, "\n").replace(/\r/g, "").trim();
-    
-    // Ensure the key has proper PEM headers
-    if (!formattedKey.includes("-----BEGIN PRIVATE KEY-----") && !formattedKey.includes("-----BEGIN RSA PRIVATE KEY-----")) {
-      // It might be just the base64 string, let's wrap it
-      formattedKey = `-----BEGIN PRIVATE KEY-----\n${formattedKey}\n-----END PRIVATE KEY-----`;
+    // Handle leading corrupted character (often "n" if "\n" was stripped of backslash during env injection)
+    if (formattedKey.startsWith("nMII")) {
+      formattedKey = formattedKey.substring(1);
     }
+    
+    // Replace literal escaped newlines with actual newlines to locate and strip headers
+    let tempKey = formattedKey.replace(/\\n/g, "\n").replace(/\\\\n/g, "\n").replace(/\r/g, "").trim();
+    
+    // Strip headers and extract only clean Base64 characters
+    const lines = tempKey.split("\n").filter(l => !l.includes("-----"));
+    const cleanB64 = lines.join("").replace(/[^A-Za-z0-9+/=]/g, "");
+    let derBuffer = Buffer.from(cleanB64, "base64");
+    
+    // Check ASN.1 sequence boundary to truncate any trailing environment variable data leaks (such as SPREADSHEET_ID)
+    if (derBuffer.length > 0 && derBuffer[0] === 0x30) {
+      let len = derBuffer[1];
+      let headerSize = 2;
+      if (len & 0x80) {
+        const bytesCount = len & 0x7f;
+        len = 0;
+        for (let i = 0; i < bytesCount; i++) {
+          len = (len << 8) | derBuffer[2 + i];
+        }
+        headerSize = 2 + bytesCount;
+      }
+      const totalSize = headerSize + len;
+      if (totalSize > 0 && totalSize < derBuffer.length) {
+        derBuffer = derBuffer.subarray(0, totalSize);
+      }
+    }
+    
+    // Load as DER and natively export to standard RFC-compliant PEM
+    const keyObject = crypto.createPrivateKey({
+      key: derBuffer,
+      format: "der",
+      type: "pkcs8"
+    });
+    
+    const nativePem = keyObject.export({
+      type: "pkcs8",
+      format: "pem"
+    }) as string;
     
     if (!email) {
       console.error("Google Service Account Email is missing.");
@@ -101,12 +136,12 @@ function getSheetsClient() {
     
     const auth = new google.auth.JWT({
       email: email,
-      key: formattedKey,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+      key: nativePem,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
     return google.sheets({ version: "v4", auth });
   } catch (error) {
-    console.error("Error creating Google Sheets auth client:", error);
+    console.error("Error creating Google Sheets auth client with native PEM key conversion:", error);
     return null;
   }
 }
