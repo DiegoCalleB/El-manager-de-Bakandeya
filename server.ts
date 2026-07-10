@@ -154,15 +154,17 @@ function rowToLead(row: any[]): Lead {
     region: String(row[3] || ""),
     aforo: Number(row[4]) || 0,
     genero: String(row[5] || ""),
-    email_contacto: String(row[6] || ""),
-    fuente: String(row[7] || ""),
-    estado: (row[8] || "nuevo") as any,
-    pitch_generado: String(row[9] || ""),
-    fecha_envio: row[10] ? String(row[10]) : undefined,
-    fecha_ultima_respuesta: row[11] ? String(row[11]) : undefined,
-    notas: String(row[12] || ""),
-    telefono: String(row[13] || ""),
-    instagram: String(row[14] || ""),
+    tipo: String(row[6] || ""),
+    email_contacto: String(row[7] || ""),
+    telefono: String(row[8] || ""),
+    website: String(row[9] || ""),
+    instagram: String(row[10] || ""),
+    fuente: String(row[11] || ""),
+    estado: (row[12] || "nuevo") as any,
+    pitch_generado: String(row[13] || ""),
+    fecha_envio: row[14] ? String(row[14]) : undefined,
+    fecha_ultima_respuesta: row[15] ? String(row[15]) : undefined,
+    notas: String(row[16] || ""),
   };
 }
 
@@ -175,15 +177,17 @@ function leadToRow(lead: Lead): any[] {
     lead.region || "",
     lead.aforo || 0,
     lead.genero || "",
+    lead.tipo || "",
     lead.email_contacto || "",
+    lead.telefono || "",
+    lead.website || "",
+    lead.instagram || "",
     lead.fuente || "",
     lead.estado || "nuevo",
     lead.pitch_generado || "",
     lead.fecha_envio || "",
     lead.fecha_ultima_respuesta || "",
     lead.notas || "",
-    lead.telefono || "",
-    lead.instagram || "",
   ];
 }
 
@@ -199,7 +203,7 @@ async function fetchLeadsFromSheet(localLeads: Lead[]): Promise<Lead[]> {
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: "leads!A2:O",
+      range: "leads!A2:Q",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) {
@@ -218,9 +222,9 @@ async function fetchLeadsFromSheet(localLeads: Lead[]): Promise<Lead[]> {
 async function bootstrapSheet(sheets: any, spreadsheetId: string, leads: Lead[]) {
   try {
     const headers = [
-      "id", "nombre_sala", "ciudad", "region", "aforo", "genero", 
-      "email_contacto", "fuente", "estado", "pitch_generado", 
-      "fecha_envio", "fecha_ultima_respuesta", "notas", "telefono", "instagram"
+      "id", "nombre_sala", "ciudad", "region", "aforo", "genero", "tipo",
+      "email_contacto", "telefono", "website", "instagram", "fuente", "estado", "pitch_generado", 
+      "fecha_envio", "fecha_ultima_respuesta", "notas"
     ];
     const values = [headers, ...leads.map(leadToRow)];
     await sheets.spreadsheets.values.update({
@@ -256,7 +260,7 @@ async function updateLeadInSheet(lead: Lead) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `leads!A${sheetRowNumber}:O${sheetRowNumber}`,
+          range: `leads!A${sheetRowNumber}:Q${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: {
             values: [leadToRow(lead)]
@@ -283,7 +287,7 @@ async function appendLeadToSheet(lead: Lead) {
   try {
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "leads!A:O",
+      range: "leads!A:Q",
       valueInputOption: "RAW",
       requestBody: {
         values: [leadToRow(lead)]
@@ -315,13 +319,13 @@ async function verifyLeadStatusAndWrite(
     try {
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: "leads!A:I", // Fetch up to column I (estado)
+        range: "leads!A:M", // Fetch up to column M (estado)
       });
       const rows = response.data.values;
       if (rows) {
         const rowIndex = rows.findIndex(row => row[0] === id);
         if (rowIndex !== -1) {
-          const sheetEstado = rows[rowIndex][8] || "nuevo";
+          const sheetEstado = rows[rowIndex][12] || "nuevo";
           
           if (expectedStatus && sheetEstado !== expectedStatus) {
             console.warn(`Race condition avoided: Lead ${id} is in state '${sheetEstado}', but expected '${expectedStatus}'`);
@@ -329,7 +333,7 @@ async function verifyLeadStatusAndWrite(
             // Sync current state from Google Sheet to avoid stale local cache
             const fullRowResponse = await sheets.spreadsheets.values.get({
               spreadsheetId,
-              range: `leads!A${rowIndex + 1}:O${rowIndex + 1}`,
+              range: `leads!A${rowIndex + 1}:Q${rowIndex + 1}`,
             });
             if (fullRowResponse.data.values && fullRowResponse.data.values[0]) {
               state.leads[idx] = rowToLead(fullRowResponse.data.values[0]);

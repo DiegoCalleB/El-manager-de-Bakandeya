@@ -7,8 +7,10 @@ export interface Lead {
   region: string;
   aforo: number;
   genero: string;
+  tipo?: string;
   email_contacto: string;
   telefono: string;
+  website?: string;
   instagram: string;
   fuente: string;
   estado: LeadStatus;
