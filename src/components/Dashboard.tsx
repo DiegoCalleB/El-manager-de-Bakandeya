@@ -1,633 +1,752 @@
 import React, { useState } from 'react';
-import { Lead, LeadStatus, ThemeColors } from '../types';
-import { Search, MapPin, Music, User, Globe, FileText, Phone, Instagram, Plus, X, Calendar, AlertCircle } from 'lucide-react';
+import { Lead, LeadStatus, ThemeColors, SocialMetric } from '../types';
+import { 
+  Search, MapPin, Music, User, Globe, FileText, Phone, Instagram, 
+  Plus, X, Calendar, AlertCircle, Sparkles, Loader2, Check, RefreshCw, 
+  Database, Bot, Activity, ArrowRight, CheckCircle2 
+} from 'lucide-react';
 
 interface DashboardProps {
   leads: Lead[];
   colors: ThemeColors;
   onUpdateLead: (leadId: string, updatedFields: Partial<Lead>) => void;
   onAddLead: (lead: Lead) => void;
+  metrics?: SocialMetric[];
 }
 
-export default function Dashboard({ leads, colors, onUpdateLead, onAddLead }: DashboardProps) {
+export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metrics = [] }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('todos');
-  const [cityFilter, setCityFilter] = useState<string>('todos');
-  const [genreFilter, setGenreFilter] = useState<string>('todos');
+  const [cityFilter, setCityFilter] = useState('todos');
+  const [genreFilter, setGenreFilter] = useState('todos');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
 
-  // Form states for manual lead
-  const [formName, setFormName] = useState('');
-  const [formCity, setFormCity] = useState('');
-  const [formRegion, setFormRegion] = useState('');
-  const [formAforo, setFormAforo] = useState(300);
-  const [formGenero, setFormGenero] = useState('Ska / Reggae / Mestizaje');
-  const [formEmail, setFormEmail] = useState('');
-  const [formPhone, setFormPhone] = useState('');
-  const [formInsta, setFormInsta] = useState('');
-  const [formFuente, setFormFuente] = useState('Manual');
-  const [formNotes, setFormNotes] = useState('');
+  // Scraper states
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapingStatus, setScrapingStatus] = useState('');
+  const [scrapedData, setScrapedData] = useState<{
+    email_contacto: string;
+    telefono: string;
+    website?: string;
+    instagram: string;
+    aforo?: number | null;
+    region?: string;
+    genero?: string;
+    source_info: string;
+  } | null>(null);
+  const [scrapingError, setScrapingError] = useState<string | null>(null);
 
-  // Extract unique cities and genres
-  const cities = Array.from(new Set(leads.map(l => l.ciudad))).filter(Boolean);
-  const genres = ['Ska', 'Reggae', 'Mestizaje', 'Fusión', 'Indie', 'Rock', 'Electrónica'];
+  // Add new lead form states
+  const [newSala, setNewSala] = useState('');
+  const [newCiudad, setNewCiudad] = useState('');
+  const [newRegion, setNewRegion] = useState('');
+  const [newAforo, setNewAforo] = useState(300);
+  const [newGenero, setNewGenero] = useState('Ska / Reggae / Mestizaje');
+  const [newEmail, setNewEmail] = useState('');
+  const [newInstagram, setNewInstagram] = useState('');
+  const [newNotas, setNewNotas] = useState('');
 
-  // Count states
-  const countByStatus = (status: LeadStatus) => leads.filter(l => l.estado === status).length;
+  // Handle Sync simulation
+  const handleForceSync = () => {
+    setSyncLoading(true);
+    setTimeout(() => {
+      setSyncLoading(false);
+    }, 1200);
+  };
 
-  const statusList: { value: LeadStatus | 'todos'; label: string; color: string }[] = [
-    { value: 'todos', label: 'Todos', color: colors.accent },
-    { value: 'nuevo', label: 'Nuevo (Scout)', color: 'text-sky-400' },
-    { value: 'pendiente_aprobacion', label: 'Pendientes Aprob.', color: 'text-amber-400' },
-    { value: 'aprobado', label: 'Aprobados (Cola)', color: 'text-emerald-400' },
-    { value: 'esperando_respuesta', label: 'Esperando Resp.', color: 'text-indigo-400' },
-    { value: 'interesado', label: 'Interesado 🔥', color: 'text-rose-400' },
-    { value: 'negociando', label: 'Negociando 💬', color: 'text-fuchsia-400' },
-    { value: 'no_interesado', label: 'No Interesado', color: 'text-neutral-500' }
-  ];
-
-  // Filtering logic
-  const filteredLeads = leads.filter(lead => {
-    const matchesSearch = lead.nombre_sala.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          lead.ciudad.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          lead.region.toLowerCase().includes(searchTerm.toLowerCase());
+  const handleScrapeContact = async (lead: Lead) => {
+    setIsScraping(true);
+    setScrapingError(null);
+    setScrapedData(null);
     
-    const matchesStatus = statusFilter === 'todos' || lead.estado === statusFilter;
-    const matchesCity = cityFilter === 'todos' || lead.ciudad === cityFilter;
+    const steps = [
+      "Conectando con el Agente Scout...",
+      "Buscando perfiles oficiales en la web...",
+      "Extrayendo datos de Instagram y directorios...",
+      "Buscando datos de aforo y estilo musical...",
+      "Filtrando y validando emails de booking...",
+      "Consolidando resultados..."
+    ];
     
-    let matchesGenre = true;
-    if (genreFilter !== 'todos') {
-      matchesGenre = lead.genero.toLowerCase().includes(genreFilter.toLowerCase());
-    }
+    let currentStep = 0;
+    setScrapingStatus(steps[0]);
+    
+    const interval = setInterval(() => {
+      currentStep++;
+      if (currentStep < steps.length) {
+        setScrapingStatus(steps[currentStep]);
+      }
+    }, 1000);
 
-    return matchesSearch && matchesStatus && matchesCity && matchesGenre;
-  });
+    try {
+      const response = await fetch('/api/scrape-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId: lead.id,
+          nombre_sala: lead.nombre_sala,
+          ciudad: lead.ciudad,
+          region: lead.region
+        })
+      });
 
-  const getStatusBadgeClass = (status: LeadStatus) => {
-    switch (status) {
-      case 'nuevo': return colors.badgeBlue;
-      case 'pendiente_aprobacion': return colors.badgeYellow;
-      case 'aprobado': return colors.badgeGreen;
-      case 'esperando_respuesta': return 'bg-indigo-500/10 border border-indigo-500/20 text-indigo-400';
-      case 'interesado': return 'bg-rose-500/10 border border-rose-500/20 text-rose-400';
-      case 'negociando': return 'bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-400';
-      case 'no_interesado': return 'bg-neutral-500/10 border border-neutral-500/20 text-neutral-400';
+      clearInterval(interval);
+
+      if (!response.ok) {
+        throw new Error('Error al conectar con el servidor.');
+      }
+
+      const resData = await response.json();
+      if (resData.success && resData.data) {
+        setScrapedData(resData.data);
+      } else {
+        throw new Error(resData.error || 'No se pudieron extraer datos de contacto.');
+      }
+    } catch (err: any) {
+      clearInterval(interval);
+      setScrapingError(err.message || 'Error en el proceso de raspado.');
+    } finally {
+      setIsScraping(false);
     }
   };
 
-  const getStatusLabel = (status: LeadStatus) => {
-    switch (status) {
-      case 'nuevo': return 'Nuevo (Scout)';
-      case 'pendiente_aprobacion': return 'Pendiente Aprob.';
-      case 'aprobado': return 'Aprobado';
-      case 'esperando_respuesta': return 'Esperando Resp.';
-      case 'interesado': return 'Interesado 🔥';
-      case 'negociando': return 'Negociando 💬';
-      case 'no_interesado': return 'No interesado';
-    }
-  };
-
-  const handleCreateLeadSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formName || !formCity) return;
-
-    // Build pitch default template
-    const defaultPitch = `Hola equipo de booking de ${formName},
-
-Somos Bakandeya, banda que fusiona reggae, ska, rock y electrónica analógica. Hemos visto su programación y creemos que nuestra propuesta encaja perfecto.
-
-Disponemos de fechas para nuestra gira de otoño. Les invitamos a ver nuestros directos: https://youtube.com/bakandeya_live
-
-Un saludo,
-Larra (Manager de Bakandeya)`;
-
-    const newLead: Lead = {
-      id: `lead-manual-${Date.now()}`,
-      nombre_sala: formName,
-      ciudad: formCity,
-      region: formRegion,
-      aforo: Number(formAforo),
-      genero: formGenero,
-      email_contacto: formEmail,
-      telefono: formPhone,
-      instagram: formInsta,
-      fuente: formFuente,
-      estado: 'nuevo',
-      pitch_generado: defaultPitch,
-      notas: formNotes || 'Añadida manualmente.'
+  const handleApplyScrapedData = (lead: Lead) => {
+    if (!scrapedData) return;
+    const today = new Date().toISOString().split('T')[0];
+    const updatedNotes = `*** [${today}] Datos enriquecidos automáticamente vía Scout Scraper. ${scrapedData.source_info} ***\n${lead.notas || ''}`;
+    
+    const updatedFields: Partial<Lead> = {
+      email_contacto: scrapedData.email_contacto || lead.email_contacto,
+      telefono: scrapedData.telefono || lead.telefono,
+      website: scrapedData.website || lead.website,
+      instagram: scrapedData.instagram || lead.instagram,
+      aforo: scrapedData.aforo || lead.aforo,
+      region: scrapedData.region || lead.region,
+      genero: scrapedData.genero || lead.genero,
+      notas: updatedNotes
     };
 
-    onAddLead(newLead);
-    setIsAddModalOpen(false);
-    
-    // Reset form
-    setFormName('');
-    setFormCity('');
-    setFormRegion('');
-    setFormAforo(300);
-    setFormGenero('Ska / Reggae / Mestizaje');
-    setFormEmail('');
-    setFormPhone('');
-    setFormInsta('');
-    setFormNotes('');
+    onUpdateLead(lead.id, updatedFields);
+    setSelectedLead(prev => prev ? { ...prev, ...updatedFields } : null);
+    setScrapedData(null);
   };
 
+  const handleAddSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSala || !newCiudad) return;
+
+    const newLeadItem: Lead = {
+      id: `lead-${Date.now()}`,
+      nombre_sala: newSala,
+      ciudad: newCiudad,
+      region: newRegion,
+      aforo: Number(newAforo),
+      genero: newGenero,
+      email_contacto: newEmail,
+      telefono: '',
+      instagram: newInstagram,
+      fuente: 'Ingreso Manual (Diego)',
+      estado: 'nuevo',
+      pitch_generado: '',
+      notas: newNotas || 'Añadido manualmente desde el dashboard.'
+    };
+
+    onAddLead(newLeadItem);
+    setIsAddModalOpen(false);
+
+    // Reset Form
+    setNewSala('');
+    setNewCiudad('');
+    setNewRegion('');
+    setNewAforo(300);
+    setNewGenero('Ska / Reggae / Mestizaje');
+    setNewEmail('');
+    setNewInstagram('');
+    setNewNotas('');
+  };
+
+  // Get unique cities and genres for filters
+  const cities = Array.from(new Set(leads.map(l => l.ciudad))).filter(Boolean);
+  const genres = Array.from(new Set(leads.map(l => l.genero))).filter(Boolean);
+
+  // Filter leads for search/scraper table
+  const filteredLeads = leads.filter(lead => {
+    const matchesSearch = lead.nombre_sala.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          lead.ciudad.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCity = cityFilter === 'todos' || lead.ciudad === cityFilter;
+    const matchesGenre = genreFilter === 'todos' || lead.genero === genreFilter;
+    return matchesSearch && matchesCity && matchesGenre;
+  });
+
+  const isStitchLight = colors.accent === 'text-indigo-600';
+  const subCardBg = isStitchLight ? 'bg-slate-50/60 border border-slate-200/80 text-slate-800' : 'bg-[#131313] border border-[#99907c]/15 text-[#e5e2e1]';
+  const textTitle = isStitchLight ? 'text-slate-900' : 'text-neutral-100';
+  const textSub = isStitchLight ? 'text-slate-500' : 'text-neutral-400';
+  const textMuted = isStitchLight ? 'text-slate-400' : 'text-neutral-500';
+
   return (
-    <div className="space-y-6">
-      {/* Counters banner */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
-        {statusList.map((st) => {
-          const count = st.value === 'todos' ? leads.length : countByStatus(st.value as LeadStatus);
-          const isSelected = statusFilter === st.value;
-          return (
-            <button
-              id={`status-counter-${st.value}`}
-              key={st.value}
-              onClick={() => setStatusFilter(st.value)}
-              className={`p-3 rounded-lg border text-left transition-all ${
-                isSelected 
-                  ? 'bg-neutral-800 border-neutral-300 ring-1 ring-neutral-400' 
-                  : 'bg-neutral-900/60 border-neutral-800/80 hover:bg-neutral-800/40'
-              }`}
-            >
-              <div className="text-[10px] font-mono text-neutral-400 truncate uppercase tracking-wider">{st.label}</div>
-              <div className="flex items-baseline gap-1 mt-1">
-                <span className={`text-2xl font-black font-mono leading-none ${st.color}`}>
-                  {count}
-                </span>
-                <span className="text-[9px] text-neutral-500">leads</span>
-              </div>
-            </button>
-          );
-        })}
+    <div className={`space-y-6 ${isStitchLight ? 'text-slate-800' : 'text-[#e5e2e1]'} font-sans`}>
+      
+      {/* 1. OVERVIEW RESUMEN GRID (Three cards from Stitch mockup) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* CARD 1: Google Sheets Sync Status */}
+        <div className={`${colors.card} p-5 flex flex-col justify-between`}>
+          <div className="space-y-2">
+            <div className={`flex items-center gap-1.5 ${colors.accent}`}>
+              <Database className="w-4 h-4" />
+              <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Google Sheets Data Sync</span>
+            </div>
+            <h3 className={`text-xl font-display font-black uppercase tracking-wide ${textTitle}`}>LIVE SYNCED</h3>
+            <div className={`text-[11px] font-mono space-y-1 ${textSub}`}>
+              <div>Total Registros: <span className={`${textTitle} font-bold`}>{leads.length} Salas</span></div>
+              <div>Último Cambio: Hace unos instantes</div>
+            </div>
+          </div>
+          <button 
+            id="dashboard-btn-sync"
+            onClick={handleForceSync}
+            disabled={syncLoading}
+            className={`w-full mt-4 py-2 text-xs font-mono rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 ${
+              isStitchLight 
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200' 
+                : 'bg-[#131313] hover:bg-neutral-800 border border-[#99907c]/20 hover:border-[#99907c]/40 text-neutral-200'
+            }`}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncLoading ? 'animate-spin' : ''}`} />
+            <span>{syncLoading ? 'Sincronizando...' : 'Forzar Sincronización'}</span>
+          </button>
+        </div>
+
+        {/* CARD 2: Agent Activity Monitor */}
+        <div className={`${colors.card} p-5 flex flex-col justify-between`}>
+          <div className="space-y-2">
+            <div className={`flex items-center gap-1.5 ${isStitchLight ? 'text-indigo-500' : 'text-[#ffb596]'}`}>
+              <Bot className="w-4 h-4" />
+              <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Actividad del Agente AI</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isStitchLight ? 'bg-indigo-500' : 'bg-[#f2ca50]'}`}></span>
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${isStitchLight ? 'bg-indigo-500' : 'bg-[#f2ca50]'}`}></span>
+              </span>
+              <h3 className={`text-xl font-display font-black uppercase tracking-wide ${textTitle}`}>ONLINE</h3>
+            </div>
+            <div className={`text-[11px] font-mono space-y-1 ${textSub}`}>
+              <div className="truncate">Hilo Activo: <span className={`${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'} font-bold`}>Negotiator #24</span></div>
+              <div>Tiempo Respuesta: <span className={`${textTitle} font-bold`}>~2m avg</span></div>
+            </div>
+          </div>
+          <div className={`text-[9px] font-mono uppercase tracking-wider text-right mt-4 self-end ${textMuted}`}>
+            Sistema de Booking Autónomo v2.0
+          </div>
+        </div>
+
+        {/* CARD 3: Audience Growth (High-fidelity custom styled bar metrics) */}
+        <div className={`${colors.card} p-5 flex flex-col justify-between`}>
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-neutral-400">
+              <Activity className="w-4 h-4 text-emerald-500" />
+              <span className={`text-[10px] font-mono uppercase tracking-widest font-bold ${textSub}`}>Audience Growth (Spotify/Social)</span>
+            </div>
+            
+            {/* Custom SVG Bar Chart with Theme-dynamic design */}
+            <div className="h-16 flex items-end justify-between gap-3 pt-2">
+              {(() => {
+                const sorted = [...metrics].sort((a,b) => a.fecha.localeCompare(b.fecha));
+                const latest = sorted[sorted.length - 1] || { youtube: 1210, instagram: 2150, tiktok: 3850 };
+                const spVal = 150; // Real Spotify monthly listeners
+                const maxVal = Math.max(latest.youtube, latest.instagram, latest.tiktok, spVal, 100);
+                
+                const getPct = (val: number) => {
+                  return `${Math.max((val / maxVal) * 100, 15)}%`;
+                };
+
+                const formatVal = (val: number) => {
+                  if (val >= 1000) {
+                    return `${(val / 1000).toFixed(1)}k`;
+                  }
+                  return val.toString();
+                };
+
+                const items = [
+                  { name: 'YT', value: formatVal(latest.youtube), height: getPct(latest.youtube), color: isStitchLight ? 'bg-slate-300' : 'bg-neutral-700' },
+                  { name: 'IG', value: formatVal(latest.instagram), height: getPct(latest.instagram), color: isStitchLight ? 'bg-indigo-400' : 'bg-[#ffb596]' },
+                  { name: 'SP', value: formatVal(spVal), height: getPct(spVal), color: isStitchLight ? 'bg-indigo-600' : 'bg-[#f2ca50]' },
+                  { name: 'TK', value: formatVal(latest.tiktok), height: getPct(latest.tiktok), color: isStitchLight ? 'bg-indigo-700' : 'bg-[#f2ca50]' },
+                ];
+
+                return items.map(bar => (
+                  <div key={bar.name} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                    <span className={`text-[8px] font-mono font-bold ${textMuted}`}>{bar.value}</span>
+                    <div 
+                      className={`w-full ${bar.color} rounded-sm transition-all duration-500`} 
+                      style={{ height: bar.height }} 
+                    />
+                    <span className={`text-[9px] font-mono font-bold ${textSub}`}>{bar.name}</span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+          <div className={`text-[9px] font-mono uppercase tracking-wider text-right self-end mt-4 ${textMuted}`}>
+            Datos Reales de Canales
+          </div>
+        </div>
+
       </div>
 
-      {/* Control bar */}
-      <div className={`p-4 rounded-xl border ${colors.card} ${colors.neonShadow} flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center`}>
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-3">
-          {/* Search box */}
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-500" />
-            <input
-              id="lead-search"
-              type="text"
-              placeholder="Buscar sala o ciudad..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg pl-9 pr-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-neutral-500 font-sans"
-            />
+      {/* 2. MAIN RESUMEN CONTENT: PRÓXIMAS FECHAS (Stitch list format) */}
+      <div className={`${colors.card} p-5`}>
+        <div className={`flex justify-between items-center border-b pb-4 mb-4 ${colors.border}`}>
+          <div>
+            <h3 className={`text-sm font-bold font-display uppercase tracking-widest ${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'}`}>Próximas Fechas Programadas</h3>
+            <p className={`text-[10px] font-mono mt-0.5 ${textSub}`}>Calendario de conciertos, festivales y ensayos generales confirmados para Julio 2026</p>
           </div>
+        </div>
 
-          {/* City Filter */}
-          <div className="relative">
-            <select
-              id="city-filter-select"
-              value={cityFilter}
-              onChange={(e) => setCityFilter(e.target.value)}
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-neutral-500 appearance-none font-sans"
+        <div className="space-y-3">
+          {[
+            { dateDay: '11', dateMonth: 'JUL', title: 'Concierto: Gira Bakandeya 2026', desc: 'Sala Apolo, Barcelona • Caché: 1.800€ • Entradas: 85%', type: 'concierto' },
+            { dateDay: '15', dateMonth: 'JUL', title: 'Ensayo General con sección de metales', desc: 'Camerinos Rock Palace, Madrid • Horario: 17:00 a 21:00 • Repertorio Gira', type: 'ensayo' },
+            { dateDay: '22', dateMonth: 'JUL', title: 'Concierto: Festival Mestizaje del Sur', desc: 'Anfiteatro de Granada • Caché: 3.500€ • Aforo: 1.200 pax', type: 'concierto' },
+            { dateDay: '29', dateMonth: 'JUL', title: 'Ensayo Técnico y Ajustes Analógicos', desc: 'Estudio de Diego • Horario: 18:00 a 22:00 • Pruebas de Sintetizadores', type: 'ensayo' },
+          ].map((item, idx) => (
+            <div 
+              key={idx}
+              className={`p-3 rounded-xl transition-all flex items-center justify-between gap-4 cursor-pointer ${subCardBg} hover:opacity-90`}
             >
-              <option value="todos">📍 Todas las Ciudades</option>
-              {cities.map(city => (
-                <option key={city} value={city}>{city}</option>
-              ))}
-            </select>
-          </div>
+              <div className="flex items-center gap-4">
+                {/* Custom calendar card block */}
+                <div className={`w-12 h-12 rounded-lg flex flex-col items-center justify-center shrink-0 border ${
+                  isStitchLight ? 'bg-white border-slate-200' : 'bg-[#1c1b1b] border-[#99907c]/25'
+                }`}>
+                  <span className={`text-xs font-mono font-bold tracking-tight leading-none ${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'}`}>{item.dateDay}</span>
+                  <span className={`text-[8px] font-mono font-bold uppercase tracking-wider mt-0.5 ${textMuted}`}>{item.dateMonth}</span>
+                </div>
 
-          {/* Genre Filter */}
-          <div className="relative">
-            <select
-              id="genre-filter-select"
-              value={genreFilter}
-              onChange={(e) => setGenreFilter(e.target.value)}
-              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-200 focus:outline-none focus:border-neutral-500 appearance-none font-sans"
-            >
-              <option value="todos">🎸 Todos los Géneros</option>
-              {genres.map(g => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
-          </div>
+                <div>
+                  <h4 className={`text-xs font-bold font-display tracking-wide flex items-center gap-2 ${textTitle}`}>
+                    {item.title}
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-mono border ${
+                      item.type === 'concierto' 
+                        ? isStitchLight ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-[#f2ca50]/10 text-[#f2ca50] border-[#f2ca50]/20'
+                        : isStitchLight ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-[#b8d6b8]/10 text-[#b8d6b8] border-[#b8d6b8]/20'
+                    }`}>
+                      {item.type.toUpperCase()}
+                    </span>
+                  </h4>
+                  <p className={`text-[10px] font-mono mt-1 ${textSub}`}>{item.desc}</p>
+                </div>
+              </div>
 
-          {/* Clear Filters Button */}
-          {(searchTerm || statusFilter !== 'todos' || cityFilter !== 'todos' || genreFilter !== 'todos') && (
+              <div className={`${textMuted} hover:text-slate-900 dark:hover:text-neutral-300`}>
+                <ArrowRight className="w-4 h-4" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 3. SEARCH & SCOUT SCRAPER (Double-enrichment workspace preserved) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        
+        {/* LEADS SEARCH FOR ENRICHMENT */}
+        <div className={`${colors.card} p-5 space-y-4`}>
+          <div className={`flex justify-between items-center border-b pb-3 ${colors.border}`}>
+            <div>
+              <h3 className={`text-sm font-bold font-display uppercase tracking-widest ${isStitchLight ? 'text-indigo-600' : 'text-[#ffb596]'}`}>Buscador y Enriquecimiento Scout</h3>
+              <p className={`text-[10px] font-mono mt-0.5 ${textSub}`}>Selecciona cualquier sala del inventario para iniciar el escaneo autónomo de datos de contacto.</p>
+            </div>
             <button
-              id="clear-filters-btn"
-              onClick={() => {
-                setSearchTerm('');
-                setStatusFilter('todos');
-                setCityFilter('todos');
-                setGenreFilter('todos');
-              }}
-              className="text-xs text-neutral-400 bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700 py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 font-mono"
+              id="dashboard-btn-add"
+              onClick={() => setIsAddModalOpen(true)}
+              className={`px-3 py-1.5 font-mono font-bold text-[10px] uppercase rounded-lg flex items-center gap-1.5 cursor-pointer shadow-md ${
+                isStitchLight 
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200' 
+                  : 'bg-[#f2ca50] hover:bg-[#ffe088] text-[#3c2f00] shadow-[#f2ca50]/10'
+              }`}
             >
-              <X className="w-3.5 h-3.5" /> Limpiar Filtros
+              <Plus className="w-3.5 h-3.5" /> Nueva Sala
             </button>
+          </div>
+
+          {/* Quick Filters */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-neutral-500" />
+              <input
+                id="search-leads"
+                type="text"
+                placeholder="Buscar sala, club o teatro por nombre..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className={`w-full border rounded-lg pl-9 pr-3 py-1.5 text-xs focus:outline-none font-mono transition-all ${
+                  isStitchLight 
+                    ? 'bg-white border-slate-200 text-slate-800 focus:border-indigo-500 placeholder:text-slate-400' 
+                    : 'bg-[#131313] border-[#99907c]/25 text-[#e5e2e1] focus:border-[#f2ca50]/50 placeholder:text-neutral-600'
+                }`}
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <select
+                id="filter-city"
+                value={cityFilter}
+                onChange={(e) => setCityFilter(e.target.value)}
+                className={`border rounded-lg text-xs py-1.5 px-3 font-mono focus:outline-none ${
+                  isStitchLight 
+                    ? 'bg-white border-slate-200 text-slate-800 focus:border-indigo-500' 
+                    : 'bg-[#131313] border-[#99907c]/25 text-[#e5e2e1] focus:border-[#f2ca50]/50'
+                }`}
+              >
+                <option value="todos">Ciudad: Todas</option>
+                {cities.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+
+              <select
+                id="filter-genre"
+                value={genreFilter}
+                onChange={(e) => setGenreFilter(e.target.value)}
+                className={`border rounded-lg text-xs py-1.5 px-3 font-mono focus:outline-none ${
+                  isStitchLight 
+                    ? 'bg-white border-slate-200 text-slate-800 focus:border-indigo-500' 
+                    : 'bg-[#131313] border-[#99907c]/25 text-[#e5e2e1] focus:border-[#f2ca50]/50'
+                }`}
+              >
+                <option value="todos">Género: Todos</option>
+                {genres.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* List of Leads */}
+          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+            {filteredLeads.length === 0 ? (
+              <div className={`text-center py-12 text-xs font-mono ${textMuted}`}>
+                No hay salas registradas que coincidan con estos filtros.
+              </div>
+            ) : (
+              filteredLeads.map(lead => (
+                <div
+                  key={lead.id}
+                  onClick={() => setSelectedLead(lead)}
+                  className={`p-3 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    selectedLead?.id === lead.id 
+                      ? isStitchLight
+                        ? 'bg-indigo-50/50 border-indigo-300 shadow-sm'
+                        : 'bg-[#ffb596]/5 border-[#ffb596]/40 shadow-[0_0_15px_rgba(255,181,150,0.03)]' 
+                      : isStitchLight
+                        ? 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                        : 'bg-[#131313] border-[#99907c]/15 hover:border-[#99907c]/35 hover:bg-[#1c1b1b]/30'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <h4 className={`text-xs font-bold font-display truncate ${
+                      selectedLead?.id === lead.id && isStitchLight ? 'text-indigo-900 font-extrabold' : textTitle
+                    }`}>{lead.nombre_sala}</h4>
+                    <div className={`flex gap-3 text-[10px] font-mono mt-1 flex-wrap ${textSub}`}>
+                      <span>{lead.ciudad} ({lead.region || 'N/A'})</span>
+                      <span>Aforo: {lead.aforo || 'Desconocido'} pax</span>
+                      <span className={isStitchLight ? 'text-indigo-600 font-bold' : 'text-[#f2ca50]/80'}>{lead.genero}</span>
+                    </div>
+                  </div>
+                  <button
+                    id={`btn-enrich-${lead.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedLead(lead);
+                      handleScrapeContact(lead);
+                    }}
+                    className={`px-2.5 py-1 text-[9px] font-mono rounded uppercase tracking-wider shrink-0 cursor-pointer border ${
+                      isStitchLight 
+                        ? 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700' 
+                        : 'bg-neutral-900 hover:bg-neutral-800 border-neutral-800 text-neutral-300'
+                    }`}
+                  >
+                    Escanear
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* DETAILS & SCRAPER TERMINAL */}
+        <div className="space-y-4">
+          {selectedLead ? (
+            <div className={`${colors.card} p-5 space-y-4`}>
+              <div className={`border-b pb-3 ${colors.border}`}>
+                <span className={`text-[9px] font-mono uppercase tracking-widest font-bold ${isStitchLight ? 'text-indigo-500' : 'text-[#ffb596]'}`}>Ficha de la Sala</span>
+                <h3 className={`text-sm font-bold font-display tracking-wide mt-1 ${textTitle}`}>{selectedLead.nombre_sala}</h3>
+                <p className={`text-[10px] font-mono mt-0.5 ${textSub}`}>{selectedLead.ciudad} • {selectedLead.region}</p>
+              </div>
+
+              {/* Scraper Panel */}
+              <div className={`rounded-lg p-3.5 space-y-3 border ${
+                isStitchLight ? 'bg-slate-50/80 border-slate-200' : 'bg-[#131313] border-neutral-900'
+              }`}>
+                <div className={`flex justify-between items-center border-b pb-1.5 ${isStitchLight ? 'border-slate-200' : 'border-neutral-800'}`}>
+                  <h4 className={`text-[10px] font-mono uppercase tracking-widest flex items-center gap-1.5 ${textSub}`}>
+                    <Bot className={`w-3.5 h-3.5 ${isStitchLight ? 'text-indigo-600' : 'text-[#ffb596]'}`} /> Agente Scout Scraper
+                  </h4>
+                  {isScraping && <Loader2 className={`w-3.5 h-3.5 animate-spin ${isStitchLight ? 'text-indigo-600' : 'text-[#ffb596]'}`} />}
+                </div>
+
+                {isScraping ? (
+                  <div className="space-y-2 py-2">
+                    <div className="flex items-center gap-2 text-xs font-mono text-neutral-300">
+                      <Loader2 className={`w-4 h-4 animate-spin ${isStitchLight ? 'text-indigo-600' : 'text-[#ffb596]'}`} />
+                      <span className={isStitchLight ? 'text-slate-700' : 'text-neutral-300'}>{scrapingStatus}</span>
+                    </div>
+                    <div className={`w-full h-1 rounded-full overflow-hidden ${isStitchLight ? 'bg-slate-200' : 'bg-neutral-900'}`}>
+                      <div className={`h-full w-2/3 animate-pulse ${isStitchLight ? 'bg-indigo-600' : 'bg-gradient-to-r from-[#f2ca50] to-[#ffb596]'}`} />
+                    </div>
+                    <p className={`text-[9px] font-mono leading-normal ${textMuted}`}>
+                      El agente de raspado web está buscando en Instagram, sitios oficiales y directorios de música el contacto de booking para esta sala...
+                    </p>
+                  </div>
+                ) : scrapedData ? (
+                  <div className="space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-600 font-bold uppercase">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> ¡Datos Encontrados con éxito!
+                    </div>
+                    
+                    <div className={`space-y-1.5 text-xs font-mono ${textSub}`}>
+                      <div>Email: <span className={`${textTitle} font-bold`}>{scrapedData.email_contacto || 'No disponible'}</span></div>
+                      <div>Teléfono: <span className={`${textTitle} font-bold`}>{scrapedData.telefono || 'No disponible'}</span></div>
+                      <div>Instagram: <span className={`${textTitle} font-bold`}>{scrapedData.instagram || 'No disponible'}</span></div>
+                      {scrapedData.aforo && <div>Aforo Detectado: <span className={`${textTitle} font-bold`}>{scrapedData.aforo} pax</span></div>}
+                    </div>
+
+                    <button
+                      id="dashboard-btn-apply-scraped"
+                      onClick={() => handleApplyScrapedData(selectedLead)}
+                      className={`w-full py-1.5 font-mono font-bold text-[10px] uppercase rounded transition-all cursor-pointer text-center ${
+                        isStitchLight 
+                          ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm' 
+                          : 'bg-[#ffb596] hover:bg-[#ffc6ad] text-[#3c1d10]'
+                      }`}
+                    >
+                      Aplicar y Guardar en Sheets
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 py-1">
+                    <p className={`text-[10px] leading-relaxed font-sans ${textSub}`}>
+                      ¿Faltan datos de contacto en la hoja? Haz que el Agente Scout busque en la web de forma automática:
+                    </p>
+                    <button
+                      id="dashboard-btn-scout-trigger"
+                      onClick={() => handleScrapeContact(selectedLead)}
+                      className={`w-full py-2 border text-xs uppercase tracking-wider rounded-md transition-all cursor-pointer flex items-center justify-center gap-1.5 font-mono font-bold ${
+                        isStitchLight 
+                          ? 'bg-indigo-600 hover:bg-indigo-700 border-indigo-600 text-white shadow-sm' 
+                          : 'bg-neutral-900 hover:bg-neutral-800 border-[#99907c]/25 text-[#f2ca50]'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" /> Iniciar Escaneo AI
+                    </button>
+                  </div>
+                )}
+
+                {scrapingError && (
+                  <div className="p-2.5 bg-[#ff4b4b]/10 border border-[#ff4b4b]/20 text-[#ff4b4b] text-[10px] font-mono rounded flex items-start gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{scrapingError}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* General Details List */}
+              <div className={`space-y-2 text-xs font-mono ${textSub}`}>
+                <div className={`flex justify-between border-b pb-1.5 ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
+                  <span className={textMuted}>Email:</span>
+                  <span className={`${textTitle} select-all`}>{selectedLead.email_contacto || 'Falta contactar'}</span>
+                </div>
+                <div className={`flex justify-between border-b pb-1.5 ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
+                  <span className={textMuted}>Instagram:</span>
+                  <span className={`${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'} select-all font-bold`}>{selectedLead.instagram || 'No configurado'}</span>
+                </div>
+                <div className={`flex justify-between border-b pb-1.5 ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
+                  <span className={textMuted}>Estilo Preferente:</span>
+                  <span className={`${isStitchLight ? 'text-indigo-600' : 'text-[#ffb596]'} font-bold`}>{selectedLead.genero || 'No especificado'}</span>
+                </div>
+                <div className={`flex justify-between border-b pb-1.5 ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
+                  <span className={textMuted}>Aforo:</span>
+                  <span className={textTitle}>{selectedLead.aforo ? `${selectedLead.aforo} personas` : 'Desconocido'}</span>
+                </div>
+                <div className={`flex justify-between border-b pb-1.5 ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
+                  <span className={textMuted}>Fuente original:</span>
+                  <span className={`${textMuted} italic`}>{selectedLead.fuente || 'Manual'}</span>
+                </div>
+              </div>
+
+              {/* Notes Log */}
+              <div className="space-y-1.5">
+                <span className={`block text-[9px] uppercase font-mono tracking-wider ${textMuted}`}>Notas de la sala</span>
+                <div className={`border p-2.5 rounded-lg text-[10px] font-mono max-h-32 overflow-y-auto whitespace-pre-wrap leading-relaxed ${
+                  isStitchLight 
+                    ? 'bg-slate-50 border-slate-200 text-slate-600' 
+                    : 'bg-[#131313]/60 border-neutral-900 text-neutral-400'
+                }`}>
+                  {selectedLead.notas || 'Sin anotaciones.'}
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div className={`${colors.card} p-6 text-center py-24 text-neutral-500 space-y-3`}>
+              <Database className={`w-10 h-10 mx-auto animate-pulse ${isStitchLight ? 'text-indigo-300' : 'text-[#ffb596]/45'}`} />
+              <h4 className={`text-xs font-mono uppercase tracking-widest ${isStitchLight ? 'text-indigo-600' : 'text-[#ffb596]'}`}>Detalles de la Fila</h4>
+              <p className={`text-[11px] leading-relaxed max-w-[200px] mx-auto ${textSub}`}>
+                Selecciona cualquier sala del inventario para ver su ficha completa o lanzar el agente Scout de enriquecimiento autónomo.
+              </p>
+            </div>
           )}
         </div>
 
-        {/* Add Lead Manual button */}
-        <button
-          id="open-add-lead-btn"
-          onClick={() => setIsAddModalOpen(true)}
-          className={`px-4 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all ${colors.primary}`}
-        >
-          <Plus className="w-4 h-4 text-zinc-950" /> Añadir Lead Manual
-        </button>
       </div>
 
-      {/* Leads representation */}
-      {filteredLeads.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed border-neutral-800 rounded-2xl bg-neutral-900/10">
-          <AlertCircle className="w-10 h-10 text-neutral-600 mb-3" />
-          <p className="text-sm font-semibold text-neutral-400">No se encontraron salas con los filtros aplicados</p>
-          <p className="text-xs text-neutral-500 mt-1">Prueba a buscar otro término o reiniciar los selectores.</p>
-        </div>
-      ) : (
-        <div className={`border ${colors.border} rounded-xl overflow-hidden bg-neutral-900/30`}>
-          {/* Desktop Table View */}
-          <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full text-left text-xs font-sans">
-              <thead className="bg-neutral-950/80 text-neutral-400 uppercase tracking-wider font-mono border-b border-neutral-800">
-                <tr>
-                  <th className="px-5 py-3.5">Sala/Contacto</th>
-                  <th className="px-5 py-3.5">Ubicación</th>
-                  <th className="px-5 py-3.5">Aforo</th>
-                  <th className="px-5 py-3.5">Género Predilecto</th>
-                  <th className="px-5 py-3.5">Estado</th>
-                  <th className="px-5 py-3.5">Fuente</th>
-                  <th className="px-5 py-3.5 text-right">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-800/60">
-                {filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-neutral-800/20 transition-colors">
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-neutral-100 text-sm">{lead.nombre_sala}</div>
-                      <div className="text-neutral-500 text-[11px] font-mono mt-0.5">{lead.email_contacto || 'Sin email'}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1 text-neutral-300">
-                        <MapPin className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
-                        <span>{lead.ciudad} ({lead.region})</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 font-mono font-medium text-neutral-300">
-                      {lead.aforo ? `${lead.aforo.toLocaleString()} pax` : 'N/D'}
-                    </td>
-                    <td className="px-5 py-4 text-neutral-400 max-w-[180px] truncate">
-                      {lead.genero}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${getStatusBadgeClass(lead.estado)}`}>
-                        {getStatusLabel(lead.estado)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="text-[10px] font-mono text-neutral-500 bg-neutral-950/60 px-1.5 py-0.5 rounded border border-neutral-800">
-                        {lead.fuente}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <button
-                        id={`view-lead-btn-${lead.id}`}
-                        onClick={() => setSelectedLead(lead)}
-                        className="text-xs text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded font-mono border border-neutral-700 transition-all"
-                      >
-                        Ver Ficha
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Card View */}
-          <div className="grid grid-cols-1 gap-3 p-3 lg:hidden">
-            {filteredLeads.map((lead) => (
-              <div
-                key={lead.id}
-                className="p-4 rounded-lg bg-neutral-900 border border-neutral-800/60 hover:border-neutral-700 flex flex-col gap-3"
-              >
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <h4 className="font-bold text-neutral-100 text-sm leading-tight">{lead.nombre_sala}</h4>
-                    <span className="text-[10px] font-mono text-neutral-500">{lead.ciudad}</span>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold border ${getStatusBadgeClass(lead.estado)}`}>
-                    {getStatusLabel(lead.estado)}
-                  </span>
-                </div>
-
-                <div className="text-xs text-neutral-400 space-y-1.5 font-sans border-t border-b border-neutral-800/50 py-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <Music className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
-                    <span className="truncate">{lead.genero}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
-                    <span>Aforo: <strong className="font-mono">{lead.aforo ? lead.aforo.toLocaleString() : 'N/D'}</strong> pax</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center pt-1 mt-auto">
-                  <span className="text-[9px] font-mono text-neutral-500">Vía {lead.fuente}</span>
-                  <button
-                    id={`view-lead-mob-${lead.id}`}
-                    onClick={() => setSelectedLead(lead)}
-                    className="text-[11px] font-mono text-neutral-300 bg-neutral-800 px-2.5 py-1 rounded border border-neutral-700"
-                  >
-                    Detalles
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Details Slide-Over / Modal */}
-      {selectedLead && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex justify-end transition-opacity">
-          <div className="w-full max-w-xl bg-neutral-950 border-l border-neutral-800 h-full flex flex-col shadow-2xl p-6 overflow-y-auto">
-            <div className="flex justify-between items-center pb-4 border-b border-neutral-800">
-              <div>
-                <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-mono font-semibold border uppercase ${getStatusBadgeClass(selectedLead.estado)}`}>
-                  {selectedLead.estado.replace('_', ' ')}
-                </span>
-                <h3 className="text-xl font-bold mt-1 text-neutral-100">{selectedLead.nombre_sala}</h3>
-              </div>
-              <button
-                id="close-lead-modal"
-                onClick={() => setSelectedLead(null)}
-                className="p-1 rounded-full hover:bg-neutral-800 text-neutral-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="py-6 space-y-6 flex-1 font-sans">
-              {/* Core Details Grid */}
-              <div className="grid grid-cols-2 gap-4 bg-neutral-900/40 p-4 rounded-lg border border-neutral-900">
-                <div>
-                  <div className="text-[10px] uppercase font-mono text-neutral-500">Ciudad</div>
-                  <div className="text-sm font-semibold text-neutral-200 flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-4 h-4 text-neutral-400 shrink-0" /> {selectedLead.ciudad}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase font-mono text-neutral-500">Región</div>
-                  <div className="text-sm font-medium text-neutral-300 mt-0.5">{selectedLead.region || 'N/D'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase font-mono text-neutral-500">Aforo máximo</div>
-                  <div className="text-sm font-bold text-neutral-200 mt-0.5 font-mono">
-                    {selectedLead.aforo ? `${selectedLead.aforo.toLocaleString()} personas` : 'No definido'}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase font-mono text-neutral-500">Estilo Musical</div>
-                  <div className="text-sm font-medium text-neutral-300 mt-0.5 flex items-center gap-1">
-                    <Music className="w-4 h-4 text-neutral-400 shrink-0" /> {selectedLead.genero}
-                  </div>
-                </div>
-              </div>
-
-              {/* Contacts */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-900 pb-1 flex items-center gap-1.5">
-                  <Globe className="w-4 h-4" /> Datos de Contacto
-                </h4>
-                <div className="grid grid-cols-1 gap-2.5 text-xs text-neutral-300">
-                  <div className="flex items-center gap-2 bg-neutral-900/30 p-2.5 rounded border border-neutral-900/60">
-                    <FileText className="w-4 h-4 text-neutral-500 shrink-0" />
-                    <span className="font-mono text-neutral-400">Email:</span>
-                    <a href={`mailto:${selectedLead.email_contacto}`} className="hover:underline text-cyan-400 font-medium">
-                      {selectedLead.email_contacto || 'No registrado'}
-                    </a>
-                  </div>
-                  <div className="flex items-center gap-2 bg-neutral-900/30 p-2.5 rounded border border-neutral-900/60">
-                    <Phone className="w-4 h-4 text-neutral-500 shrink-0" />
-                    <span className="font-mono text-neutral-400">Teléfono:</span>
-                    <span>{selectedLead.telefono || 'No registrado'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-neutral-900/30 p-2.5 rounded border border-neutral-900/60">
-                    <Instagram className="w-4 h-4 text-neutral-500 shrink-0" />
-                    <span className="font-mono text-neutral-400">Instagram:</span>
-                    <a href={`https://instagram.com/${selectedLead.instagram?.replace('@', '')}`} target="_blank" rel="noreferrer" className="hover:underline text-fuchsia-400">
-                      {selectedLead.instagram || 'No registrado'}
-                    </a>
-                  </div>
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-900 pb-1">
-                  Notas de Coordinación / Agentes
-                </h4>
-                <div className="bg-neutral-900/60 border border-neutral-800 p-3 rounded-lg text-xs text-neutral-300 leading-relaxed whitespace-pre-wrap">
-                  {selectedLead.notas || 'No hay notas registradas para esta sala.'}
-                </div>
-              </div>
-
-              {/* Audit trail */}
-              <div className="flex justify-between items-center pt-4 border-t border-neutral-900 text-[10px] font-mono text-neutral-500">
-                <span>Descubierto vía: <strong className="text-neutral-400">{selectedLead.fuente}</strong></span>
-                <span>Ficha ID: {selectedLead.id}</span>
-              </div>
-            </div>
-
-            {/* Modal actions */}
-            <div className="pt-4 border-t border-neutral-900 flex gap-2">
-              <button
-                id="modal-edit-status-draft"
-                onClick={() => {
-                  onUpdateLead(selectedLead.id, { estado: 'nuevo' });
-                  setSelectedLead(prev => prev ? { ...prev, estado: 'nuevo' } : null);
-                }}
-                className="flex-1 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 text-xs py-2 rounded font-mono transition-all"
-              >
-                Volver a Nuevo
-              </button>
-              <button
-                id="modal-edit-status-approve"
-                onClick={() => {
-                  onUpdateLead(selectedLead.id, { estado: 'aprobado' });
-                  setSelectedLead(prev => prev ? { ...prev, estado: 'aprobado' } : null);
-                }}
-                className="flex-1 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-400 text-xs py-2 rounded font-mono font-bold transition-all"
-              >
-                Aprobar Directo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Manual Add Lead Modal */}
+      {/* 4. MODAL: AGREGAR NUEVA SALA */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
-            <div className="flex justify-between items-center pb-4 border-b border-neutral-800">
-              <div className="flex items-center gap-2">
-                <Plus className={`w-5 h-5 ${colors.accent}`} />
-                <h3 className="text-lg font-bold text-neutral-100">Ficha de Nueva Sala / Promotor</h3>
-              </div>
-              <button
-                id="close-add-modal"
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1c1b1b] border border-[#f2ca50]/30 rounded-xl w-full max-w-lg overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-200">
+            
+            <div className="p-4 border-b border-[#99907c]/15 flex justify-between items-center bg-[#131313]">
+              <h3 className="text-sm font-bold font-display uppercase tracking-widest text-[#f2ca50] flex items-center gap-1.5">
+                <Plus className="w-4 h-4" /> Agregar Nueva Sala a la Hoja
+              </h3>
+              <button 
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1 rounded-full hover:bg-neutral-800 text-neutral-400 hover:text-white"
+                className="text-neutral-400 hover:text-white transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateLeadSubmit} className="py-4 space-y-4 text-xs font-sans text-neutral-300">
+            <form onSubmit={handleAddSubmit} className="p-5 space-y-4 text-xs font-sans">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Nombre de la Sala / Evento *</label>
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Nombre de la Sala*</label>
                   <input
-                    id="form-name"
+                    id="new-lead-sala"
                     type="text"
                     required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Ej: Sala Caracol, Viña Rock"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500"
+                    value={newSala}
+                    onChange={(e) => setNewSala(e.target.value)}
+                    placeholder="Ej: Sala Apolo"
+                    className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Ciudad *</label>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Ciudad*</label>
                   <input
-                    id="form-city"
+                    id="new-lead-ciudad"
                     type="text"
                     required
-                    value={formCity}
-                    onChange={(e) => setFormCity(e.target.value)}
-                    placeholder="Ej: Madrid, Bilbao"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500"
+                    value={newCiudad}
+                    onChange={(e) => setNewCiudad(e.target.value)}
+                    placeholder="Ej: Barcelona"
+                    className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Región (CCAA o País)</label>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Región / Provincia</label>
                   <input
-                    id="form-region"
+                    id="new-lead-region"
                     type="text"
-                    value={formRegion}
-                    onChange={(e) => setFormRegion(e.target.value)}
-                    placeholder="Ej: Comunidad de Madrid, Galicia"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500"
+                    value={newRegion}
+                    onChange={(e) => setNewRegion(e.target.value)}
+                    placeholder="Ej: Cataluña"
+                    className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono"
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Aforo Máximo</label>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Aforo Estimado (Pax)</label>
                   <input
-                    id="form-aforo"
+                    id="new-lead-aforo"
                     type="number"
-                    value={formAforo}
-                    onChange={(e) => setFormAforo(Number(e.target.value))}
-                    placeholder="Ej: 800"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500 font-mono"
+                    value={newAforo}
+                    onChange={(e) => setNewAforo(Number(e.target.value))}
+                    className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Género Musical Preferente</label>
+                  <input
+                    id="new-lead-genero"
+                    type="text"
+                    value={newGenero}
+                    onChange={(e) => setNewGenero(e.target.value)}
+                    className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Usuario de Instagram (@)</label>
+                  <input
+                    id="new-lead-instagram"
+                    type="text"
+                    value={newInstagram}
+                    onChange={(e) => setNewInstagram(e.target.value)}
+                    placeholder="Ej: @sala_apolo"
+                    className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Estilos / Géneros Musicales habituales</label>
+              <div className="space-y-1.5 col-span-2">
+                <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Email de Contacto (Opcional, sino Scout lo buscará)</label>
                 <input
-                  id="form-genero"
-                  type="text"
-                  value={formGenero}
-                  onChange={(e) => setFormGenero(e.target.value)}
-                  placeholder="Ej: Reggae, Ska, Rock alternativo, Mestizaje"
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500"
+                  id="new-lead-email"
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="Ej: booking@salaapolo.com"
+                  className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Email de Contacto / Booking</label>
-                  <input
-                    id="form-email"
-                    type="email"
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    placeholder="booking@sala.com"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Teléfono</label>
-                  <input
-                    id="form-phone"
-                    type="text"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="+34 600 000 000"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Instagram (@usuario)</label>
-                  <input
-                    id="form-insta"
-                    type="text"
-                    value={formInsta}
-                    onChange={(e) => setFormInsta(e.target.value)}
-                    placeholder="@nombre_sala"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Origen / Fuente</label>
-                  <select
-                    id="form-source"
-                    value={formFuente}
-                    onChange={(e) => setFormFuente(e.target.value)}
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500 appearance-none"
-                  >
-                    <option value="Manual">Carga Manual (Diego/Larra)</option>
-                    <option value="Recomendado">Recomendación Banda</option>
-                    <option value="Scout AI (Simulado)">Agente Scout AI</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] uppercase font-mono text-neutral-400 mb-1">Notas Internas</label>
+              <div className="space-y-1.5 col-span-2">
+                <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Notas Iniciales</label>
                 <textarea
-                  id="form-notes"
+                  id="new-lead-notes"
                   rows={3}
-                  value={formNotes}
-                  onChange={(e) => setFormNotes(e.target.value)}
-                  placeholder="Añade algún detalle relevante: tipo de caché, contactos alternativos, etc..."
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-200 focus:outline-none focus:border-neutral-500"
+                  value={newNotas}
+                  onChange={(e) => setNewNotas(e.target.value)}
+                  placeholder="Alguna instrucción de booking, contacto recomendado..."
+                  className="w-full bg-[#131313] border border-[#99907c]/25 rounded p-3 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-sans leading-relaxed"
                 />
               </div>
 
-              <div className="pt-4 border-t border-neutral-800 flex justify-end gap-2">
+              <div className="flex gap-3 justify-end pt-3 border-t border-neutral-900">
                 <button
-                  id="cancel-add-lead"
+                  id="btn-add-cancel"
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 rounded transition-colors"
+                  className="px-4 py-2 bg-neutral-900 border border-neutral-800 text-neutral-400 font-mono text-[10px] uppercase rounded-lg transition-all cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
-                  id="submit-add-lead"
+                  id="btn-add-submit"
                   type="submit"
-                  className={`px-4 py-2 rounded font-bold transition-all cursor-pointer ${colors.primary}`}
+                  className="px-5 py-2 bg-[#f2ca50] hover:bg-[#ffe088] text-[#3c2f00] font-mono font-bold text-[10px] uppercase rounded-lg transition-all cursor-pointer shadow-lg shadow-[#f2ca50]/10"
                 >
-                  Guardar Ficha
+                  Confirmar Registro
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 }

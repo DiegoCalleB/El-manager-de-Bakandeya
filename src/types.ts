@@ -71,7 +71,16 @@ export interface Message {
   leido: boolean;
 }
 
-export type ThemeName = 'backstage_neon' | 'roots_ska' | 'indie_velvet' | 'brutalist_fuzz';
+export interface SocialMetric {
+  id: string;
+  fecha: string;
+  instagram: number;
+  tiktok: number;
+  youtube: number;
+  notas: string;
+}
+
+export type ThemeName = 'stitch_light' | 'stitch_dark' | 'backstage_neon' | 'roots_ska' | 'indie_velvet' | 'brutalist_fuzz';
 
 export interface ThemeColors {
   name: string;
@@ -89,4 +98,6 @@ export interface ThemeColors {
   badgeRed: string;
   badgeBlue: string;
   neonShadow: string;
+  fontDisplay: string;
+  fontSans: string;
 }

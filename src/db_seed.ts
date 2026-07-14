@@ -1,4 +1,4 @@
-import { Lead, Rehearsal, Concert, SocialPost, Payment, Message } from './types';
+import { Lead, Rehearsal, Concert, SocialPost, Payment, Message, SocialMetric } from './types';
 
 export const INITIAL_LEADS: Lead[] = [
   {
@@ -582,5 +582,56 @@ export const INITIAL_MESSAGES: Message[] = [
     mensaje: 'Yo llevaré el bajo de repuesto y las pegatinas nuevas de Bakandeya para meter en los pedidos del merchan.',
     fecha: '2026-07-09T12:00:00',
     leido: false
+  }
+];
+
+export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
+  {
+    id: 'metric-1',
+    fecha: '2026-05-01',
+    instagram: 290,
+    tiktok: 110,
+    youtube: 15,
+    notas: 'Inicio de la monitorización de campaña de primavera.'
+  },
+  {
+    id: 'metric-2',
+    fecha: '2026-05-15',
+    instagram: 310,
+    tiktok: 135,
+    youtube: 18,
+    notas: 'Lanzamiento del EPK digital de la banda.'
+  },
+  {
+    id: 'metric-3',
+    fecha: '2026-06-01',
+    instagram: 340,
+    tiktok: 165,
+    youtube: 22,
+    notas: 'Anuncio de la participación en el Cabo de Plata.'
+  },
+  {
+    id: 'metric-4',
+    fecha: '2026-06-15',
+    instagram: 370,
+    tiktok: 190,
+    youtube: 26,
+    notas: 'Campaña publicitaria del directo en Trinchera Málaga.'
+  },
+  {
+    id: 'metric-5',
+    fecha: '2026-07-01',
+    instagram: 395,
+    tiktok: 220,
+    youtube: 30,
+    notas: 'Post del Sold Out en Málaga tuvo impacto orgánico en TikTok.'
+  },
+  {
+    id: 'metric-6',
+    fecha: '2026-07-12',
+    instagram: 420,
+    tiktok: 252,
+    youtube: 35,
+    notas: 'Registro actual real coincidiendo con el estado actual en redes sociales.'
   }
 ];
