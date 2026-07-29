@@ -59,7 +59,7 @@ router.post("/auth/logout", (req, res) => {
 });
 
 // Get all band users (without password hashes)
-router.get("/users", (req, res) => {
+router.get("/users", requireAuth, (req, res) => {
   const state = loadState();
   res.json(getSafeUsers(state.users));
 });

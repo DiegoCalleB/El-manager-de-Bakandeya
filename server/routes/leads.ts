@@ -32,7 +32,7 @@ router.post("/leads", requireAuth, async (req, res) => {
 });
 
 // Custom simulation endpoint to generate custom venue or band negotiation emails using Gemini
-router.post("/generate-simulated-email", async (req, res) => {
+router.post("/generate-simulated-email", requireAuth, async (req, res) => {
   const { leadId, role, scenario, customInstruction, senderName } = req.body;
   if (!leadId) {
     return res.status(400).json({ success: false, error: "Falta el leadId." });

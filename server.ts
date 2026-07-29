@@ -1,13 +1,7 @@
 import express from "express";
 import path from "path";
-import fs from "fs";
-import crypto from "crypto";
 import * as XLSX from "xlsx";
-import ytdl from "@distube/ytdl-core";
-import { YoutubeTranscript } from "youtube-transcript";
-import ffmpeg from "fluent-ffmpeg";
 
-import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES, INITIAL_SOCIAL_METRICS, INITIAL_USERS } from "./src/db_seed";
 import { Lead, Concert, SocialPost, Payment, Rehearsal } from "./src/types";
 
 import { getSafeUsers, getUserFromRequest } from "./server/auth.js";
@@ -21,8 +15,7 @@ import {
   fetchMetricsFromSheet,
   fetchLogisticsFromSheet
 } from "./server/sheets.js";
-import { loadState, saveState, requireAuth } from "./server/state.js";
-import { getAiClient } from "./server/ai.js";
+import { loadState, saveState } from "./server/state.js";
 
 import usersRouter from "./server/routes/users.js";
 import postsRouter from "./server/routes/posts.js";
