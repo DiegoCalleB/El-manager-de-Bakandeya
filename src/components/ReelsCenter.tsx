@@ -145,18 +145,10 @@ export default function ReelsCenter({
     }
   };
 
-  // Existing Pipeline State
-  const [pipeline, setPipeline] = useState<ReelCard[]>([
-    { id: 'reel-1', title: 'Solo de Trompeta Salvaje - Viña Rock', duration: '0:15', category: 'Live Music', stage: 'ready', ideas: 'Larra dándolo todo con un solo balkan ultra rápido' },
-    { id: 'reel-2', title: 'Ensayo improvisación Ska-Reggae', duration: '0:30', category: 'Backstage', stage: 'edit', ideas: 'Banda fluyendo con ritmo roots y luego acelerando a ska de golpe' },
-    { id: 'reel-3', title: 'Afinando la sección de viento metal', duration: '0:45', category: 'Humor/Vlog', stage: 'draft', ideas: 'Los trombonistas haciendo sonidos graciosos imitando sirenas' },
-    { id: 'reel-4', title: 'Diego explicando el origen analógico de las bases', duration: '0:59', category: 'Explicativo', stage: 'draft', ideas: 'Enseñar el sintetizador analógico de los 80 que usamos en directo' },
-  ]);
-
-  const [reelIdea, setReelIdea] = useState('Ensayando los metales para el concierto de la Sala Apolo en Barcelona, ritmo balkan ska acelerado que hace saltar a todos');
-  const [generatedCopy, setGeneratedCopy] = useState(`🔥 ¡ATENCIÓN BARCELONA! 🎺💥\n\nLos metales de Bakandeya ya están ardiendo en el local. ¡Este ensayo va a reventar la Sala Apolo! El viento balkan sopla con fuerza y el ska más salvaje se adueña del aire. \n\nNo te quedes fuera de la locura el próximo otoño. ¿Quién se viene al pogo? ¡Venta de entradas en bío! 🌋🎫\n\n#bakandeya #balkanska #apolo #hornsection #barcelonamusic #directosudoroso #mestizaje`);
+  const [selectedPostInPhone, setSelectedPostInPhone] = useState<SocialPost | null>(null);
+  const [reelIdea, setReelIdea] = useState('Ensayando con violín y percusión reciclada para el concierto de la Sala Apolo en Barcelona, ritmos contagiosos y alta energía');
+  const [generatedCopy, setGeneratedCopy] = useState(`🔥 ¡ATENCIÓN BARCELONA! 🎻🔋\n\nEl violín salvaje de R-violin y las percusiones recicladas de Filgue ya están ardiendo en el local. ¡Este ensayo va a reventar la Sala Apolo! Los loops electrónicos de Jon y el místico hang drum de elyar se fusionan en directo. \n\nNo te quedes fuera de la locura el próximo otoño. ¿Quién se viene al pogo? ¡Venta de entradas en bío! 🌋🎫\n\n#bakandeya #violin #apolo #percusiónreciclada #electronicloops #roots #barcelonamusic #directosudoroso #mestizaje`);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedReelInPhone, setSelectedReelInPhone] = useState<ReelCard>(pipeline[0]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   // New AI Analyzer States
@@ -180,6 +172,86 @@ export default function ReelsCenter({
   const [simulatedTime, setSimulatedTime] = useState<number>(0);
   const [ytLoopCount, setYtLoopCount] = useState<number>(0);
   const [draggingBoundary, setDraggingBoundary] = useState<'start' | 'end' | null>(null);
+
+  // Real physical video cutting and subtitle states
+  const [renderedClipUrl, setRenderedClipUrl] = useState<string | null>(null);
+  const [renderedSubUrl, setRenderedSubUrl] = useState<string | null>(null);
+  const [subtitleCues, setSubtitleCues] = useState<Array<{ text: string; start: number; end: number }>>([]);
+  const [wordOffsets, setWordOffsets] = useState<Array<{ word: string; start: number; end: number }>>([]);
+  const [isWhisperTranscribed, setIsWhisperTranscribed] = useState(false);
+  const [currentSubtitleText, setCurrentSubtitleText] = useState<string>('');
+  const [isCuttingVideo, setIsCuttingVideo] = useState(false);
+  const [cuttingProgressText, setCuttingProgressText] = useState('');
+  const [cuttingError, setCuttingError] = useState<string | null>(null);
+
+  const handleCutPhysicalVideo = async () => {
+    const activeClip = highlights[selectedHighlightIndex];
+    if (!activeClip || !youtubeUrl) return;
+
+    setIsCuttingVideo(true);
+    setCuttingError(null);
+    setCuttingProgressText("Conectando con el servidor...");
+    setWordOffsets([]);
+    setIsWhisperTranscribed(false);
+
+    const { start, duration } = parseRangeTimes(activeClip.range);
+    const clipId = `reel-${selectedHighlightIndex}-${Date.now()}`;
+
+    // Cycle through real steps to give perfect feedback
+    const progressSteps = [
+      "Iniciando descarga del stream de YouTube...",
+      "Extrayendo flujo de audio y vídeo de alta calidad...",
+      "Estabilizando búfer y preparando ffmpeg...",
+      "Recortando fragmento con precisión de milisegundos...",
+      "Aplicando filtro de encuadre vertical (9:16)...",
+      "Analizando audio e indexando subtítulos de YouTube...",
+      "Sincronizando offsets de palabras...",
+      "Codificando vídeo y empaquetando en MP4...",
+      "Finalizando renderizado físico..."
+    ];
+
+    let currentStep = 0;
+    const interval = setInterval(() => {
+      if (currentStep < progressSteps.length - 1) {
+        currentStep++;
+        setCuttingProgressText(progressSteps[currentStep]);
+      }
+    }, 2500);
+
+    try {
+      const res = await fetch("/api/cut-video-clip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          youtubeUrl,
+          start,
+          duration,
+          clipId,
+          cropVertical: true
+        })
+      });
+
+      clearInterval(interval);
+      if (!res.ok) throw new Error("El servidor devolvió un error al realizar el recorte.");
+      
+      const data = await res.json();
+      if (data.success) {
+        setRenderedClipUrl(data.url);
+        setRenderedSubUrl(data.subUrl);
+        setSubtitleCues(data.subtitles || []);
+        setWordOffsets(data.words || []);
+        setIsWhisperTranscribed(false);
+        setCuttingProgressText("¡Reel físico y subtítulos automáticos renderizados con éxito!");
+      } else {
+        throw new Error(data.error || "Error al codificar el clip de vídeo.");
+      }
+    } catch (err: any) {
+      clearInterval(interval);
+      setCuttingError(err.message || "Error al renderizar el clip.");
+    } finally {
+      setIsCuttingVideo(false);
+    }
+  };
 
   // Global drag handler for timeline dragging
   useEffect(() => {
@@ -498,7 +570,7 @@ export default function ReelsCenter({
       : "Subiendo metraje bruto al búfer temporal seguro...";
     return [
       firstStep,
-      "Analizando espectro acústico en busca de picos de viento metal (+12dB)...",
+      "Analizando espectro acústico en busca de picos de violín y percusión (+12dB)...",
       "Mapeando transiciones rítmicas de compases (BPM 145 balkan a 85 reggae)...",
       "Calculando curvas de retención con el modelo de engagement para España...",
       "Generando copys identitarios de la banda y hashtags con Gemini..."
@@ -550,6 +622,15 @@ export default function ReelsCenter({
     if (inputType === 'file' && !selectedFile) return;
     if (inputType === 'youtube' && !youtubeUrl) return;
 
+    // Reset physical clip and subtitle state for the new video
+    setRenderedClipUrl(null);
+    setRenderedSubUrl(null);
+    setSubtitleCues([]);
+    setWordOffsets([]);
+    setIsWhisperTranscribed(false);
+    setCurrentSubtitleText('');
+    setCuttingError(null);
+
     setIsAnalyzing(true);
     setAnalysisError(null);
     setLoadingStep(0);
@@ -572,7 +653,7 @@ export default function ReelsCenter({
           fileName: inputType === 'file' ? selectedFile?.name : undefined,
           youtubeUrl: inputType === 'youtube' ? youtubeUrl : undefined,
           videoDuration: videoDuration,
-          videoTopic: videoTopic || (inputType === 'youtube' ? "Vídeo de YouTube de la banda" : "Ensayo o directo de la banda con vientos y ritmo balkan-ska")
+          videoTopic: videoTopic || (inputType === 'youtube' ? "Vídeo de YouTube de la banda" : "Ensayo o directo de la banda con violín y percusión reciclada")
         })
       });
 
@@ -620,7 +701,7 @@ export default function ReelsCenter({
         plataforma: selectedPlatform,
         contenido: editedCopy,
         estado: 'aprobado',
-        responsable: 'Diego'
+        responsable: 'Jon'
       };
 
       await onAddPost(newPost);
@@ -642,6 +723,15 @@ export default function ReelsCenter({
   // Change active highlight in lighttable
   const handleSelectHighlight = (index: number) => {
     setSelectedHighlightIndex(index);
+    // Reset physical cutting states when switching segments
+    setRenderedClipUrl(null);
+    setRenderedSubUrl(null);
+    setSubtitleCues([]);
+    setWordOffsets([]);
+    setIsWhisperTranscribed(false);
+    setCurrentSubtitleText('');
+    setCuttingError(null);
+    
     const clip = highlights[index];
     if (clip) {
       setEditedCopy(clip.recommendedCopy || '');
@@ -741,17 +831,23 @@ export default function ReelsCenter({
   };
 
   // Select dynamic display text for phone screen mock
-  const phoneText = activeTab === 'analyzer' && highlights.length > 0
-    ? editedCopy
-    : generatedCopy;
+  const phoneText = selectedPostInPhone
+    ? selectedPostInPhone.contenido
+    : (activeTab === 'analyzer' && highlights.length > 0
+        ? editedCopy
+        : generatedCopy);
 
-  const phoneTitle = activeTab === 'analyzer' && highlights.length > 0
-    ? highlights[selectedHighlightIndex]?.title
-    : selectedReelInPhone?.title;
+  const phoneTitle = selectedPostInPhone
+    ? `${selectedPostInPhone.plataforma} · ${selectedPostInPhone.responsable}`
+    : (activeTab === 'analyzer' && highlights.length > 0
+        ? (highlights[selectedHighlightIndex]?.title || 'Reel de Bakandeya')
+        : 'Bakandeya Reels');
 
-  const phoneDuration = activeTab === 'analyzer' && highlights.length > 0
-    ? highlights[selectedHighlightIndex]?.range
-    : selectedReelInPhone?.duration;
+  const phoneDuration = selectedPostInPhone
+    ? selectedPostInPhone.fecha
+    : (activeTab === 'analyzer' && highlights.length > 0
+        ? (highlights[selectedHighlightIndex]?.range || '0:30')
+        : '0:30');
 
   const isStitchLight = colors.accent === 'text-indigo-600';
   const textTitle = isStitchLight ? 'text-slate-900' : 'text-neutral-100';
@@ -759,7 +855,7 @@ export default function ReelsCenter({
   const textMuted = isStitchLight ? 'text-slate-400' : 'text-neutral-500';
 
   return (
-    <div className={`space-y-6 ${isStitchLight ? 'text-slate-800' : 'text-[#e5e2e1]'} font-sans`}>
+    <div className={`space-y-6 ${isStitchLight ? 'text-slate-800' : 'text-[#e5e2e1]'} font-sans w-full max-w-full overflow-x-hidden`}>
       
       {/* Header con Sincronización en Excel */}
       <div className={`flex justify-between items-start md:items-center border-b pb-4 mb-2 gap-4 ${isStitchLight ? 'border-slate-100' : 'border-[#99907c]/15'}`}>
@@ -887,7 +983,7 @@ export default function ReelsCenter({
                 <div className={`border-b pb-3 ${isStitchLight ? 'border-slate-100' : 'border-[#99907c]/15'}`}>
                   <h3 className={`text-sm font-bold font-display uppercase tracking-widest ${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'}`}>Pipeline de Reels y Contenido</h3>
                   <p className={`text-[10px] font-mono mt-1 ${textSub}`}>
-                    Visualiza los vídeos grabados por Larra en la carretera y arrástralos / muévelos de etapa para coordinar la publicación.
+                    Visualiza los vídeos grabados por la banda en la carretera y arrástralos / muévelos de etapa para coordinar la publicación.
                   </p>
                 </div>
 
@@ -896,118 +992,154 @@ export default function ReelsCenter({
                   <div className={`space-y-3 border rounded-lg p-3 ${isStitchLight ? 'bg-slate-50 border-slate-200' : 'bg-[#131313]/60 border-neutral-900'}`}>
                     <span className={`text-[10px] font-mono uppercase tracking-wider font-bold block border-b pb-1.5 ${
                       isStitchLight ? 'text-indigo-600 border-slate-200/80' : 'text-[#ffb596] border-neutral-800'
-                    }`}>Borradores ({pipeline.filter(r => r.stage === 'draft').length})</span>
+                    }`}>Borradores ({posts.filter(r => r.estado === 'borrador').length})</span>
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {pipeline.filter(r => r.stage === 'draft').map(reel => (
+                      {posts.filter(r => r.estado === 'borrador').map(post => (
                         <div 
-                          key={reel.id} 
-                          onClick={() => setSelectedReelInPhone(reel)}
+                          key={post.id} 
+                          onClick={() => setSelectedPostInPhone(post)}
                           className={`border rounded-md p-2.5 cursor-pointer transition-all space-y-1.5 ${
                             isStitchLight ? 'bg-white' : 'bg-[#1c1b1b]'
                           } ${
-                            selectedReelInPhone?.id === reel.id
+                            selectedPostInPhone?.id === post.id
                               ? isStitchLight ? 'border-indigo-600 shadow-sm' : 'border-[#f2ca50]'
                               : isStitchLight ? 'border-slate-200 hover:border-indigo-300' : 'border-neutral-800 hover:border-[#99907c]/30'
                           }`}
                         >
                           <div className="flex justify-between items-start gap-1">
-                            <h4 className={`text-[11px] font-bold leading-snug font-sans line-clamp-2 ${textTitle}`}>{reel.title}</h4>
-                            <span className={`text-[8px] font-mono px-1 py-0.5 rounded shrink-0 ${isStitchLight ? 'bg-slate-100 text-slate-500' : 'bg-neutral-900 text-neutral-500'}`}>{reel.duration}</span>
+                            <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded font-bold uppercase ${
+                              post.plataforma === 'Instagram' ? 'bg-[#ffb596]/10 text-[#ffb596]' :
+                              post.plataforma === 'TikTok' ? 'bg-[#f2ca50]/10 text-[#f2ca50]' :
+                              'bg-neutral-800 text-neutral-300'
+                            }`}>
+                              {post.plataforma}
+                            </span>
+                            <span className="text-[8px] font-mono text-neutral-400">{post.responsable}</span>
                           </div>
+                          <p className={`text-[11px] font-medium leading-snug font-sans line-clamp-3 ${textTitle}`}>
+                            {post.contenido}
+                          </p>
                           <div className={`flex justify-between items-center pt-1 border-t ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
-                            <span className="text-[8px] font-mono text-neutral-400">{reel.category}</span>
+                            <span className="text-[8px] font-mono text-neutral-500">{post.fecha}</span>
                             <button 
-                              id={`btn-move-edit-${reel.id}`}
-                              onClick={(e) => { e.stopPropagation(); moveReel(reel.id, 'edit'); }}
+                              id={`btn-move-aprobado-${post.id}`}
+                              onClick={(e) => { e.stopPropagation(); onUpdatePost({ ...post, estado: 'aprobado' }); }}
                               className={`text-[8px] font-mono hover:underline cursor-pointer bg-transparent border-none p-0 ${isStitchLight ? 'text-indigo-600 font-bold' : 'text-[#f2ca50]'}`}
                             >
-                              Editar →
+                              Aprobar →
                             </button>
                           </div>
                         </div>
                       ))}
+                      {posts.filter(r => r.estado === 'borrador').length === 0 && (
+                        <p className="text-[9px] font-mono text-neutral-500 text-center py-4">No hay borradores</p>
+                      )}
                     </div>
                   </div>
 
-                  {/* En Edición */}
+                  {/* En Edición / Aprobados */}
                   <div className={`space-y-3 border rounded-lg p-3 ${isStitchLight ? 'bg-slate-50 border-slate-200' : 'bg-[#131313]/60 border-neutral-900'}`}>
                     <span className={`text-[10px] font-mono uppercase tracking-wider font-bold block border-b pb-1.5 ${
                       isStitchLight ? 'text-indigo-600 border-slate-200/80' : 'text-[#f2ca50] border-neutral-800'
-                    }`}>En Edición ({pipeline.filter(r => r.stage === 'edit').length})</span>
+                    }`}>En Edición / Aprobados ({posts.filter(r => r.estado === 'aprobado').length})</span>
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {pipeline.filter(r => r.stage === 'edit').map(reel => (
+                      {posts.filter(r => r.estado === 'aprobado').map(post => (
                         <div 
-                          key={reel.id} 
-                          onClick={() => setSelectedReelInPhone(reel)}
+                          key={post.id} 
+                          onClick={() => setSelectedPostInPhone(post)}
                           className={`border rounded-md p-2.5 cursor-pointer transition-all space-y-1.5 ${
                             isStitchLight ? 'bg-white' : 'bg-[#1c1b1b]'
                           } ${
-                            selectedReelInPhone?.id === reel.id
+                            selectedPostInPhone?.id === post.id
                               ? isStitchLight ? 'border-indigo-600 shadow-sm' : 'border-[#f2ca50]'
                               : isStitchLight ? 'border-slate-200 hover:border-indigo-300' : 'border-neutral-800 hover:border-[#f2ca50]/40'
                           }`}
                         >
                           <div className="flex justify-between items-start gap-1">
-                            <h4 className={`text-[11px] font-bold leading-snug font-sans line-clamp-2 ${textTitle}`}>{reel.title}</h4>
-                            <span className={`text-[8px] font-mono px-1 py-0.5 rounded shrink-0 ${isStitchLight ? 'bg-indigo-50 text-indigo-600' : 'bg-neutral-900 text-[#f2ca50]/80'}`}>{reel.duration}</span>
+                            <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded font-bold uppercase ${
+                              post.plataforma === 'Instagram' ? 'bg-[#ffb596]/10 text-[#ffb596]' :
+                              post.plataforma === 'TikTok' ? 'bg-[#f2ca50]/10 text-[#f2ca50]' :
+                              'bg-neutral-800 text-neutral-300'
+                            }`}>
+                              {post.plataforma}
+                            </span>
+                            <span className="text-[8px] font-mono text-neutral-400">{post.responsable}</span>
                           </div>
+                          <p className={`text-[11px] font-medium leading-snug font-sans line-clamp-3 ${textTitle}`}>
+                            {post.contenido}
+                          </p>
                           <div className={`flex justify-between items-center pt-1 border-t ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
                             <button 
-                              id={`btn-move-draft-${reel.id}`}
-                              onClick={(e) => { e.stopPropagation(); moveReel(reel.id, 'draft'); }}
+                              id={`btn-move-borrador-${post.id}`}
+                              onClick={(e) => { e.stopPropagation(); onUpdatePost({ ...post, estado: 'borrador' }); }}
                               className="text-[8px] font-mono text-neutral-500 hover:underline cursor-pointer bg-transparent border-none p-0"
                             >
                               ← Borrador
                             </button>
                             <button 
-                              id={`btn-move-ready-${reel.id}`}
-                              onClick={(e) => { e.stopPropagation(); moveReel(reel.id, 'ready'); }}
+                              id={`btn-move-publicado-${post.id}`}
+                              onClick={(e) => { e.stopPropagation(); onUpdatePost({ ...post, estado: 'publicado' }); }}
                               className="text-[8px] font-mono text-emerald-500 hover:underline cursor-pointer font-bold bg-transparent border-none p-0"
                             >
-                              Listo →
+                              Publicar →
                             </button>
                           </div>
                         </div>
                       ))}
+                      {posts.filter(r => r.estado === 'aprobado').length === 0 && (
+                        <p className="text-[9px] font-mono text-neutral-500 text-center py-4">No hay reels en edición</p>
+                      )}
                     </div>
                   </div>
 
-                  {/* Listos */}
+                  {/* Listos / Publicados */}
                   <div className={`space-y-3 border rounded-lg p-3 ${isStitchLight ? 'bg-slate-50 border-slate-200' : 'bg-[#131313]/60 border-neutral-900'}`}>
                     <span className={`text-[10px] font-mono uppercase tracking-wider text-emerald-500 font-bold block border-b pb-1.5 ${
                       isStitchLight ? 'border-slate-200/80' : 'border-neutral-800'
-                    }`}>Listos ({pipeline.filter(r => r.stage === 'ready').length})</span>
+                    }`}>Listos / Publicados ({posts.filter(r => r.estado === 'publicado').length})</span>
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {pipeline.filter(r => r.stage === 'ready').map(reel => (
+                      {posts.filter(r => r.estado === 'publicado').map(post => (
                         <div 
-                          key={reel.id} 
-                          onClick={() => setSelectedReelInPhone(reel)}
+                          key={post.id} 
+                          onClick={() => setSelectedPostInPhone(post)}
                           className={`border rounded-md p-2.5 cursor-pointer transition-all space-y-1.5 ${
                             isStitchLight ? 'bg-white' : 'bg-[#1c1b1b]'
                           } ${
-                            selectedReelInPhone?.id === reel.id
+                            selectedPostInPhone?.id === post.id
                               ? 'border-emerald-500'
                               : isStitchLight ? 'border-slate-200 hover:border-emerald-300' : 'border-neutral-800 hover:border-emerald-500/30'
                           }`}
                         >
                           <div className="flex justify-between items-start gap-1">
-                            <h4 className={`text-[11px] font-bold leading-snug font-sans line-clamp-2 ${textTitle}`}>{reel.title}</h4>
-                            <span className={`text-[8px] font-mono px-1 py-0.5 rounded shrink-0 ${isStitchLight ? 'bg-emerald-50 text-emerald-600' : 'bg-emerald-950 text-emerald-400'}`}>{reel.duration}</span>
+                            <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded font-bold uppercase ${
+                              post.plataforma === 'Instagram' ? 'bg-[#ffb596]/10 text-[#ffb596]' :
+                              post.plataforma === 'TikTok' ? 'bg-[#f2ca50]/10 text-[#f2ca50]' :
+                              'bg-neutral-800 text-neutral-300'
+                            }`}>
+                              {post.plataforma}
+                            </span>
+                            <span className="text-[8px] font-mono text-neutral-400">{post.responsable}</span>
                           </div>
+                          <p className={`text-[11px] font-medium leading-snug font-sans line-clamp-3 ${textTitle}`}>
+                            {post.contenido}
+                          </p>
                           <div className={`flex justify-between items-center pt-1 border-t ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
                             <button 
-                              id={`btn-move-edit-back-${reel.id}`}
-                              onClick={(e) => { e.stopPropagation(); moveReel(reel.id, 'edit'); }}
+                              id={`btn-move-aprobado-back-${post.id}`}
+                              onClick={(e) => { e.stopPropagation(); onUpdatePost({ ...post, estado: 'aprobado' }); }}
                               className="text-[8px] font-mono text-neutral-500 hover:underline cursor-pointer bg-transparent border-none p-0"
                             >
                               ← Re-editar
                             </button>
                             <span className="text-[8px] font-mono text-emerald-500 flex items-center gap-0.5 font-bold uppercase tracking-wider">
-                              <CheckCircle2 className="w-2.5 h-2.5" /> Ready
+                              <CheckCircle2 className="w-2.5 h-2.5" /> Publicado
                             </span>
                           </div>
                         </div>
                       ))}
+                      {posts.filter(r => r.estado === 'publicado').length === 0 && (
+                        <p className="text-[9px] font-mono text-neutral-500 text-center py-4">No hay publicaciones completadas</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1032,7 +1164,7 @@ export default function ReelsCenter({
                       rows={3}
                       value={reelIdea}
                       onChange={(e) => setReelIdea(e.target.value)}
-                      placeholder="Ej: Larra ensayando con la trompeta en el camerino antes de salir a tocar..."
+                      placeholder="Ej: R-violin tocando el violín a toda velocidad o elyar ensayando con el hang pan en el camerino..."
                       className={`w-full border rounded-lg p-3 text-xs focus:outline-none font-sans leading-relaxed ${
                         isStitchLight
                           ? 'bg-white border-slate-200 text-slate-800 focus:border-indigo-500'
@@ -1259,7 +1391,7 @@ export default function ReelsCenter({
                       type="text"
                       value={videoTopic}
                       onChange={(e) => setVideoTopic(e.target.value)}
-                      placeholder="Ej: Ensayo de viento en el local de Diego, con pogo rápido..."
+                      placeholder="Ej: Solo de violín rápido o improvisación de loops con percusión..."
                       className={`w-full border rounded-lg px-3 py-2 text-xs focus:outline-none font-sans ${
                         isStitchLight
                           ? 'bg-white border-slate-200 text-slate-800 focus:border-indigo-500'
@@ -2296,6 +2428,49 @@ export default function ReelsCenter({
                   {activeTab === 'analyzer' && inputType === 'youtube' && getYouTubeId(youtubeUrl) && !isExpandedPreview ? (
                     (() => {
                       const { start, end } = parseRangeTimes(phoneDuration);
+                      if (renderedClipUrl) {
+                        return (
+                          <div className="absolute inset-0 z-[-1] overflow-hidden bg-black">
+                            <video
+                              key={`mini-rendered-${renderedClipUrl}-${isPreviewMuted ? 'muted' : 'unmuted'}`}
+                              src={renderedClipUrl}
+                              autoPlay
+                              muted={isPreviewMuted}
+                              loop
+                              playsInline
+                              className="absolute w-full h-full object-cover opacity-90"
+                              onTimeUpdate={(e) => {
+                                const video = e.currentTarget;
+                                const cur = video.currentTime;
+                                if (subtitleCues && subtitleCues.length > 0) {
+                                  const activeCue = subtitleCues.find(cue => cur >= cue.start && cur <= cue.end);
+                                  setCurrentSubtitleText(activeCue ? activeCue.text : '');
+                                }
+                              }}
+                            >
+                              {renderedSubUrl && (
+                                <track
+                                  src={renderedSubUrl}
+                                  kind="subtitles"
+                                  srcLang="es"
+                                  label="Español"
+                                  default
+                                />
+                              )}
+                            </video>
+
+                            {/* Kinetic Reels Subtitles Overlay */}
+                            {currentSubtitleText && (
+                              <div className="absolute bottom-20 left-3 right-3 z-40 bg-black/80 px-2 py-1.5 rounded-xl border border-[#f2ca50]/40 text-center backdrop-blur-sm shadow-xl">
+                                <span className="text-[10px] font-sans font-black tracking-wide text-[#f2ca50] uppercase leading-tight">
+                                  ✨ {currentSubtitleText} ✨
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
                       return (
                         <div className="absolute inset-0 z-[-1] overflow-hidden bg-black">
                           <iframe
@@ -2620,6 +2795,50 @@ export default function ReelsCenter({
                 {inputType === 'youtube' && getYouTubeId(youtubeUrl) ? (
                   (() => {
                     const { start, end } = parseRangeTimes(phoneDuration);
+                    if (renderedClipUrl) {
+                      return (
+                        <div className="absolute inset-0 z-0 overflow-hidden bg-black">
+                          <video
+                            key={`expanded-rendered-${renderedClipUrl}-${isPreviewMuted ? 'muted' : 'unmuted'}`}
+                            src={renderedClipUrl}
+                            autoPlay
+                            muted={isPreviewMuted}
+                            loop
+                            controls
+                            playsInline
+                            className="absolute w-full h-full object-cover"
+                            onTimeUpdate={(e) => {
+                              const video = e.currentTarget;
+                              const cur = video.currentTime;
+                              if (subtitleCues && subtitleCues.length > 0) {
+                                const activeCue = subtitleCues.find(cue => cur >= cue.start && cur <= cue.end);
+                                setCurrentSubtitleText(activeCue ? activeCue.text : '');
+                              }
+                            }}
+                          >
+                            {renderedSubUrl && (
+                              <track
+                                src={renderedSubUrl}
+                                kind="subtitles"
+                                srcLang="es"
+                                label="Español"
+                                default
+                              />
+                            )}
+                          </video>
+
+                          {/* Subtitles Overlay inside Cinema Phone */}
+                          {currentSubtitleText && (
+                            <div className="absolute bottom-20 left-3 right-3 z-40 bg-black/80 px-2 py-1.5 rounded-xl border border-[#f2ca50]/40 text-center backdrop-blur-sm shadow-xl">
+                              <span className="text-[10px] font-sans font-black tracking-wide text-[#f2ca50] uppercase leading-tight">
+                                ✨ {currentSubtitleText} ✨
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
                     return (
                       <div className="absolute inset-0 z-0 overflow-hidden bg-black">
                         <iframe
@@ -3085,6 +3304,153 @@ export default function ReelsCenter({
                   }
                   return null;
                 })()}
+
+                {/* ✂️ REAL PHYSICAL CUTTING & AUTOMATIC SUBTITLING SYSTEM */}
+                {highlights[selectedHighlightIndex] && youtubeUrl && (
+                  <div className="p-5 rounded-2xl bg-neutral-950/60 border border-neutral-800/85 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Film className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="text-xs font-mono font-extrabold uppercase text-neutral-300 tracking-wider">
+                        Generador de Reel Físico y Subtítulos
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-neutral-400 leading-relaxed font-sans">
+                      Corta físicamente el fragmento del vídeo de YouTube a formato vertical 9:16 para Reels/TikTok y genera la pista de subtítulos sincronizada con la voz.
+                    </p>
+
+                    {/* Rendering State indicators */}
+                    {isCuttingVideo ? (
+                      <div className="bg-neutral-900/80 p-4 rounded-xl border border-neutral-800 space-y-3 animate-pulse">
+                        <div className="flex items-center gap-3">
+                          <RefreshCw className="w-5 h-5 text-[#f2ca50] animate-spin" />
+                          <span className="text-xs font-mono font-extrabold text-neutral-200">
+                            RENDERIZANDO ARCHIVOS REALES...
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#f2ca50] font-mono pl-8">
+                          ⚡ {cuttingProgressText}
+                        </p>
+                        <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-[#f2ca50] to-emerald-500 animate-pulse" style={{ width: '75%' }}></div>
+                        </div>
+                      </div>
+                    ) : renderedClipUrl ? (
+                      <div className="bg-emerald-950/20 p-4 rounded-xl border border-emerald-800/40 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                            <span className="text-xs font-mono font-extrabold text-emerald-200 uppercase tracking-wider">
+                              ¡Reel Renderizado con Éxito!
+                            </span>
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-emerald-500/20 text-emerald-300 font-extrabold border border-emerald-500/30">
+                            LISTO (9:16)
+                          </span>
+                        </div>
+                        
+                        <p className="text-[11px] text-neutral-300">
+                          El vídeo recortado se ha compilado y guardado en el servidor. Ahora se está reproduciendo en el simulador móvil de la izquierda con subtítulos interactivos.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                          <a 
+                            href={renderedClipUrl} 
+                            target="_blank" 
+                            rel="noreferrer noopener"
+                            className="flex-1 px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-[11px] font-mono font-bold text-[#f2ca50] flex items-center justify-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Descargar Clip MP4</span>
+                          </a>
+                          
+                          <button
+                            type="button"
+                            onClick={handleCutPhysicalVideo}
+                            className="flex-1 px-3 py-1.5 rounded-lg bg-[#f2ca50]/10 border border-[#f2ca50]/20 hover:bg-[#f2ca50]/20 text-[11px] font-mono font-bold text-[#f2ca50] flex items-center justify-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Volver a Renderizar</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {cuttingError && (
+                          <div className="bg-red-950/20 p-3 rounded-xl border border-red-800/40 text-[10.5px] text-red-400 font-mono flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+                            <div className="space-y-1">
+                              <span className="font-bold">ERROR DE RENDERIZADO:</span>
+                              <p className="leading-relaxed">{cuttingError}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleCutPhysicalVideo}
+                          className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-[#f2ca50] to-yellow-400 hover:brightness-105 active:scale-[0.99] font-sans font-black uppercase text-xs text-neutral-950 tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-yellow-500/10 transition-all duration-200"
+                        >
+                          <Sparkles className="w-4 h-4 text-neutral-950 fill-neutral-950" />
+                          <span>✂️ Renderizar Reel Físico + Auto-Subtítulos (9:16)</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Subtitles timing preview list */}
+                    {subtitleCues.length > 0 && (
+                      <div className="bg-neutral-900/40 p-4 rounded-xl border border-neutral-850 space-y-2.5">
+                        <div className="flex justify-between items-center border-b border-neutral-800/50 pb-1.5">
+                          <span className="text-[9.5px] font-mono font-extrabold uppercase text-neutral-400 tracking-wider">
+                            Pista de Subtítulos Generada ({subtitleCues.length} líneas)
+                          </span>
+                          <span className="text-[8px] font-mono text-emerald-400 font-bold">● AUTO-SYNCED</span>
+                        </div>
+                        <div className="max-h-24 overflow-y-auto space-y-1.5 pr-1 text-[10px] scrollbar-thin scrollbar-thumb-neutral-800">
+                          {subtitleCues.map((cue, idx) => (
+                            <div key={idx} className="flex gap-2 items-start py-0.5 border-b border-neutral-900/30 last:border-0">
+                              <span className="text-[8.5px] font-mono text-[#f2ca50] font-bold bg-neutral-900 px-1.5 py-0.5 rounded shrink-0">
+                                {cue.start.toFixed(1)}s
+                              </span>
+                              <p className="text-neutral-300 font-sans italic leading-tight">
+                                "{cue.text}"
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Word-level exact offsets preview */}
+                    {wordOffsets.length > 0 && (
+                      <div className="bg-neutral-900/40 p-4 rounded-xl border border-neutral-850 space-y-2.5 mt-3">
+                        <div className="flex justify-between items-center border-b border-neutral-800/50 pb-1.5">
+                          <span className="text-[9.5px] font-mono font-extrabold uppercase text-neutral-400 tracking-wider flex items-center gap-1">
+                            <span>⚡ Offsets de Palabras Sincronizados ({wordOffsets.length})</span>
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-mono bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/20">
+                            SINCRO LOCAL
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1 text-[9.5px] scrollbar-thin scrollbar-thumb-neutral-800">
+                          {wordOffsets.map((w, idx) => (
+                            <div 
+                              key={idx} 
+                              className="px-2 py-1 rounded bg-neutral-900 border border-neutral-800/80 flex items-center gap-1 hover:border-neutral-700 hover:bg-neutral-850 transition-colors"
+                              title={`Exact times: ${w.start.toFixed(2)}s to ${w.end.toFixed(2)}s`}
+                            >
+                              <span className="text-neutral-200 font-sans font-medium">"{w.word}"</span>
+                              <span className="text-[8px] font-mono text-[#f2ca50]">
+                                {w.start.toFixed(2)}s
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Copy Editor Area */}
                 <div className="space-y-2">

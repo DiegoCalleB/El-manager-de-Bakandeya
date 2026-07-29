@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lead, Rehearsal, Concert, SocialPost, Payment, Message, ThemeName, ThemeColors, SocialMetric } from './types';
+import { Lead, Rehearsal, Concert, SocialPost, Payment, Message, ThemeName, ThemeColors, SocialMetric, User } from './types';
 import { THEMES } from './utils/theme';
 import Dashboard from './components/Dashboard';
 import BookingCRM from './components/BookingCRM';
@@ -8,18 +8,29 @@ import ReelsCenter from './components/ReelsCenter';
 import Finanzas from './components/Finanzas';
 import Chatbot from './components/Chatbot';
 import GithubWorkflowTracker from './components/GithubWorkflowTracker';
+import { LoginModal } from './components/LoginModal';
+import { UserManagementModal } from './components/UserManagementModal';
+import { UserProfileModal } from './components/UserProfileModal';
 import { 
-  Music, Sparkles, LogOut, ShieldAlert,
+  Music, Sparkles, LogOut, ShieldAlert, Users, Shield, UserCheck,
   Table, FileCheck, CheckSquare, MessageSquareCode, RefreshCw,
   Settings, Key, Github, X, CalendarRange, Bot, Flame, Video, FileSpreadsheet, Coins
 } from 'lucide-react';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('bakandeya_logged_in') === 'true';
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const savedUser = localStorage.getItem('bakandeya_user');
+    return savedUser ? JSON.parse(savedUser) : null;
   });
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
+  const [authToken, setAuthToken] = useState<string | null>(() => {
+    return localStorage.getItem('bakandeya_token') || null;
+  });
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return !!localStorage.getItem('bakandeya_token') || localStorage.getItem('bakandeya_logged_in') === 'true';
+  });
+  const [bandUsers, setBandUsers] = useState<User[]>([]);
+  const [showUserManagementModal, setShowUserManagementModal] = useState(false);
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false);
 
   // Active View State mapping directly to the Stitch Design doc
   const [currentView, setCurrentView] = useState<'resumen' | 'booking' | 'calendario' | 'reels' | 'chat'>('resumen');
@@ -36,9 +47,47 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('syncing');
 
+  // Admin check: Any user with role 'leader' is an Admin
+  const isAdmin = Boolean(
+    currentUser &&
+    currentUser.role === 'leader'
+  );
+
+  // Redirect non-admins away from finanzas if they end up there
+  useEffect(() => {
+    if (!isAdmin && (currentView as string) === 'finanzas') {
+      setCurrentView('resumen');
+    }
+  }, [isAdmin, currentView]);
+
+  // Verify token on mount if present
+  useEffect(() => {
+    if (authToken) {
+      fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${authToken}` }
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('Sesión no válida');
+          return res.json();
+        })
+        .then(data => {
+          setCurrentUser(data.user);
+          localStorage.setItem('bakandeya_user', JSON.stringify(data.user));
+          setIsLoggedIn(true);
+        })
+        .catch(() => {
+          setCurrentUser(null);
+          setAuthToken(null);
+          setIsLoggedIn(false);
+          localStorage.removeItem('bakandeya_token');
+          localStorage.removeItem('bakandeya_user');
+        });
+    }
+  }, [authToken]);
+
   // Active Theme State
   const [currentTheme, setCurrentTheme] = useState<ThemeName>(() => {
-    return (localStorage.getItem('bakandeya_theme') as ThemeName) || 'stitch_light';
+    return (localStorage.getItem('bakandeya_theme') as ThemeName) || 'indie_velvet';
   });
 
   // GitHub Settings State
@@ -77,20 +126,26 @@ export default function App() {
     const handleRefUpdate = () => {
       setGithubRef(localStorage.getItem('bakandeya_github_ref') || 'main');
     };
+    const handleAgentCompleted = () => {
+      console.log("[App] Agente de GitHub completado. Refrescando datos de Google Sheets...");
+      fetchState();
+    };
     window.addEventListener('github-ref-updated', handleRefUpdate);
+    window.addEventListener('github-agent-completed', handleAgentCompleted);
     return () => {
       window.removeEventListener('github-ref-updated', handleRefUpdate);
+      window.removeEventListener('github-agent-completed', handleAgentCompleted);
     };
   }, []);
 
   const colors: ThemeColors = THEMES[currentTheme];
 
-  // Fetch full state from full-stack Express API
-  const fetchState = async () => {
+  // Fetch full state from full-stack Express API with automatic retry
+  const fetchState = async (retryCount = 0) => {
     setSyncStatus('syncing');
     try {
       const res = await fetch('/api/state');
-      if (!res.ok) throw new Error('API Error');
+      if (!res.ok) throw new Error(`API Error: ${res.status}`);
       const data = await res.json();
       
       setLeads(data.leads || []);
@@ -100,10 +155,19 @@ export default function App() {
       setPayments(data.payments || []);
       setMessages(data.messages || []);
       setMetrics(data.metrics || []);
+      setBandUsers(data.users || []);
       setSyncStatus('synced');
     } catch (e) {
-      console.error('Error syncing state, offline or waking up:', e);
-      setSyncStatus('error');
+      console.warn(`Error syncing state (attempt ${retryCount + 1}):`, e);
+      if (retryCount < 2) {
+        // Retry after delay to handle server wake-up
+        setTimeout(() => {
+          fetchState(retryCount + 1);
+        }, 1500);
+      } else {
+        console.error('Error syncing state, offline or waking up:', e);
+        setSyncStatus('error');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -121,22 +185,34 @@ export default function App() {
     localStorage.setItem('bakandeya_theme', theme);
   };
 
-  // 1. Password Auth Login
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password.toLowerCase() === 'bakandeya2026' || password === 'diego' || password === 'larra') {
-      setIsLoggedIn(true);
-      localStorage.setItem('bakandeya_logged_in', 'true');
-      setLoginError('');
-    } else {
-      setLoginError('Contraseña incorrecta. Pista: Es el nombre de la banda seguido del año.');
-    }
+  const handleLoginSuccess = (user: User, token: string) => {
+    setCurrentUser(user);
+    setAuthToken(token);
+    localStorage.setItem('bakandeya_token', token);
+    localStorage.setItem('bakandeya_user', JSON.stringify(user));
+    localStorage.setItem('bakandeya_logged_in', 'true');
+    setIsLoggedIn(true);
+    fetchState();
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (authToken) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: authToken })
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setCurrentUser(null);
+    setAuthToken(null);
     setIsLoggedIn(false);
+    localStorage.removeItem('bakandeya_token');
+    localStorage.removeItem('bakandeya_user');
     localStorage.removeItem('bakandeya_logged_in');
-    setPassword('');
   };
 
   // REST API UPDATE OPERATIONS
@@ -218,6 +294,21 @@ export default function App() {
       if (!res.ok) throw new Error();
     } catch (e) {
       console.error('Error adding rehearsal:', e);
+      fetchState();
+    }
+  };
+
+  const handleAddConcert = async (concert: Concert) => {
+    setConcerts(prev => [...prev, concert]);
+    try {
+      const res = await fetch('/api/concerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(concert)
+      });
+      if (!res.ok) throw new Error();
+    } catch (e) {
+      console.error('Error adding concert:', e);
       fetchState();
     }
   };
@@ -338,95 +429,16 @@ export default function App() {
   // Auth Screen Render
   if (!isLoggedIn) {
     return (
-      <div 
-        className={`min-h-screen ${colors.bg} flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans select-none transition-colors duration-500`}
-        style={{
-          '--font-display': colors.fontDisplay === 'font-sans' ? '"Hanken Grotesk", sans-serif' : colors.fontDisplay === 'font-mono' ? '"JetBrains Mono", monospace' : '"Bodoni Moda", serif',
-          '--font-sans': colors.fontSans === 'font-mono' ? '"JetBrains Mono", monospace' : '"Hanken Grotesk", sans-serif',
-        } as React.CSSProperties}
-      >
-        {/* Floating Theme Selector on Login Screen */}
-        <div className="absolute top-4 right-4 z-50">
-          <div className="relative inline-block">
-            <select
-              id="theme-selector-login"
-              value={currentTheme}
-              onChange={(e) => handleThemeChange(e.target.value as ThemeName)}
-              className="text-[10px] font-mono bg-[#0c0c10]/90 border border-neutral-800/80 hover:border-neutral-700/80 text-neutral-400 hover:text-neutral-200 px-3 py-1.5 rounded transition-all cursor-pointer focus:outline-none focus:border-cyan-500/50 appearance-none pr-7"
-              title="Cambiar estilo de diseño"
-            >
-              {Object.entries(THEMES).map(([key, t]) => (
-                <option key={key} value={key} className="bg-neutral-950 text-neutral-300 text-xs">
-                  {t.name.replace('Stitch ', '').toUpperCase()}
-                </option>
-              ))}
-            </select>
-            <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-neutral-600 text-[8px]">
-              ▼
-            </span>
-          </div>
-        </div>
-
-        {/* Abstract background blobs */}
-        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-[#f2ca50]/5 blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-[#ffb596]/5 blur-3xl" />
-
-        <div className={`w-full max-w-sm border rounded-3xl p-8 relative space-y-6 transition-all duration-300 ${colors.card} ${colors.neonShadow}`}>
-          <div className="text-center space-y-2">
-            <div className="flex justify-center mb-4">
-              <img 
-                src="/logo_bakandeya.jpg" 
-                alt="Bakandeya Logo" 
-                className="w-20 h-20 object-cover rounded-3xl border border-[#99907c]/20 shadow-xl"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-            <h1 className="text-3xl font-bold font-display tracking-wide uppercase text-neutral-50">BAKANDEYA</h1>
-            <p className={`text-[10px] font-mono tracking-widest uppercase ${colors.accent}`}>Management Hub</p>
-          </div>
-
-          <form onSubmit={handleLoginSubmit} className="space-y-4">
-            <div>
-              <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400 mb-1.5">Contraseña de la Banda</label>
-              <input
-                id="login-pass"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Introducir clave de acceso..."
-                className="w-full bg-[#030303]/40 border border-neutral-800/80 rounded-xl px-4 py-2.5 text-sm text-neutral-100 focus:outline-none focus:border-[#f2ca50]/50 text-center font-mono placeholder:text-neutral-700 transition-all"
-              />
-            </div>
-
-            {loginError && (
-              <p className="text-[11px] text-rose-400 font-medium text-center leading-normal">
-                {loginError}
-              </p>
-            )}
-
-            <button
-              id="submit-login"
-              type="submit"
-              className={`w-full py-2.5 font-bold rounded-xl text-xs tracking-wider uppercase font-mono cursor-pointer ${colors.primary} active:scale-98`}
-            >
-              Acceder al Backstage
-            </button>
-          </form>
-
-          <div className="text-center">
-            <span className="text-[9px] text-neutral-500 font-mono">
-              Acceso restringido para Diego, Larra y técnicos de Bakandeya.
-            </span>
-          </div>
-        </div>
-      </div>
+      <LoginModal 
+        onLoginSuccess={handleLoginSuccess}
+        isStitchLight={currentTheme === 'stitch_light'}
+      />
     );
   }
 
   return (
     <div 
-      className={`min-h-screen ${colors.bg} flex flex-col transition-colors duration-500 font-sans`}
+      className={`min-h-screen ${colors.bg} flex flex-col transition-colors duration-500 font-sans w-full max-w-full overflow-x-hidden`}
       style={{
         '--font-display': colors.fontDisplay === 'font-sans' ? '"Hanken Grotesk", sans-serif' : colors.fontDisplay === 'font-mono' ? '"JetBrains Mono", monospace' : '"Bodoni Moda", serif',
         '--font-sans': colors.fontSans === 'font-mono' ? '"JetBrains Mono", monospace' : '"Hanken Grotesk", sans-serif',
@@ -434,105 +446,124 @@ export default function App() {
     >
       
       {/* 1. TOP HEADER NAVIGATION NAVBAR (Theme-dynamic brand styling) */}
-      <header className={`border-b py-3 px-4 md:px-8 sticky top-0 z-40 transition-all duration-300 backdrop-blur-md ${
+      <header className={`border-b py-2.5 px-3 md:px-8 sticky top-0 z-40 transition-all duration-300 backdrop-blur-md w-full max-w-full overflow-x-hidden ${
         currentTheme.startsWith('stitch')
           ? currentTheme === 'stitch_light' 
             ? 'bg-white/95 border-slate-200 text-slate-900' 
             : 'bg-slate-950/95 border-slate-850 text-slate-100'
           : 'bg-[#0c0c0e]/95 border-[#99907c]/15 text-[#e5e2e1]'
       }`}>
-        <div className="w-full flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="w-full max-w-full flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 shrink">
             <img 
               src="/logo_bakandeya.jpg" 
               alt="Bakandeya Logo" 
-              className="w-14 h-14 object-cover rounded-2xl border border-neutral-800/80 shadow-md shrink-0 hover:scale-105 transition-transform"
+              className="w-10 h-10 sm:w-14 sm:h-14 object-cover rounded-xl sm:rounded-2xl border border-neutral-800/80 shadow-md shrink-0 hover:scale-105 transition-transform"
               referrerPolicy="no-referrer"
             />
             {/* Branding */}
-            <div>
-              <h1 className={`text-xl font-display font-extrabold tracking-wide uppercase flex items-center gap-2 ${
+            <div className="min-w-0">
+              <h1 className={`text-base sm:text-xl font-display font-extrabold tracking-wide uppercase flex items-center gap-1.5 min-w-0 truncate ${
                 currentTheme === 'stitch_light' ? 'text-slate-900' : 'text-neutral-100'
               }`}>
-                BAKANDEYA <span className="text-[8px] font-mono tracking-widest text-neutral-500 font-normal uppercase">Management Hub</span>
+                <span>BAKANDEYA</span>
+                <span className="hidden sm:inline-block text-[8px] font-mono tracking-widest text-neutral-500 font-normal uppercase">Management Hub</span>
               </h1>
               <button 
                 onClick={fetchState}
-                className="text-[9px] font-mono text-neutral-500 hover:text-neutral-300 flex items-center gap-1.5 mt-0.5 cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                className="text-[9px] font-mono text-neutral-500 hover:text-neutral-300 flex items-center gap-1 mt-0.5 cursor-pointer bg-transparent border-none p-0 focus:outline-none truncate"
                 title="Hacer clic para reintentar sincronizar"
               >
-                {syncStatus === 'syncing' && <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#f2ca50]" />}
-                {syncStatus === 'synced' && <span className="w-1.5 h-1.5 rounded-full bg-[#f2ca50] shadow-[0_0_8px_#f2ca50] inline-block animate-pulse" />}
-                {syncStatus === 'error' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block animate-pulse" />}
-                {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'error' ? 'Error (Clic para reintentar)' : 'Live Synced to Google Sheets'}
+                {syncStatus === 'syncing' && <RefreshCw className="w-2.5 h-2.5 animate-spin text-[#f2ca50] shrink-0" />}
+                {syncStatus === 'synced' && <span className="w-1.5 h-1.5 rounded-full bg-[#f2ca50] shadow-[0_0_8px_#f2ca50] inline-block animate-pulse shrink-0" />}
+                {syncStatus === 'error' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block animate-pulse shrink-0" />}
+                <span className="truncate">{syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'error' ? 'Error' : 'Live Synced Google Sheets'}</span>
               </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Theme Selector */}
-            <div className="relative inline-block">
-              <select
-                id="theme-selector"
-                value={currentTheme}
-                onChange={(e) => handleThemeChange(e.target.value as ThemeName)}
-                className="text-[10px] font-mono bg-[#0c0c10]/90 border border-neutral-800/80 hover:border-neutral-700/80 text-neutral-400 hover:text-neutral-200 px-2.5 py-1.5 rounded transition-all cursor-pointer focus:outline-none focus:border-[#f2ca50]/50 appearance-none pr-6"
-                title="Cambiar estilo de diseño"
-              >
-                {Object.entries(THEMES).map(([key, t]) => (
-                  <option key={key} value={key} className="bg-neutral-950 text-neutral-300 text-xs">
-                    {t.name.replace('Stitch ', '').toUpperCase()}
-                  </option>
-                ))}
-              </select>
-              <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-neutral-600 text-[8px] font-sans">
-                ▼
-              </span>
-            </div>
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* User Chip & Band Management */}
+            {currentUser && (
+              <div className="flex items-center gap-1 sm:gap-2 border-r border-neutral-800/80 pr-1.5 sm:pr-2 mr-0.5 sm:mr-1">
+                <button 
+                  onClick={() => setShowUserProfileModal(true)}
+                  className="flex items-center gap-1.5 sm:gap-2 pl-1 sm:pl-2 py-1 hover:opacity-85 transition-all cursor-pointer group text-left"
+                  title="Hacer clic para editar perfil y cambiar contraseña"
+                >
+                  <div 
+                    className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-white text-[11px] font-mono shadow-sm shrink-0 uppercase ring-1 ring-white/10 group-hover:ring-emerald-400/50 transition-all"
+                    style={{ backgroundColor: currentUser.avatarColor || '#10b981' }}
+                  >
+                    {currentUser.name.slice(0, 2)}
+                  </div>
+                  <div className="hidden sm:flex flex-col text-left">
+                    <span className="text-[11px] font-bold leading-none font-sans text-neutral-200 group-hover:text-amber-300 transition-colors">
+                      {currentUser.name}
+                    </span>
+                    <span className="text-[9px] font-mono text-amber-400 opacity-90 leading-tight">
+                      {isAdmin ? 'Admin / Mánager' : currentUser.instrument || 'Músico'}
+                    </span>
+                  </div>
+                </button>
 
+                <button
+                  id="user-profile-btn"
+                  onClick={() => setShowUserProfileModal(true)}
+                  className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-300 hover:text-amber-200 border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 px-2 sm:px-2.5 py-1.5 rounded-lg transition-all cursor-pointer active:scale-95 shadow-sm"
+                  title="Editar perfil y opciones de mi cuenta"
+                >
+                  <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="hidden md:inline font-bold">Mi Perfil</span>
+                </button>
+              </div>
+            )}
+
+            {/* Action buttons */}
             <button
               id="check-sheets-btn"
               onClick={checkGoogleSheets}
-              className="inline-flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 hover:text-emerald-300 border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 rounded transition-all cursor-pointer active:scale-95"
-              title="Verificar hojas de Google Sheets"
+              className="inline-flex items-center gap-1 text-[10px] font-mono text-neutral-300 hover:text-neutral-100 border border-neutral-700/80 bg-neutral-900/90 hover:bg-neutral-800 px-2 sm:px-2.5 py-1.5 rounded-lg transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Sincronización Sheets"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Verificar Hojas</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden lg:inline">Sheets</span>
             </button>
 
             <button
               id="configure-github-btn"
               onClick={() => setShowGithubSettings(true)}
-              className="inline-flex items-center gap-1.5 text-[10px] font-mono text-[#f2ca50] hover:text-[#ffe088] border border-[#f2ca50]/20 bg-[#f2ca50]/5 px-2.5 py-1.5 rounded transition-all cursor-pointer active:scale-95"
+              className="inline-flex items-center gap-1 text-[10px] font-mono text-[#f2ca50] hover:text-[#ffe088] border border-[#f2ca50]/20 bg-[#f2ca50]/5 px-2 py-1.5 rounded transition-all cursor-pointer active:scale-95"
               title="Configurar GitHub Actions"
             >
-              <Settings className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Configurar GitHub</span>
+              <Settings className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden lg:inline">GitHub</span>
             </button>
+
             <button
               id="band-logout"
               onClick={handleLogout}
-              className="text-neutral-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-neutral-900 transition-colors active:scale-95"
+              className="text-neutral-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-neutral-900 transition-colors active:scale-95 shrink-0"
               title="Cerrar Sesión"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
       </header>
 
       {/* 2. BODY CONTAINER: SIDEBAR + MAIN CONTENT WORKSPACE */}
-      <div className="w-full flex-1 flex flex-col md:flex-row gap-6 p-4 md:p-6 items-stretch px-4 md:px-8">
+      <div className="w-full max-w-full flex-1 flex flex-col md:flex-row gap-4 sm:gap-5 p-2 sm:p-5 md:p-6 items-stretch px-2 sm:px-5 md:px-6 min-w-0 overflow-x-hidden">
         
         {/* Navigation Sidebar */}
-        <aside className="md:w-64 shrink-0 flex flex-col gap-3">
-          <nav className={`flex flex-row md:flex-col overflow-x-auto md:overflow-visible gap-1 pb-2 md:pb-0 border-b md:border-b-0 ${colors.border}`}>
+        <aside className="w-full md:w-56 lg:w-60 shrink-0 flex flex-col gap-3 min-w-0 max-w-full overflow-x-hidden">
+          <nav className={`flex flex-row md:flex-col overflow-x-auto md:overflow-visible gap-1 pb-2 md:pb-0 border-b md:border-b-0 ${colors.border} max-w-full no-scrollbar`}>
             {[
               { id: 'resumen', label: 'RESUMEN', icon: Table },
               { id: 'booking', label: 'BOOKING CRM', icon: FileCheck, badge: leads.filter(l => l.estado === 'pendiente_aprobacion').length },
               { id: 'calendario', label: 'CALENDARIO & LOGÍSTICA', icon: CalendarRange },
               { id: 'reels', label: 'REELS CENTER', icon: Video },
-              { id: 'finanzas', label: 'FINANZAS BANDA', icon: Coins },
+              ...(isAdmin ? [{ id: 'finanzas', label: 'FINANZAS BANDA', icon: Coins }] : []),
               { id: 'chat', label: 'MÁNAGER VIRTUAL', icon: MessageSquareCode }
             ].map((item) => {
               const isSelected = currentView === item.id;
@@ -542,7 +573,7 @@ export default function App() {
                   id={`nav-btn-${item.id}`}
                   key={item.id}
                   onClick={() => setCurrentView(item.id as any)}
-                  className={`flex items-center gap-3 py-3 px-4 rounded-xl text-[10px] font-mono tracking-widest transition-all cursor-pointer shrink-0 active:scale-95 ${
+                  className={`flex items-center gap-2.5 sm:gap-3 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl text-[10px] font-mono tracking-widest transition-all cursor-pointer shrink-0 active:scale-95 ${
                     isSelected 
                       ? colors.primary
                       : currentTheme.startsWith('stitch')
@@ -551,7 +582,7 @@ export default function App() {
                   }`}
                 >
                   <IconComp className="w-4 h-4 shrink-0 opacity-80" />
-                  <span>{item.label}</span>
+                  <span className="whitespace-nowrap">{item.label}</span>
                   {item.badge !== undefined && item.badge > 0 && (
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
                       isSelected 
@@ -619,6 +650,8 @@ export default function App() {
                     concerts={concerts}
                     onUpdateRehearsal={handleUpdateRehearsal}
                     onUpdateConcert={handleUpdateConcert}
+                    onAddRehearsal={handleAddRehearsal}
+                    onAddConcert={handleAddConcert}
                   />
                 )}
                 {currentView === 'reels' && (
@@ -634,12 +667,22 @@ export default function App() {
                   />
                 )}
                 {currentView === 'finanzas' && (
-                  <Finanzas 
-                    colors={colors}
-                    payments={payments}
-                    onAddPayment={handleAddPayment}
-                    onUpdatePayment={handleUpdatePayment}
-                  />
+                  isAdmin ? (
+                    <Finanzas 
+                      colors={colors}
+                      payments={payments}
+                      onAddPayment={handleAddPayment}
+                      onUpdatePayment={handleUpdatePayment}
+                    />
+                  ) : (
+                    <div className={`p-8 rounded-2xl border text-center space-y-3 ${colors.card} ${colors.border}`}>
+                      <ShieldAlert className="w-10 h-10 text-rose-500 mx-auto" />
+                      <h3 className="text-sm font-mono font-bold text-rose-400 uppercase tracking-wider">Acceso Restringido</h3>
+                      <p className="text-xs text-neutral-400 max-w-md mx-auto">
+                        El apartado de Finanzas es confidencial y solo está accesible para los administradores de la banda (José y Diego).
+                      </p>
+                    </div>
+                  )
                 )}
                 {currentView === 'chat' && (
                   <Chatbot 
@@ -649,6 +692,7 @@ export default function App() {
                     concerts={concerts}
                     onUpdateLead={handleUpdateLead}
                     onAddRehearsal={handleAddRehearsal}
+                    userRole={isAdmin ? 'leader' : 'member'}
                   />
                 )}
               </>
@@ -697,7 +741,7 @@ export default function App() {
             <p className={`text-xs leading-relaxed ${
               currentTheme === 'stitch_light' ? 'text-slate-500' : 'text-neutral-400'
             }`}>
-              Los agentes de Bakandeya (**Scout**, **Redactor**, **Enviador** y **Lector de bandeja**) corren de forma independiente usando tareas de Python en GitHub Actions. Configura aquí tus claves de acceso para poder despertarlos y lanzarlos en directo desde el chatbot de este panel de control.
+              Los agentes de Bakandeya (**Scout**, **Scout Descubridor**, **Redactor**, **Enviador** y **Lector de bandeja**) corren de forma independiente usando tareas de Python en GitHub Actions. Configura aquí tus claves de acceso para poder despertarlos y lanzarlos en directo desde el chatbot de este panel de control.
             </p>
 
             <form onSubmit={handleSaveGithubSettings} className="space-y-4 font-sans">
@@ -856,7 +900,7 @@ export default function App() {
       )}
 
       {/* Floating Chatbot Widget Button and Panel */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4 font-mono select-none">
+      <div className="fixed bottom-6 left-6 z-50 flex flex-col items-start gap-4 font-mono select-none">
         {/* Floating Chat Panel */}
         {isFloatingChatOpen && (
           <div className="w-[380px] max-w-[calc(100vw-32px)] h-[580px] rounded-2xl overflow-hidden border border-neutral-900 shadow-[0_10px_50px_rgba(0,0,0,0.85)] relative animate-in slide-in-from-bottom-6 fade-in duration-300">
@@ -1036,6 +1080,35 @@ export default function App() {
             ) : null}
           </div>
         </div>
+      )}
+
+      {/* User Management Modal for Band Leader */}
+      {showUserManagementModal && isAdmin && (
+        <UserManagementModal
+          currentUser={currentUser}
+          users={bandUsers}
+          onClose={() => setShowUserManagementModal(false)}
+          onRefreshUsers={fetchState}
+          isStitchLight={currentTheme === 'stitch_light'}
+        />
+      )}
+
+      {/* User Profile & Password Change Modal for All Users */}
+      {showUserProfileModal && currentUser && (
+        <UserProfileModal
+          currentUser={currentUser}
+          onClose={() => setShowUserProfileModal(false)}
+          onUpdateUser={(updated) => {
+            setCurrentUser(updated);
+            localStorage.setItem('bakandeya_user', JSON.stringify(updated));
+            fetchState();
+          }}
+          isStitchLight={currentTheme === 'stitch_light'}
+          isAdmin={isAdmin}
+          onOpenBandManagement={() => setShowUserManagementModal(true)}
+          currentTheme={currentTheme}
+          onThemeChange={handleThemeChange}
+        />
       )}
 
     </div>

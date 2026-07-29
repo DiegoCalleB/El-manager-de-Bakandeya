@@ -103,7 +103,25 @@ Atentamente,
 Larra (Mánager de Bakandeya)`,
     fecha_envio: '2026-06-15',
     fecha_ultima_respuesta: '2026-07-08',
-    notas: '¡Respondieron el correo! El programador del escenario de Mestizaje dice que le mola la propuesta de vientos + sintetizadores. Pide presupuesto (caché) para el viernes por la tarde. Clasificado como INTERESADO por el Lector de Bandeja.'
+    notas: '¡Respondieron el correo! El programador del escenario de Mestizaje dice que le mola la propuesta de vientos + sintetizadores. Pide presupuesto (caché) para el viernes por la tarde. Clasificado como INTERESADO por el Lector de Bandeja.',
+    hilo_emails: [
+      {
+        id: 'em-vina-1',
+        fecha: '2026-06-15 11:15',
+        remitente: 'banda',
+        remitente_nombre: 'Larra (Mánager de Bakandeya)',
+        asunto: 'Candidatura Bakandeya - Viña Rock 2026',
+        mensaje: 'Estimada organización de Viña Rock,\n\nEsperamos que estéis preparando una gran edición. Os escribimos para presentar la candidatura de Bakandeya para el escenario de Mestizaje/Reggae...\n\nAquí tenéis nuestro videoclip oficial: https://youtube.com/bakandeya_gira'
+      },
+      {
+        id: 'em-vina-2',
+        fecha: '2026-07-08 18:20',
+        remitente: 'sala',
+        remitente_nombre: 'Producción Artística (Viña Rock)',
+        asunto: 'RE: Candidatura Bakandeya - Viña Rock 2026',
+        mensaje: 'Hola Larra, ¿cómo va eso? Hemos estado revisando el directo y nos mola mucho esa combinación de vientos con sintes, suena cañón y muy fresco para el escenario de Mestizaje. Querríamos saber qué disponibilidad tenéis para el viernes 1 de Mayo por la tarde, y cuál sería vuestra propuesta de caché incluyendo transportes desde Madrid/Sevilla. ¡Un saludo!'
+      }
+    ]
   },
   {
     id: 'lead-5',
@@ -158,7 +176,25 @@ Un saludo,
 Larra`,
     fecha_envio: '2026-06-20',
     fecha_ultima_respuesta: '2026-07-05',
-    notas: 'Negociando caché y condiciones. Nos ofrecen un alquiler de sala con mínimos de venta de barra o bien un acuerdo de taquilla al 70/30 a nuestro favor. Diego prefiere taquilla al 80/20 o un caché fijo mínimo de 1.800€.'
+    notas: 'Negociando caché y condiciones. Nos ofrecen un alquiler de sala con mínimos de venta de barra o bien un acuerdo de taquilla al 70/30 a nuestro favor. Diego prefiere taquilla al 80/20 o un caché fijo mínimo de 1.800€.',
+    hilo_emails: [
+      {
+        id: 'em-razz-1',
+        fecha: '2026-06-20 10:00',
+        remitente: 'banda',
+        remitente_nombre: 'Larra (Mánager de Bakandeya)',
+        asunto: 'Gira Bakandeya - Propuesta Sala 2 Razzmatazz',
+        mensaje: 'Hola programadores de Razzmatazz,\n\nContacto de la oficina de Bakandeya. Queremos proponer una fecha para nuestra gira de presentación "Fusión Sintética" en Razzmatazz 2 para el mes de Diciembre...\n\n¿Cómo tenéis el calendario?'
+      },
+      {
+        id: 'em-razz-2',
+        fecha: '2026-07-05 13:10',
+        remitente: 'sala',
+        remitente_nombre: 'Xavi (Booking Razzmatazz)',
+        asunto: 'RE: Gira Bakandeya - Propuesta Sala 2 Razzmatazz',
+        mensaje: 'Buenas Larra, disculpa la tardanza. Nos cuadra la propuesta de balkan/ska/electrónica para una de nuestras noches temáticas de mestizaje en diciembre. Nos queda libre el sábado 5 de Diciembre. En cuanto a condiciones, solemos proponer un alquiler básico de sala de 600€ + gastos técnicos y vosotros os quedáis con el 100% de la taquilla, o bien ir a comisión de taquilla 70/30 (a vuestro favor) sin coste fijo de alquiler, pero con un mínimo de 150 entradas vendidas para cubrir gastos. Decidnos qué opción preferís.'
+      }
+    ]
   },
   {
     id: 'lead-7',
@@ -349,6 +385,50 @@ Agradecemos su tiempo para evaluar nuestra propuesta.
 Saludos cordiales,
 Mánager de Bakandeya`,
     notas: 'Interesante bolo de plaza pública.'
+  },
+  {
+    id: 'lead-14',
+    nombre_sala: 'Sala Hebe (Vallekas)',
+    ciudad: 'Madrid',
+    region: 'Comunidad de Madrid',
+    aforo: 250,
+    genero: 'Ska / Reggae / Punk Rock / Mestizaje',
+    email_contacto: 'booking@salahebevallekas.com',
+    telefono: '+34 914 771 234',
+    instagram: '@salahebevallekas',
+    fuente: 'Scout AI',
+    estado: 'negociando',
+    pitch_generado: `Estimados compañeros de la Hebe,
+
+Somos Bakandeya, banda que fusiona balkan-ska, reggae, violín enérgico, percusión reciclada y electrónica. Conocemos de sobra la trayectoria histórica de la Hebe apoyando la música en directo de raíz y el rock más canalla en Vallekas. Creemos que nuestro show de ska/reggae con toques electrónicos es ideal para vuestro público.
+
+Tenemos fechas abiertas para otoño y nos encantaría montar un buen jaleo en vuestro escenario.
+
+Os dejamos nuestro dossier interactivo y vídeos en directo: https://youtube.com/bakandeya_live
+
+Un saludo,
+Larra (Mánager de Bakandeya)`,
+    fecha_envio: '2026-07-01',
+    fecha_ultima_respuesta: '2026-07-03',
+    notas: 'Simulación de negociación activa con Kike (programador de la Hebe). Nos ofrecen taquilla al 60/40 y queremos proponerles montar fecha doble con una banda local para llenar aforo y rascar un 80/20.',
+    hilo_emails: [
+      {
+        id: 'em-hebe-1',
+        fecha: '2026-07-01 12:30',
+        remitente: 'banda',
+        remitente_nombre: 'Larra (Mánager de Bakandeya)',
+        asunto: 'Propuesta de concierto: Bakandeya en Vallekas',
+        mensaje: '¡Hola! Os escribimos para presentar a Bakandeya, banda de balkan-ska y reggae electrónico. Nos encantaría tocar en la mítica Sala Hebe en otoño. Nuestro directo es pura energía con violín, loops y percusión reciclada, asegurando baile y fiesta de principio a fin.'
+      },
+      {
+        id: 'em-hebe-2',
+        fecha: '2026-07-03 16:45',
+        remitente: 'sala',
+        remitente_nombre: 'Kike (Programación Sala Hebe)',
+        asunto: 'RE: Propuesta de concierto: Bakandeya en Vallekas',
+        mensaje: 'Hola Larra, gracias por escribir. Nos gusta la propuesta y ese rollo de violín con electrónica puede sonar de lujo en Vallekas. Para otoño tenemos el viernes 13 de Noviembre libre. Nosotros solemos ir a taquilla con un reparto del 60% para la banda y 40% para la sala, con una entrada recomendada de 8€. ¿Cómo lo veis? ¿Tenéis alguna banda local de Vallekas con la que compartir fecha?'
+      }
+    ]
   }
 ];
 
@@ -358,8 +438,8 @@ export const INITIAL_REHEARSALS: Rehearsal[] = [
     fecha: '2026-07-11',
     hora: '18:00 - 21:00',
     lugar: 'Locales Rock Palace, Madrid',
-    asistentes: ['Diego', 'Filgue', 'Larra', 'Carlos (Batería)', 'Sonia (Trombón)', 'Dani (Trompeta)'],
-    notas: 'Ensayo general. Importante repasar el setlist de verano y cuadrar las nuevas intros con sintetizador analógico de Diego. Larra llevará las copias del rider técnico actualizado.',
+    asistentes: ['Jon', 'Filgue', 'R-violin', 'elyar'],
+    notas: 'Ensayo general. Importante repasar el setlist de verano y cuadrar las nuevas intros con los loops de Jon y el violín de R-violin. Filgue traerá las nuevas percusiones recicladas.',
     estado: 'programado'
   },
   {
@@ -367,8 +447,8 @@ export const INITIAL_REHEARSALS: Rehearsal[] = [
     fecha: '2026-07-15',
     hora: '19:00 - 21:30',
     lugar: 'Locales El Observatorio, Madrid',
-    asistentes: ['Diego', 'Filgue', 'Carlos (Batería)', 'Sonia (Trombón)'],
-    notas: 'Ensayo seccional de bases y vientos para pulir la transición del tema "Ska Brutal".',
+    asistentes: ['Jon', 'Filgue', 'elyar'],
+    notas: 'Ensayo seccional de bases rítmicas y percusión reciclada para pulir la transición con el hang pan de elyar en el tema "Ska Brutal".',
     estado: 'programado'
   },
   {
@@ -376,8 +456,8 @@ export const INITIAL_REHEARSALS: Rehearsal[] = [
     fecha: '2026-07-05',
     hora: '17:00 - 20:00',
     lugar: 'Locales Rock Palace, Madrid',
-    asistentes: ['Diego', 'Filgue', 'Larra', 'Carlos (Batería)', 'Sonia (Trombón)', 'Dani (Trompeta)'],
-    notas: 'Ensayo de post-gira de primavera. Se grabaron las maquetas de los tres nuevos temas.',
+    asistentes: ['Jon', 'Filgue', 'R-violin', 'elyar'],
+    notas: 'Ensayo de post-gira de primavera. Se grabaron las maquetas de los tres nuevos temas con loops y violín acústico.',
     estado: 'completado'
   }
 ];
@@ -635,3 +715,57 @@ export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
     notas: 'Registro actual real coincidiendo con el estado actual en redes sociales.'
   }
 ];
+
+export const INITIAL_USERS = [
+  {
+    id: 'user-jose',
+    username: 'jose',
+    name: 'Jose',
+    role: 'leader' as const,
+    instrument: 'Percusión, Showman y Admin',
+    avatarColor: '#10b981',
+    initialPassword: 'bakandeya2026',
+    createdAt: '2026-01-01T10:00:00.000Z'
+  },
+  {
+    id: 'user-diego',
+    username: 'diego',
+    name: 'Diego',
+    role: 'leader' as const,
+    instrument: 'Dirección / Teclados (Admin)',
+    avatarColor: '#06b6d4',
+    initialPassword: 'bakandeya2026',
+    createdAt: '2026-01-01T10:00:00.000Z'
+  },
+  {
+    id: 'user-jon',
+    username: 'jon',
+    name: 'Jon',
+    role: 'member' as const,
+    instrument: 'Cantante, Loops y Percusión',
+    avatarColor: '#ec4899',
+    initialPassword: 'banda123',
+    createdAt: '2026-01-01T10:00:00.000Z'
+  },
+  {
+    id: 'user-elyar',
+    username: 'elyar',
+    name: 'Elyar',
+    role: 'member' as const,
+    instrument: 'Handpan y Percusión',
+    avatarColor: '#8b5cf6',
+    initialPassword: 'banda123',
+    createdAt: '2026-01-01T10:00:00.000Z'
+  },
+  {
+    id: 'user-raul',
+    username: 'raul',
+    name: 'Raúl',
+    role: 'member' as const,
+    instrument: 'Violín',
+    avatarColor: '#f59e0b',
+    initialPassword: 'banda123',
+    createdAt: '2026-01-01T10:00:00.000Z'
+  }
+];
+

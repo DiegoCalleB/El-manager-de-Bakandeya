@@ -127,7 +127,7 @@ export default function Finanzas({ colors, payments = [], onAddPayment, onUpdate
   const cardBorder = isStitchLight ? 'border-slate-200' : 'border-neutral-800';
 
   return (
-    <div className={`space-y-6 ${isStitchLight ? 'text-slate-800' : 'text-[#e5e2e1]'} font-sans`}>
+    <div className={`space-y-6 ${isStitchLight ? 'text-slate-800' : 'text-[#e5e2e1]'} font-sans w-full max-w-full overflow-x-hidden`}>
       
       {/* Header con Sincronización en Excel */}
       <div className={`flex justify-between items-start md:items-center border-b pb-4 mb-2 gap-4 ${isStitchLight ? 'border-slate-100' : 'border-[#99907c]/15'}`}>

@@ -1,5 +1,16 @@
 export type LeadStatus = 'nuevo' | 'pendiente_aprobacion' | 'aprobado' | 'esperando_respuesta' | 'interesado' | 'no_interesado' | 'negociando';
 
+export type LeadType = 'sala' | 'festival' | 'ayuntamiento' | 'grupo' | 'productora' | 'medio';
+
+export interface EmailMessage {
+  id: string;
+  fecha: string;
+  remitente: 'sala' | 'banda';
+  remitente_nombre: string;
+  asunto: string;
+  mensaje: string;
+}
+
 export interface Lead {
   id: string;
   nombre_sala: string;
@@ -7,7 +18,7 @@ export interface Lead {
   region: string;
   aforo: number;
   genero: string;
-  tipo?: string;
+  tipo?: LeadType | string;
   email_contacto: string;
   telefono: string;
   website?: string;
@@ -18,6 +29,7 @@ export interface Lead {
   fecha_envio?: string;
   fecha_ultima_respuesta?: string;
   notas: string;
+  hilo_emails?: EmailMessage[];
 }
 
 export interface Rehearsal {
@@ -78,6 +90,23 @@ export interface SocialMetric {
   tiktok: number;
   youtube: number;
   notas: string;
+}
+
+export type UserRole = 'leader' | 'member';
+
+export interface User {
+  id: string;
+  username: string;
+  name: string;
+  role: UserRole;
+  instrument?: string;
+  avatarColor?: string;
+  createdAt: string;
+}
+
+export interface UserWithHash extends User {
+  passwordHash: string;
+  salt: string;
 }
 
 export type ThemeName = 'stitch_light' | 'stitch_dark' | 'backstage_neon' | 'roots_ska' | 'indie_velvet' | 'brutalist_fuzz';

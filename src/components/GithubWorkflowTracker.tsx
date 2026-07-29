@@ -175,7 +175,8 @@ export default function GithubWorkflowTracker({
         let agent: string | undefined = undefined;
         const lowerName = (run.name || "").toLowerCase();
         const lowerHead = (run.head_commit?.message || "").toLowerCase();
-        if (lowerName.includes("scout") || lowerHead.includes("scout")) agent = "Scout";
+        if (lowerName.includes("descubridor") || lowerName.includes("scout_descubridor") || lowerHead.includes("descubridor") || lowerHead.includes("scout_descubridor")) agent = "Scout Descubridor";
+        else if (lowerName.includes("scout") || lowerHead.includes("scout")) agent = "Scout";
         else if (lowerName.includes("redactor") || lowerHead.includes("redactor")) agent = "Redactor";
         else if (lowerName.includes("enviador") || lowerHead.includes("enviador")) agent = "Enviador";
         else if (lowerName.includes("lector") || lowerHead.includes("lector") || lowerHead.includes("bandeja")) agent = "Lector";
@@ -365,6 +366,7 @@ export default function GithubWorkflowTracker({
   const renderAgentBadge = (agent: string | undefined) => {
     if (!agent) return null;
     let badgeClass = 'bg-neutral-800 text-neutral-300 border-neutral-700';
+    if (agent === 'Scout Descubridor') badgeClass = 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
     if (agent === 'Scout') badgeClass = 'bg-sky-500/10 text-sky-400 border-sky-500/20';
     if (agent === 'Redactor') badgeClass = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     if (agent === 'Enviador') badgeClass = 'bg-[#f2ca50]/10 text-[#f2ca50] border-[#f2ca50]/20';

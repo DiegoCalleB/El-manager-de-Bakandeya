@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Lead, LeadStatus, ThemeColors, SocialMetric } from '../types';
+import { Lead, LeadStatus, LeadType, ThemeColors, SocialMetric } from '../types';
 import { 
   Search, MapPin, Music, User, Globe, FileText, Phone, Instagram, 
   Plus, X, Calendar, AlertCircle, Sparkles, Loader2, Check, RefreshCw, 
-  Database, Bot, Activity, ArrowRight, CheckCircle2 
+  Database, Bot, Activity, ArrowRight, CheckCircle2, Radio, Building2, Tent, Landmark, Disc3, Briefcase
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -43,6 +43,7 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
   const [newRegion, setNewRegion] = useState('');
   const [newAforo, setNewAforo] = useState(300);
   const [newGenero, setNewGenero] = useState('Ska / Reggae / Mestizaje');
+  const [newTipo, setNewTipo] = useState<LeadType>('sala');
   const [newEmail, setNewEmail] = useState('');
   const [newInstagram, setNewInstagram] = useState('');
   const [newNotas, setNewNotas] = useState('');
@@ -143,10 +144,11 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
       region: newRegion,
       aforo: Number(newAforo),
       genero: newGenero,
+      tipo: newTipo,
       email_contacto: newEmail,
       telefono: '',
       instagram: newInstagram,
-      fuente: 'Ingreso Manual (Diego)',
+      fuente: 'Ingreso Manual (Jon)',
       estado: 'nuevo',
       pitch_generado: '',
       notas: newNotas || 'Añadido manualmente desde el dashboard.'
@@ -186,7 +188,7 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
   const textMuted = isStitchLight ? 'text-slate-400' : 'text-neutral-500';
 
   return (
-    <div className={`space-y-6 ${isStitchLight ? 'text-slate-800' : 'text-[#e5e2e1]'} font-sans`}>
+    <div className={`space-y-6 ${isStitchLight ? 'text-slate-800' : 'text-[#e5e2e1]'} font-sans w-full max-w-full overflow-x-hidden`}>
       
       {/* 1. OVERVIEW RESUMEN GRID (Three cards from Stitch mockup) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -297,21 +299,20 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
 
       </div>
 
-      {/* 2. MAIN RESUMEN CONTENT: PRÓXIMAS FECHAS (Stitch list format) */}
+      {/* 2. MAIN RESUMEN CONTENT: PRÓXIMAS FECHAS */}
       <div className={`${colors.card} p-5`}>
-        <div className={`flex justify-between items-center border-b pb-4 mb-4 ${colors.border}`}>
+        <div className={`flex justify-between items-center border-b pb-3 mb-4 ${colors.border}`}>
           <div>
-            <h3 className={`text-sm font-bold font-display uppercase tracking-widest ${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'}`}>Próximas Fechas Programadas</h3>
-            <p className={`text-[10px] font-mono mt-0.5 ${textSub}`}>Calendario de conciertos, festivales y ensayos generales confirmados para Julio 2026</p>
+            <h3 className={`text-sm font-bold font-display uppercase tracking-widest ${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'}`}>Próximas Fechas</h3>
           </div>
         </div>
 
         <div className="space-y-3">
           {[
             { dateDay: '11', dateMonth: 'JUL', title: 'Concierto: Gira Bakandeya 2026', desc: 'Sala Apolo, Barcelona • Caché: 1.800€ • Entradas: 85%', type: 'concierto' },
-            { dateDay: '15', dateMonth: 'JUL', title: 'Ensayo General con sección de metales', desc: 'Camerinos Rock Palace, Madrid • Horario: 17:00 a 21:00 • Repertorio Gira', type: 'ensayo' },
+            { dateDay: '15', dateMonth: 'JUL', title: 'Ensayo General con Loops y Violín', desc: 'Camerinos Rock Palace, Madrid • Horario: 17:00 a 21:00 • Repertorio Gira', type: 'ensayo' },
             { dateDay: '22', dateMonth: 'JUL', title: 'Concierto: Festival Mestizaje del Sur', desc: 'Anfiteatro de Granada • Caché: 3.500€ • Aforo: 1.200 pax', type: 'concierto' },
-            { dateDay: '29', dateMonth: 'JUL', title: 'Ensayo Técnico y Ajustes Analógicos', desc: 'Estudio de Diego • Horario: 18:00 a 22:00 • Pruebas de Sintetizadores', type: 'ensayo' },
+            { dateDay: '29', dateMonth: 'JUL', title: 'Ensayo Técnico y Ajustes de Loops', desc: 'Local de Jon • Horario: 18:00 a 22:00 • Pruebas de Electrónica y Efectos', type: 'ensayo' },
           ].map((item, idx) => (
             <div 
               key={idx}
@@ -350,14 +351,13 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
       </div>
 
       {/* 3. SEARCH & SCOUT SCRAPER (Double-enrichment workspace preserved) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start w-full">
         
         {/* LEADS SEARCH FOR ENRICHMENT */}
-        <div className={`${colors.card} p-5 space-y-4`}>
+        <div className={`${colors.card} p-5 space-y-4 lg:col-span-2`}>
           <div className={`flex justify-between items-center border-b pb-3 ${colors.border}`}>
             <div>
-              <h3 className={`text-sm font-bold font-display uppercase tracking-widest ${isStitchLight ? 'text-indigo-600' : 'text-[#ffb596]'}`}>Buscador y Enriquecimiento Scout</h3>
-              <p className={`text-[10px] font-mono mt-0.5 ${textSub}`}>Selecciona cualquier sala del inventario para iniciar el escaneo autónomo de datos de contacto.</p>
+              <h3 className={`text-sm font-bold font-display uppercase tracking-widest ${isStitchLight ? 'text-indigo-600' : 'text-[#ffb596]'}`}>Directorio de Salas y Scout</h3>
             </div>
             <button
               id="dashboard-btn-add"
@@ -474,7 +474,7 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
         </div>
 
         {/* DETAILS & SCRAPER TERMINAL */}
-        <div className="space-y-4">
+        <div className="space-y-4 lg:col-span-1">
           {selectedLead ? (
             <div className={`${colors.card} p-5 space-y-4`}>
               <div className={`border-b pb-3 ${colors.border}`}>
@@ -686,6 +686,23 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
                     onChange={(e) => setNewGenero(e.target.value)}
                     className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Categoría de Contacto</label>
+                  <select
+                    id="new-lead-tipo"
+                    value={newTipo}
+                    onChange={(e) => setNewTipo(e.target.value as LeadType)}
+                    className="w-full bg-[#131313] border border-[#99907c]/25 rounded px-3 py-1.5 focus:outline-none focus:border-[#f2ca50]/50 text-[#e5e2e1] font-mono cursor-pointer"
+                  >
+                    <option value="sala">🏛️ Sala / Teatro (Booking directo)</option>
+                    <option value="festival">🎪 Festival (Escenarios / Carteles)</option>
+                    <option value="ayuntamiento">🎆 Ayuntamiento / Fiestas Patronales</option>
+                    <option value="grupo">🎸 Grupo / Artista (Colaboración)</option>
+                    <option value="productora">💼 Productora / Agencia Management</option>
+                    <option value="medio">📻 Medio de Comunicación (Radio 3 / Prensa / TV)</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
