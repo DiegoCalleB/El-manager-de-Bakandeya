@@ -23,11 +23,13 @@ export interface Lead {
   telefono: string;
   website?: string;
   instagram: string;
+  contacto_nombre?: string;
   fuente: string;
   estado: LeadStatus;
   pitch_generado: string;
   fecha_envio?: string;
   fecha_ultima_respuesta?: string;
+  contexto_extra?: string;
   notas: string;
   hilo_emails?: EmailMessage[];
 }

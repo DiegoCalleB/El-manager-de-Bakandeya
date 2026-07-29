@@ -786,7 +786,7 @@ export default function ReelsCenter({
 
   // Move existing pipeline reels
   const moveReel = (id: string, newStage: 'draft' | 'edit' | 'ready') => {
-    setPipeline(prev => prev.map(reel => reel.id === id ? { ...reel, stage: newStage } : reel));
+    onUpdatePost(id, { estado: newStage === 'ready' ? 'publicado' : newStage === 'edit' ? 'aprobado' : 'borrador' });
   };
 
   const handleGenerateCopy = async (style: 'hype' | 'chill') => {
@@ -1023,7 +1023,7 @@ export default function ReelsCenter({
                             <span className="text-[8px] font-mono text-neutral-500">{post.fecha}</span>
                             <button 
                               id={`btn-move-aprobado-${post.id}`}
-                              onClick={(e) => { e.stopPropagation(); onUpdatePost({ ...post, estado: 'aprobado' }); }}
+                              onClick={(e) => { e.stopPropagation(); onUpdatePost(post.id, { estado: 'aprobado' }); }}
                               className={`text-[8px] font-mono hover:underline cursor-pointer bg-transparent border-none p-0 ${isStitchLight ? 'text-indigo-600 font-bold' : 'text-[#f2ca50]'}`}
                             >
                               Aprobar →
@@ -1071,14 +1071,14 @@ export default function ReelsCenter({
                           <div className={`flex justify-between items-center pt-1 border-t ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
                             <button 
                               id={`btn-move-borrador-${post.id}`}
-                              onClick={(e) => { e.stopPropagation(); onUpdatePost({ ...post, estado: 'borrador' }); }}
+                              onClick={(e) => { e.stopPropagation(); onUpdatePost(post.id, { estado: 'borrador' }); }}
                               className="text-[8px] font-mono text-neutral-500 hover:underline cursor-pointer bg-transparent border-none p-0"
                             >
                               ← Borrador
                             </button>
                             <button 
                               id={`btn-move-publicado-${post.id}`}
-                              onClick={(e) => { e.stopPropagation(); onUpdatePost({ ...post, estado: 'publicado' }); }}
+                              onClick={(e) => { e.stopPropagation(); onUpdatePost(post.id, { estado: 'publicado' }); }}
                               className="text-[8px] font-mono text-emerald-500 hover:underline cursor-pointer font-bold bg-transparent border-none p-0"
                             >
                               Publicar →
@@ -1126,7 +1126,7 @@ export default function ReelsCenter({
                           <div className={`flex justify-between items-center pt-1 border-t ${isStitchLight ? 'border-slate-100' : 'border-neutral-900'}`}>
                             <button 
                               id={`btn-move-aprobado-back-${post.id}`}
-                              onClick={(e) => { e.stopPropagation(); onUpdatePost({ ...post, estado: 'aprobado' }); }}
+                              onClick={(e) => { e.stopPropagation(); onUpdatePost(post.id, { estado: 'aprobado' }); }}
                               className="text-[8px] font-mono text-neutral-500 hover:underline cursor-pointer bg-transparent border-none p-0"
                             >
                               ← Re-editar

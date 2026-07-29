@@ -37,6 +37,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess, isStitch
         throw new Error(data.error || 'Fallo en la autenticación');
       }
 
+      if (data.token) {
+        localStorage.setItem('bakandeya_token', data.token);
+        document.cookie = `bakandeya_token=${data.token}; path=/; max-age=2592000; SameSite=Lax`;
+      }
+
       onLoginSuccess(data.user, data.token);
     } catch (err: any) {
       setError(err.message || 'Error al conectar con el servidor.');

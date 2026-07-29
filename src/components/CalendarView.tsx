@@ -1051,7 +1051,7 @@ export default function CalendarView({
                     isStitchLight ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold'
                   }`}
                 >
-                  Guardar Ensayo & Sincronizar
+                  Guardar Ensayo
                 </button>
               </div>
             </form>
@@ -1213,7 +1213,7 @@ export default function CalendarView({
                     isStitchLight ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold'
                   }`}
                 >
-                  Guardar Concierto & Sincronizar Excel
+                  Guardar Concierto
                 </button>
               </div>
             </form>

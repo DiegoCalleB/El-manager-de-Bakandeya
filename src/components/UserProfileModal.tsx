@@ -321,38 +321,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             <label className="text-xs font-mono font-semibold text-neutral-400 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <Database className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Almacenamiento & Google Sheets / Excel</span>
+                <span>Base de Datos de la Banda</span>
               </span>
-              <span className="text-[10px] text-emerald-400 font-mono font-bold">Sincronizado</span>
+              <span className="text-[10px] text-emerald-400 font-mono font-bold">Conectado</span>
             </label>
 
-            <div className={`p-3 rounded-xl border text-xs font-sans space-y-2 ${
+            <div className={`p-3 rounded-xl border text-xs font-sans ${
               isStitchLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-neutral-900/80 border-neutral-800 text-neutral-300'
             }`}>
               <div className="flex items-start gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-medium text-[11px]">
-                    Los datos en vivo de la banda se guardan en el servidor en <code className="px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[10px]">data.json</code> y se sincronizan con las pestañas de <strong>Google Sheets</strong> (ensayos, conciertos, salas, pagos).
-                  </p>
-                  <p className="text-[10px] opacity-75">
-                    Puedes exportar o descargar en cualquier momento la copia de seguridad completa en formato Excel:
-                  </p>
-                </div>
+                <p className="font-medium text-[11px]">
+                  Todos los datos de la app están vinculados dinámicamente con Google Sheets en tiempo real.
+                </p>
               </div>
-
-              <a
-                href="/api/download-excel"
-                download="band_data.xlsx"
-                className={`w-full py-2 px-3 rounded-lg border font-mono text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                  isStitchLight
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm'
-                    : 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/40 shadow-sm'
-                }`}
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Descargar band_data.xlsx</span>
-              </a>
             </div>
           </div>
 

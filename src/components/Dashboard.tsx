@@ -112,19 +112,35 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
     }
   };
 
+  const getScrapedVal = (field: any) => typeof field === 'object' && field !== null ? field.valor : field;
+  const getScrapedConf = (field: any) => typeof field === 'object' && field !== null ? (field.confianza || 'baja') : 'alta';
+  const getScrapedSource = (field: any) => typeof field === 'object' && field !== null ? field.fuente : '';
+
   const handleApplyScrapedData = (lead: Lead) => {
     if (!scrapedData) return;
     const today = new Date().toISOString().split('T')[0];
-    const updatedNotes = `*** [${today}] Datos enriquecidos automáticamente vía Scout Scraper. ${scrapedData.source_info} ***\n${lead.notas || ''}`;
+    const sourceSummary = typeof scrapedData.source_info === 'string' ? scrapedData.source_info : 'Scout Scraper Grounding';
+    const updatedNotes = `*** [${today}] Datos enriquecidos vía Scout Scraper. ${sourceSummary} ***\n${lead.notas || ''}`;
     
+    const emailVal = getScrapedVal(scrapedData.email_contacto);
+    const telVal = getScrapedVal(scrapedData.telefono);
+    const webVal = getScrapedVal(scrapedData.website);
+    const instaVal = getScrapedVal(scrapedData.instagram);
+    const contactoVal = getScrapedVal(scrapedData.contacto_nombre);
+    const aforoVal = getScrapedVal(scrapedData.aforo);
+    const regionVal = getScrapedVal(scrapedData.region);
+    const generoVal = getScrapedVal(scrapedData.genero);
+
     const updatedFields: Partial<Lead> = {
-      email_contacto: scrapedData.email_contacto || lead.email_contacto,
-      telefono: scrapedData.telefono || lead.telefono,
-      website: scrapedData.website || lead.website,
-      instagram: scrapedData.instagram || lead.instagram,
-      aforo: scrapedData.aforo || lead.aforo,
-      region: scrapedData.region || lead.region,
-      genero: scrapedData.genero || lead.genero,
+      email_contacto: emailVal || lead.email_contacto,
+      telefono: telVal || lead.telefono,
+      website: webVal || lead.website,
+      instagram: instaVal || lead.instagram,
+      contacto_nombre: contactoVal || lead.contacto_nombre,
+      aforo: (aforoVal && !isNaN(Number(aforoVal))) ? Number(aforoVal) : lead.aforo,
+      region: regionVal || lead.region,
+      genero: generoVal || lead.genero,
+      contexto_extra: `Scout: Email [${getScrapedConf(scrapedData.email_contacto)}], Tel [${getScrapedConf(scrapedData.telefono)}]`,
       notas: updatedNotes
     };
 
@@ -509,15 +525,41 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
                   </div>
                 ) : scrapedData ? (
                   <div className="space-y-3 animate-in fade-in duration-200">
-                    <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-600 font-bold uppercase">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> ¡Datos Encontrados con éxito!
+                    <div className="flex items-center justify-between text-[10px] font-mono text-emerald-600 font-bold uppercase">
+                      <span className="flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Escaneo Realizado
+                      </span>
+                      {scrapedData.simulated || scrapedData.isFallback ? (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-500 font-bold">
+                          Sin Verificar / Fallback
+                        </span>
+                      ) : null}
                     </div>
                     
-                    <div className={`space-y-1.5 text-xs font-mono ${textSub}`}>
-                      <div>Email: <span className={`${textTitle} font-bold`}>{scrapedData.email_contacto || 'No disponible'}</span></div>
-                      <div>Teléfono: <span className={`${textTitle} font-bold`}>{scrapedData.telefono || 'No disponible'}</span></div>
-                      <div>Instagram: <span className={`${textTitle} font-bold`}>{scrapedData.instagram || 'No disponible'}</span></div>
-                      {scrapedData.aforo && <div>Aforo Detectado: <span className={`${textTitle} font-bold`}>{scrapedData.aforo} pax</span></div>}
+                    <div className={`space-y-2 text-xs font-mono ${textSub}`}>
+                      {[
+                        { label: 'Email', key: 'email_contacto' },
+                        { label: 'Teléfono', key: 'telefono' },
+                        { label: 'Contacto', key: 'contacto_nombre' },
+                        { label: 'Instagram', key: 'instagram' },
+                        { label: 'Aforo', key: 'aforo' }
+                      ].map(({ label, key }) => {
+                        const val = getScrapedVal(scrapedData[key]);
+                        const conf = getScrapedConf(scrapedData[key]);
+                        if (!val && conf === 'baja') return null;
+                        return (
+                          <div key={key} className="flex items-center justify-between gap-2 border-b border-dashed border-neutral-800 pb-1">
+                            <span>{label}: <span className={`${textTitle} font-bold`}>{val || 'No hallado'}</span></span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-extrabold uppercase ${
+                              conf === 'alta' 
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                            }`}>
+                              {conf === 'alta' ? 'Alta (Verificado)' : 'Revisar a mano'}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     <button

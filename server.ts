@@ -10,7 +10,11 @@ import { google } from "googleapis";
 import ffmpeg from "fluent-ffmpeg";
 
 import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES, INITIAL_SOCIAL_METRICS, INITIAL_USERS } from "./src/db_seed";
-import { Lead, LeadStatus, Rehearsal, Concert, SocialPost, Payment, Message, SocialMetric, EmailMessage, User } from "./src/types";
+import { Lead, LeadType, LeadStatus, Rehearsal, Concert, SocialPost, Payment, Message, SocialMetric, EmailMessage, User } from "./src/types";
+
+import { ACTIVE_SESSIONS, hashPassword, verifyPassword, getSafeUsers, getUserFromRequest, createAuthMiddleware, createLeaderMiddleware, createCronOrAuthMiddleware } from "./server/auth.js";
+import { fetchLeadsFromSheet, updateLeadInSheet, appendLeadToSheet, bootstrapSheet, syncLeadMessagesInSheet, leadToRowDynamic, rowToLeadDynamic, DEFAULT_LEADS_HEADERS, buildHeaderMap, getColumnLetter } from "./server/sheets.js";
+import { getRegionForCity } from "./src/constants/regions.js";
 
 // Setup dotenv
 import dotenv from "dotenv";
@@ -23,28 +27,10 @@ app.use(express.json());
 
 const DATA_FILE = path.join(process.cwd(), "data.json");
 
-// Password hashing helper using Node native crypto
-function hashPassword(password: string, salt?: string) {
-  const actualSalt = salt || crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, actualSalt, 1000, 64, "sha512").toString("hex");
-  return { hash, salt: actualSalt };
-}
-
-function verifyPassword(password: string, hash: string, salt: string) {
-  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return hash === verifyHash;
-}
-
-function getSafeUsers(users: any[]) {
-  if (!Array.isArray(users)) return [];
-  return users.map(u => {
-    const { passwordHash, salt, ...safeUser } = u;
-    return safeUser;
-  });
-}
-
-// In-memory sessions store
-const ACTIVE_SESSIONS: Record<string, { userId: string; createdAt: number }> = {};
+// Define authentication middlewares
+const requireAuth = createAuthMiddleware(loadState);
+const requireLeader = createLeaderMiddleware(loadState);
+const requireCronOrAuth = createCronOrAuthMiddleware(loadState);
 
 const INITIAL_RUN_OF_SHOW: Record<string, any[]> = {
   '2026-07-23': [
@@ -75,18 +61,8 @@ const INITIAL_GEAR_CHECKLISTS: Record<string, any[]> = {
 };
 
 // Helper to extract user & role from incoming request
-function getUserFromRequest(req: express.Request): { id: string; role: string; username: string } | null {
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.headers["x-auth-token"] as string || req.query.token as string);
-  if (token && ACTIVE_SESSIONS[token]) {
-    const session = ACTIVE_SESSIONS[token];
-    const state = loadState();
-    const user = state.users?.find((u: any) => u.id === session.userId);
-    if (user) {
-      return { id: user.id, role: user.role || 'member', username: user.username };
-    }
-  }
-  return null;
+function getUserFromRequestLocal(req: express.Request): { id: string; role: string; username: string } | null {
+  return getUserFromRequest(req, loadState);
 }
 
 // Helper to load state
@@ -1284,240 +1260,6 @@ async function appendMetricToSheet(metric: SocialMetric) {
   }
 }
 
-// Pull leads from Google Sheet if configured, else return local state leads
-async function fetchLeadsFromSheet(localLeads: Lead[]): Promise<Lead[]> {
-  const sheets = getSheetsClient();
-  const spreadsheetId = process.env.SPREADSHEET_ID;
-  if (!sheets || !spreadsheetId) {
-    console.log("Google Sheets credentials not set. Operating in local sandbox mode.");
-    return localLeads;
-  }
-  
-  try {
-    // Ensure both "leads" and "hilos_emails" tabs exist
-    await ensureSheetTabExists(sheets, spreadsheetId, "leads");
-    await ensureSheetTabExists(sheets, spreadsheetId, "hilos_emails");
-
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "leads!A2:R",
-    });
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
-      console.log("Sheet is empty. Bootstrapping with headers and default leads...");
-      await bootstrapSheet(sheets, spreadsheetId, localLeads);
-      await bootstrapHilosEmailsSheet(sheets, spreadsheetId, localLeads);
-      return localLeads;
-    }
-
-    // Fetch and index hilos_emails
-    let messagesByLeadId: { [leadId: string]: EmailMessage[] } = {};
-    try {
-      const hilosResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: "hilos_emails!A1:H",
-      });
-      const hilosRows = hilosResponse.data.values || [];
-      if (hilosRows.length <= 1) {
-        console.log("hilos_emails sheet is empty or lacks messages. Seeding default message threads...");
-        await bootstrapHilosEmailsSheet(sheets, spreadsheetId, localLeads);
-        for (const lead of localLeads) {
-          if (lead.hilo_emails && lead.hilo_emails.length > 0) {
-            messagesByLeadId[lead.id] = lead.hilo_emails;
-          }
-        }
-      } else {
-        const dataRows = hilosRows.slice(1);
-        for (const row of dataRows) {
-          const parsed = rowToMessage(row);
-          if (parsed.leadId) {
-            if (!messagesByLeadId[parsed.leadId]) {
-              messagesByLeadId[parsed.leadId] = [];
-            }
-            messagesByLeadId[parsed.leadId].push(parsed.msg);
-          }
-        }
-      }
-    } catch (e: any) {
-      console.error("Error reading hilos_emails tab, falling back to local thread state:", e.message || e);
-    }
-
-    const leads = rows.map(rowToLead);
-    for (const lead of leads) {
-      if (messagesByLeadId[lead.id] && messagesByLeadId[lead.id].length > 0) {
-        // Sort ascending by date to preserve thread sequence
-        lead.hilo_emails = messagesByLeadId[lead.id].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
-      } else {
-        // Fallback to local cache in data.json if it has messages
-        const localLead = localLeads.find(l => l.id === lead.id);
-        if (localLead && localLead.hilo_emails && localLead.hilo_emails.length > 0) {
-          lead.hilo_emails = localLead.hilo_emails;
-          // Proactively write these messages to the hilos_emails tab so they are stored there!
-          if (sheets && spreadsheetId) {
-            console.log(`Lead ${lead.id} has local emails but none in sheet. Syncing to hilos_emails tab...`);
-            await syncLeadMessagesInSheet(sheets, spreadsheetId, lead);
-          }
-        } else {
-          lead.hilo_emails = [];
-        }
-      }
-    }
-    return leads;
-  } catch (error: any) {
-    console.error("Error fetching leads from Google Sheet, falling back to local:", error.message || error);
-    return localLeads;
-  }
-}
-
-// Bootstrap Google Sheet with headers and seed leads
-async function bootstrapSheet(sheets: any, spreadsheetId: string, leads: Lead[]) {
-  try {
-    const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
-    const headers = [
-      "id", "nombre_sala", "ciudad", "region", "aforo", "genero", "tipo",
-      "email_contacto", "telefono", "website", "instagram", "fuente", "estado", "pitch_generado", 
-      "fecha_envio", "fecha_ultima_respuesta", "notas", "hilo_emails"
-    ];
-    const values = [headers, ...leads.map(lead => leadToRow(lead, hilosSheetId))];
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: "leads!A1",
-      valueInputOption: "RAW",
-      requestBody: { values },
-    });
-    console.log("Successfully bootstrapped Google Sheet with headers and seed data.");
-  } catch (error) {
-    console.error("Error bootstrapping Google Sheet:", error);
-  }
-}
-
-// Bootstrap the hilos_emails sheet tab with seed messages
-async function bootstrapHilosEmailsSheet(sheets: any, spreadsheetId: string, leads: Lead[]) {
-  try {
-    const headers = ["id", "lead_id", "nombre_sala", "fecha", "remitente", "remitente_nombre", "asunto", "mensaje"];
-    const rows: any[] = [];
-    for (const lead of leads) {
-      if (lead.hilo_emails && lead.hilo_emails.length > 0) {
-        for (const msg of lead.hilo_emails) {
-          rows.push(messageToRow(lead.id, lead.nombre_sala, msg));
-        }
-      }
-    }
-    const values = [headers, ...rows];
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: "hilos_emails!A1",
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values },
-    });
-    console.log("Successfully bootstrapped Google Sheet hilos_emails tab.");
-  } catch (error) {
-    console.error("Error bootstrapping hilos_emails sheet tab:", error);
-  }
-}
-
-// Sync lead messages directly in the hilos_emails tab (avoiding duplicates and keeping it tidy)
-async function syncLeadMessagesInSheet(sheets: any, spreadsheetId: string, lead: Lead) {
-  try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "hilos_emails!A1:H",
-    });
-    const rows = response.data.values || [];
-    
-    const headers = rows[0] || ["id", "lead_id", "nombre_sala", "fecha", "remitente", "remitente_nombre", "asunto", "mensaje"];
-    const otherLeadsRows = rows.slice(1).filter(row => row[1] !== lead.id);
-    const leadMessageRows = (lead.hilo_emails || []).map(msg => messageToRow(lead.id, lead.nombre_sala, msg));
-    const newValues = [headers, ...otherLeadsRows, ...leadMessageRows];
-    
-    // Clear the current values to make room for clean rewrite
-    await sheets.spreadsheets.values.clear({
-      spreadsheetId,
-      range: "hilos_emails!A1:H10000",
-    });
-    
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: "hilos_emails!A1",
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: newValues
-      }
-    });
-    console.log(`Successfully synced ${leadMessageRows.length} messages for Lead ${lead.id} in hilos_emails`);
-  } catch (error) {
-    console.error(`Error syncing messages for Lead ${lead.id} in Google Sheet:`, error);
-  }
-}
-
-// Push a single updated lead to Google Sheet
-async function updateLeadInSheet(lead: Lead) {
-  const sheets = getSheetsClient();
-  const spreadsheetId = process.env.SPREADSHEET_ID;
-  if (!sheets || !spreadsheetId) {
-    return;
-  }
-  
-  try {
-    // Find the row index of the lead by fetching the IDs column (A)
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "leads!A:A",
-    });
-    const rows = response.data.values;
-    if (rows) {
-      const rowIndex = rows.findIndex(row => row[0] === lead.id);
-      if (rowIndex !== -1) {
-        const sheetRowNumber = rowIndex + 1;
-        const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `leads!A${sheetRowNumber}:R${sheetRowNumber}`,
-          valueInputOption: "USER_ENTERED",
-          requestBody: {
-            values: [leadToRow(lead, hilosSheetId)]
-          }
-        });
-        console.log(`Successfully updated Lead ${lead.id} at sheet row ${sheetRowNumber}`);
-        
-        // Sync message thread in hilos_emails tab
-        await syncLeadMessagesInSheet(sheets, spreadsheetId, lead);
-        return;
-      }
-    }
-    // If not found, append it
-    await appendLeadToSheet(lead);
-  } catch (error) {
-    console.error(`Error updating Lead ${lead.id} in Google Sheet:`, error);
-  }
-}
-
-// Append a new lead to Google Sheet
-async function appendLeadToSheet(lead: Lead) {
-  const sheets = getSheetsClient();
-  const spreadsheetId = process.env.SPREADSHEET_ID;
-  if (!sheets || !spreadsheetId) {
-    return;
-  }
-  try {
-    const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: "leads!A:R",
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [leadToRow(lead, hilosSheetId)]
-      }
-    });
-    console.log(`Successfully appended Lead ${lead.id} to Google Sheet`);
-    
-    // Sync message thread in hilos_emails tab
-    await syncLeadMessagesInSheet(sheets, spreadsheetId, lead);
-  } catch (error) {
-    console.error(`Error appending Lead ${lead.id} to Google Sheet:`, error);
-  }
-}
-
 // Verify lead status in Sheet before writing, avoiding race conditions
 async function verifyLeadStatusAndWrite(
   id: string, 
@@ -1840,7 +1582,7 @@ app.get("/api/users", (req, res) => {
 });
 
 // Create new user (Leader operation)
-app.post("/api/users", (req, res) => {
+app.post("/api/users", requireAuth, requireLeader, (req, res) => {
   const { username, name, password, role, instrument, avatarColor } = req.body;
 
   if (!username || !name || !password) {
@@ -1875,8 +1617,12 @@ app.post("/api/users", (req, res) => {
 });
 
 // Update user (Leader or self)
-app.put("/api/users/:id", (req, res) => {
+app.put("/api/users/:id", requireAuth, (req, res) => {
   const { id } = req.params;
+  const loggedUser = (req as any).user;
+  if (loggedUser.role !== 'leader' && loggedUser.id !== id) {
+    return res.status(403).json({ error: "Acceso denegado. Solo puedes modificar tu propia cuenta." });
+  }
   const { name, role, instrument, avatarColor, newPassword } = req.body;
 
   const state = loadState();
@@ -1904,7 +1650,7 @@ app.put("/api/users/:id", (req, res) => {
 });
 
 // Delete user (Leader operation)
-app.delete("/api/users/:id", (req, res) => {
+app.delete("/api/users/:id", requireAuth, requireLeader, (req, res) => {
   const { id } = req.params;
   const state = loadState();
 
@@ -1927,7 +1673,7 @@ app.delete("/api/users/:id", (req, res) => {
 });
 
 app.get("/api/state", async (req, res) => {
-  const user = getUserFromRequest(req);
+  const user = getUserFromRequestLocal(req);
   const isLeader = user?.role === "leader";
 
   const state = loadState();
@@ -1958,7 +1704,7 @@ app.get("/api/state", async (req, res) => {
 });
 
 // Update a single lead
-app.put("/api/leads/:id", async (req, res) => {
+app.put("/api/leads/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
   const { expectedStatus, ...updatedFields } = req.body;
   
@@ -1971,7 +1717,7 @@ app.put("/api/leads/:id", async (req, res) => {
 });
 
 // Create a lead
-app.post("/api/leads", async (req, res) => {
+app.post("/api/leads", requireAuth, async (req, res) => {
   const newLead: Lead = req.body;
   const state = loadState();
   state.leads.push(newLead);
@@ -1982,7 +1728,7 @@ app.post("/api/leads", async (req, res) => {
 });
 
 // Update rehearsal
-app.put("/api/rehearsals/:id", async (req, res) => {
+app.put("/api/rehearsals/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
   const updated: Partial<Rehearsal> = req.body;
   const state = loadState();
@@ -1998,7 +1744,7 @@ app.put("/api/rehearsals/:id", async (req, res) => {
 });
 
 // Create rehearsal
-app.post("/api/rehearsals", async (req, res) => {
+app.post("/api/rehearsals", requireAuth, async (req, res) => {
   const newRehearsal: Rehearsal = req.body;
   const state = loadState();
   state.rehearsals.push(newRehearsal);
@@ -2008,7 +1754,7 @@ app.post("/api/rehearsals", async (req, res) => {
 });
 
 // Update concert
-app.put("/api/concerts/:id", async (req, res) => {
+app.put("/api/concerts/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
   const updated: Partial<Concert> = req.body;
   const state = loadState();
@@ -2033,7 +1779,7 @@ app.get("/api/logistics", (req, res) => {
 });
 
 // Update/set run of show for a date
-app.post("/api/logistics/runofshow", async (req, res) => {
+app.post("/api/logistics/runofshow", requireAuth, async (req, res) => {
   const { dateKey, items } = req.body;
   if (!dateKey || !Array.isArray(items)) {
     return res.status(400).json({ error: "dateKey and items array required" });
@@ -2047,7 +1793,7 @@ app.post("/api/logistics/runofshow", async (req, res) => {
 });
 
 // Update/set gear checklist for a date
-app.post("/api/logistics/gear", async (req, res) => {
+app.post("/api/logistics/gear", requireAuth, async (req, res) => {
   const { dateKey, items } = req.body;
   if (!dateKey || !Array.isArray(items)) {
     return res.status(400).json({ error: "dateKey and items array required" });
@@ -2061,7 +1807,7 @@ app.post("/api/logistics/gear", async (req, res) => {
 });
 
 // Create concert
-app.post("/api/concerts", async (req, res) => {
+app.post("/api/concerts", requireAuth, async (req, res) => {
   const newConcert: Concert = req.body;
   const state = loadState();
   state.concerts.push(newConcert);
@@ -2071,7 +1817,7 @@ app.post("/api/concerts", async (req, res) => {
 });
 
 // Sync all concerts with Google Sheet (Excel)
-app.post("/api/concerts/sync", async (req, res) => {
+app.post("/api/concerts/sync", requireAuth, async (req, res) => {
   const sheets = getSheetsClient();
   const spreadsheetId = process.env.SPREADSHEET_ID;
   if (!sheets || !spreadsheetId) {
@@ -2194,21 +1940,13 @@ app.post("/api/posts/sync", async (req, res) => {
 });
 
 // Get payments (Admin only)
-app.get("/api/payments", (req, res) => {
-  const user = getUserFromRequest(req);
-  if (user?.role !== "leader") {
-    return res.status(403).json({ error: "Acceso denegado. Las finanzas solo están accesibles para los administradores (José y Diego)." });
-  }
+app.get("/api/payments", requireAuth, requireLeader, (req, res) => {
   const state = loadState();
   res.json(state.payments || []);
 });
 
 // Create payment (Admin only)
-app.post("/api/payments", async (req, res) => {
-  const user = getUserFromRequest(req);
-  if (user?.role !== "leader") {
-    return res.status(403).json({ error: "Acceso denegado. Solo los administradores (José y Diego) pueden añadir partidas de finanzas." });
-  }
+app.post("/api/payments", requireAuth, requireLeader, async (req, res) => {
   const newPayment: Payment = req.body;
   const state = loadState();
   state.payments.push(newPayment);
@@ -2224,11 +1962,7 @@ app.post("/api/payments", async (req, res) => {
 });
 
 // Update payment status (Admin only)
-app.put("/api/payments/:id", async (req, res) => {
-  const user = getUserFromRequest(req);
-  if (user?.role !== "leader") {
-    return res.status(403).json({ error: "Acceso denegado. Solo los administradores (José y Diego) pueden modificar partidas de finanzas." });
-  }
+app.put("/api/payments/:id", requireAuth, requireLeader, async (req, res) => {
   const { id } = req.params;
   const updated: Partial<Payment> = req.body;
   const state = loadState();
@@ -2250,14 +1984,7 @@ app.put("/api/payments/:id", async (req, res) => {
 });
 
 // Sync all payments/finances with Google Sheet (Admin only)
-app.post("/api/payments/sync", async (req, res) => {
-  const user = getUserFromRequest(req);
-  if (user?.role !== "leader") {
-    return res.status(403).json({
-      success: false,
-      error: "Acceso denegado. Solo los administradores (José y Diego) pueden ver y sincronizar las finanzas con Excel / Google Sheets."
-    });
-  }
+app.post("/api/payments/sync", requireAuth, requireLeader, async (req, res) => {
   const sheets = getSheetsClient();
   const spreadsheetId = process.env.SPREADSHEET_ID;
   if (!sheets || !spreadsheetId) {
@@ -2476,7 +2203,7 @@ Devuelve ESTRICTAMENTE un objeto JSON en este formato exacto, sin explicaciones 
 Si por alguna razón no los encuentras o están restringidos, devuelve los valores de fallback proporcionados arriba, pero haz tu mejor esfuerzo por consultar el buscador en tiempo real.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
@@ -2537,7 +2264,7 @@ Devuelve ESTRICTAMENTE un objeto JSON en este formato exacto, sin explicaciones 
 }`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
@@ -2685,7 +2412,7 @@ Pautas importantes:
   if (ai) {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
       });
       if (response && response.text) {
@@ -2759,154 +2486,106 @@ function safeParseJson(text: string): any {
   return JSON.parse(cleanText);
 }
 
-// Scrape/enrich contact information using Gemini or simulation
-app.post("/api/scrape-contact", async (req, res) => {
+// Scrape/enrich contact information using Gemini Search Grounding (strict non-hallucination)
+app.post("/api/scrape-contact", requireAuth, async (req, res) => {
   const { leadId, nombre_sala, ciudad, region } = req.body;
   if (!nombre_sala) {
     return res.status(400).json({ error: "Falta el nombre de la sala." });
   }
 
   const client = getAiClient();
-  const today = new Date().toISOString().split('T')[0];
 
   if (!client) {
-    // Deterministic simulation fallback
-    const cleanName = nombre_sala.toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
-      .replace(/[^a-z0-9]/g, ""); // alphanumeric only
-    
-    const simulatedEmail = `booking@${cleanName || "sala"}.com`;
-    const simulatedInsta = `@${cleanName || "sala"}`;
-    const simulatedPhone = `+34 9${Math.floor(10000000 + Math.random() * 90000000)}`;
-    const simulatedWeb = `https://www.google.com/search?q=${encodeURIComponent(nombre_sala + " " + (ciudad || ""))}`;
-    const simulatedAforo = [100, 150, 250, 300, 500, 800, 1200][Math.floor(Math.random() * 7)];
-    const simulatedRegion = region && region !== "N/D" ? region : "Madrid (Vallekas)";
-    const simulatedGenero = "Ska / Reggae / Mestizaje";
-
-    // Wait 1.5 seconds to feel like a real scraping/mining process
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
+    console.warn("[ScrapeContact Warning] No Gemini client available. Returning unverified fallback.");
     return res.json({
       success: true,
       simulated: true,
+      isFallback: true,
       data: {
-        email_contacto: simulatedEmail,
-        telefono: simulatedPhone,
-        website: simulatedWeb,
-        instagram: simulatedInsta,
-        aforo: simulatedAforo,
-        region: simulatedRegion,
-        genero: simulatedGenero,
-        source_info: `Scraper simulado: Datos de contacto, aforo y géneros autodetectados basados en el nombre.`
+        email_contacto: { valor: "", confianza: "baja", fuente: "Sin API key" },
+        telefono: { valor: "", confianza: "baja", fuente: "Sin API key" },
+        website: { valor: "", confianza: "baja", fuente: "Sin API key" },
+        instagram: { valor: "", confianza: "baja", fuente: "Sin API key" },
+        contacto_nombre: { valor: "", confianza: "baja", fuente: "Sin API key" },
+        aforo: { valor: null, confianza: "baja", fuente: "Sin API key" },
+        region: { valor: region || "N/D", confianza: "baja", fuente: "Sin API key" },
+        genero: { valor: "", confianza: "baja", fuente: "Sin API key" },
+        source_info: "IA no disponible: Configura GEMINI_API_KEY para realizar búsquedas web reales."
       }
     });
   }
 
   try {
-    const prompt = `Eres el "Agente Scout de Bakandeya", una herramienta experta en recabar información de contacto de salas de concierto en España.
-Necesitamos localizar los datos de contacto, aforo y perfil musical reales o altamente probables de la siguiente sala de conciertos:
+    const prompt = `Eres el Agente Scout de Bakandeya, encargado de recabar información VERIFICABLE de salas de concierto en España.
+Buscamos información de la siguiente sala:
 - Nombre: ${nombre_sala}
 - Ciudad: ${ciudad || "No especificada"}
 - Región: ${region || "No especificada"}
 
-Instrucciones:
-1. Encuentra o estima con precisión su dirección de email de contacto de programación/booking (por ejemplo, info@..., programacion@..., booking@..., o el correo principal de la web).
-2. Localiza su usuario de Instagram (ej: @sala_apolo o @salahebe).
-3. Localiza su número de teléfono si existe (formato nacional o internacional de España).
-4. Localiza la URL de su sitio web oficial.
-5. Estima o localiza el aforo máximo de la sala (un número entero, ej: 150, 300, 500, 1200). Si es desconocido, propón una estimación realista para ese tipo de local.
-6. Encuentra o confirma la Comunidad Autónoma o región geográfica correspondiente (ej: "Madrid", "Andalucía", "Cataluña").
-7. Estima o localiza su estilo musical predominante o si acoge géneros diversos como "Ska / Reggae / Mestizaje / Rock / Fusión".
-8. Añade una nota técnica corta en "source_info" resumiendo el resultado del descubrimiento de toda esta información.
+REGLAS OBLIGATORIAS E INNEGOCIABLES:
+1. PROHIBIDO INVENTAR, ESTIMAR O GENERAR DATOS FALSOS (no crees emails tipo info@sala.com o teléfonos aleatorios). Extrae ÚNICAMENTE información real que encuentres mediante búsqueda web.
+2. Si no localizas un dato con total certeza, deja el campo valor como cadena vacía ("") y marca la confianza como "baja".
+3. Para cada campo (email_contacto, telefono, website, instagram, contacto_nombre, aforo, region, genero), debes indicar:
+   - valor: el dato real o "" (o null para aforo)
+   - confianza: "alta" (sitio oficial / canal verificado), "media" (directorio secundario), "baja" (desconocido)
+   - fuente: URL o referencia del resultado hallado
 
-Devuelve estrictamente un objeto JSON con el siguiente formato exacto, sin markdown adicional:
+Devuelve estrictamente un objeto JSON con esta estructura exacta:
 {
-  "email_contacto": "string o vacío",
-  "telefono": "string o vacío",
-  "website": "string o vacío",
-  "instagram": "string o vacío",
-  "aforo": 300, // número entero o null
-  "region": "string o vacío",
-  "genero": "string o vacío",
-  "source_info": "string"
+  "email_contacto": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "telefono": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "website": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "instagram": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "contacto_nombre": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "aforo": { "valor": null, "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "region": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "genero": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "source_info": "Resumen técnico de los hallazgos de búsqueda"
 }`;
 
-    const modelsToTry = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
-    let response: any = null;
-    let lastError: any = null;
-
-    for (const modelName of modelsToTry) {
-      try {
-        response = await client.models.generateContent({
-          model: modelName,
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          config: {
-            responseMimeType: 'application/json'
-          }
-        });
-        if (response) break;
-      } catch (err) {
-        lastError = err;
+    const response = await client.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: 'application/json'
       }
-    }
-
-    if (!response) {
-      console.warn("AI models failed, falling back to deterministic simulation due to:", lastError);
-      
-      const cleanName = nombre_sala.toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
-        .replace(/[^a-z0-9]/g, ""); // alphanumeric only
-      
-      const simulatedEmail = `booking@${cleanName || "sala"}.com`;
-      const simulatedInsta = `@${cleanName || "sala"}`;
-      const simulatedPhone = `+34 9${Math.floor(10000000 + Math.random() * 90000000)}`;
-      const simulatedWeb = `https://www.google.com/search?q=${encodeURIComponent(nombre_sala + " " + (ciudad || ""))}`;
-      const simulatedAforo = [100, 150, 250, 300, 500, 800, 1200][Math.floor(Math.random() * 7)];
-      const simulatedRegion = region && region !== "N/D" ? region : "Madrid";
-      const simulatedGenero = "Ska / Reggae / Mestizaje";
-
-      return res.json({
-        success: true,
-        simulated: true,
-        data: {
-          email_contacto: simulatedEmail,
-          telefono: simulatedPhone,
-          website: simulatedWeb,
-          instagram: simulatedInsta,
-          aforo: simulatedAforo,
-          region: simulatedRegion,
-          genero: simulatedGenero,
-          source_info: `Minería Simulada (Servicio Gemini saturado o sin cuota): Datos estimados basados en el nombre de la sala. Configura tu propia GEMINI_API_KEY en tus variables de entorno para usar la IA real.`
-        }
-      });
-    }
+    });
 
     const textResult = response.text || "";
     let parsedData: any = {};
     try {
       parsedData = safeParseJson(textResult);
-    } catch (parseErr) {
-      console.warn("[Gemini API] No se pudo parsear el JSON del contact scraper:", parseErr);
+    } catch (e) {
+      console.warn("[ScrapeContact Warning] Could not parse JSON response from Gemini:", e);
     }
 
     return res.json({
       success: true,
       simulated: false,
-      data: {
-        email_contacto: parsedData.email_contacto || "",
-        telefono: parsedData.telefono || "",
-        website: parsedData.website || "",
-        instagram: parsedData.instagram || "",
-        aforo: typeof parsedData.aforo === 'number' ? parsedData.aforo : null,
-        region: parsedData.region || "",
-        genero: parsedData.genero || "",
-        source_info: parsedData.source_info || `Scraper de IA: Datos actualizados usando el modelo Gemini.`
-      }
+      isFallback: false,
+      data: parsedData
     });
 
-  } catch (error) {
-    console.error("Error in AI contact scraper:", error);
-    res.status(500).json({ error: "Fallo al ejecutar el scraper inteligente", details: String(error) });
+  } catch (error: any) {
+    console.error("[ScrapeContact Error] Real Gemini Search Grounding failed:", error.message || error);
+    return res.json({
+      success: true,
+      simulated: true,
+      isFallback: true,
+      error: "Error en consulta a Gemini con Google Search. Revisa los logs.",
+      data: {
+        email_contacto: { valor: "", confianza: "baja", fuente: "Error de consulta" },
+        telefono: { valor: "", confianza: "baja", fuente: "Error de consulta" },
+        website: { valor: "", confianza: "baja", fuente: "Error de consulta" },
+        instagram: { valor: "", confianza: "baja", fuente: "Error de consulta" },
+        contacto_nombre: { valor: "", confianza: "baja", fuente: "Error de consulta" },
+        aforo: { valor: null, confianza: "baja", fuente: "Error de consulta" },
+        region: { valor: region || "N/D", confianza: "baja", fuente: "Error de consulta" },
+        genero: { valor: "", confianza: "baja", fuente: "Error de consulta" },
+        source_info: `Fallo en llamada a Gemini (${error.message || error}). Se requiere verificación manual.`
+      }
+    });
   }
 });
 
@@ -2922,7 +2601,7 @@ function normalizeAgentName(name: string): string {
 }
 
 // Trigger Python agents via GitHub Actions workflow_dispatch
-app.post("/api/trigger-agent", async (req, res) => {
+app.post("/api/trigger-agent", requireCronOrAuth, async (req, res) => {
   const { agentName, params } = req.body;
   const pat = (req.headers["x-github-pat"] as string) || process.env.GITHUB_PAT;
   const owner = (req.headers["x-github-owner"] as string) || process.env.GITHUB_REPO_OWNER || "DiegoCalleB";
@@ -2955,50 +2634,9 @@ app.post("/api/trigger-agent", async (req, res) => {
     if (params) {
       const finalParams = { ...params };
       
-      // Si es el agente Scout/Scout Descubridor y viene con parámetro 'ciudad' o similar, o si se especificó 'ciudad' en general pero el agente solo acepta 'region'
       if (normalizedAgentName === "scout" || normalizedAgentName === "scout_descubridor") {
         if (finalParams.ciudad && !finalParams.region) {
-          const ciudadLower = String(finalParams.ciudad).toLowerCase().trim();
-          let region = finalParams.ciudad; // Fallback por si acaso
-          
-          // Mapeo inteligente de ciudades de España a regiones/comunidades autónomas
-          if (ciudadLower.includes("pamplona") || ciudadLower.includes("navarra") || ciudadLower.includes("iruña")) {
-            region = "Navarra";
-          } else if (ciudadLower.includes("granada") || ciudadLower.includes("sevilla") || ciudadLower.includes("málaga") || ciudadLower.includes("malaga") || ciudadLower.includes("córdoba") || ciudadLower.includes("cordoba") || ciudadLower.includes("cádiz") || ciudadLower.includes("cadiz") || ciudadLower.includes("almería") || ciudadLower.includes("almeria") || ciudadLower.includes("jaén") || ciudadLower.includes("jaen") || ciudadLower.includes("huelva") || ciudadLower.includes("jerez") || ciudadLower.includes("andalucía") || ciudadLower.includes("andalucia")) {
-            region = "Andalucía";
-          } else if (ciudadLower.includes("madrid")) {
-            region = "Madrid";
-          } else if (ciudadLower.includes("barcelona") || ciudadLower.includes("girona") || ciudadLower.includes("lleida") || ciudadLower.includes("tarragona") || ciudadLower.includes("cataluña") || ciudadLower.includes("catalunya")) {
-            region = "Cataluña";
-          } else if (ciudadLower.includes("valencia") || ciudadLower.includes("alicante") || ciudadLower.includes("castellón") || ciudadLower.includes("castellon") || ciudadLower.includes("valenciana")) {
-            region = "Comunidad Valenciana";
-          } else if (ciudadLower.includes("bilbao") || ciudadLower.includes("san sebastián") || ciudadLower.includes("san sebastian") || ciudadLower.includes("vitoria") || ciudadLower.includes("gasteiz") || ciudadLower.includes("donostia") || ciudadLower.includes("bizkaia") || ciudadLower.includes("gipuzkoa") || ciudadLower.includes("araba") || ciudadLower.includes("euskadi") || ciudadLower.includes("país vasco") || ciudadLower.includes("pais vasco")) {
-            region = "País Vasco";
-          } else if (ciudadLower.includes("zaragoza") || ciudadLower.includes("huesca") || ciudadLower.includes("teruel") || ciudadLower.includes("aragón") || ciudadLower.includes("aragon")) {
-            region = "Aragón";
-          } else if (ciudadLower.includes("santiago") || ciudadLower.includes("coruña") || ciudadLower.includes("vigo") || ciudadLower.includes("lugo") || ciudadLower.includes("ourense") || ciudadLower.includes("pontevedra") || ciudadLower.includes("galicia")) {
-            region = "Galicia";
-          } else if (ciudadLower.includes("santander") || ciudadLower.includes("cantabria")) {
-            region = "Cantabria";
-          } else if (ciudadLower.includes("oviedo") || ciudadLower.includes("gijón") || ciudadLower.includes("gijon") || ciudadLower.includes("asturias")) {
-            region = "Asturias";
-          } else if (ciudadLower.includes("palma") || ciudadLower.includes("mallorca") || ciudadLower.includes("ibiza") || ciudadLower.includes("menorca") || ciudadLower.includes("baleares")) {
-            region = "Islas Baleares";
-          } else if (ciudadLower.includes("las palmas") || ciudadLower.includes("tenerife") || ciudadLower.includes("canarias")) {
-            region = "Canarias";
-          } else if (ciudadLower.includes("murcia")) {
-            region = "Murcia";
-          } else if (ciudadLower.includes("toledo") || ciudadLower.includes("ciudad real") || ciudadLower.includes("albacete") || ciudadLower.includes("cuenca") || ciudadLower.includes("guadalajara") || ciudadLower.includes("mancha")) {
-            region = "Castilla-La Mancha";
-          } else if (ciudadLower.includes("valladolid") || ciudadLower.includes("burgos") || ciudadLower.includes("salamanca") || ciudadLower.includes("león") || ciudadLower.includes("leon") || ciudadLower.includes("segovia") || ciudadLower.includes("soria") || ciudadLower.includes("ávila") || ciudadLower.includes("avila") || ciudadLower.includes("zamora") || ciudadLower.includes("palencia") || ciudadLower.includes("castilla")) {
-            region = "Castilla y León";
-          } else if (ciudadLower.includes("cáceres") || ciudadLower.includes("caceres") || ciudadLower.includes("badajoz") || ciudadLower.includes("extremadura")) {
-            region = "Extremadura";
-          } else if (ciudadLower.includes("logroño") || ciudadLower.includes("rioja")) {
-            region = "La Rioja";
-          }
-          
-          finalParams.region = region;
+          finalParams.region = getRegionForCity(finalParams.ciudad);
           delete finalParams.ciudad;
         }
       }
@@ -3365,7 +3003,13 @@ app.get("/api/agent-runs/:runId/jobs", async (req, res) => {
 });
 
 // Reset database to initial seeds
-app.post("/api/reset", (req, res) => {
+app.post("/api/reset", requireAuth, requireLeader, (req, res) => {
+  const { confirmReset, confirm } = req.body || {};
+  if (confirmReset !== true && confirm !== "RESET" && confirm !== "RESET_CONFIRMED") {
+    return res.status(400).json({
+      error: "Petición de reseteo no confirmada. Se requiere 'confirmReset: true' en el cuerpo de la petición."
+    });
+  }
   const defaultState = {
     leads: INITIAL_LEADS,
     rehearsals: INITIAL_REHEARSALS,
@@ -3402,7 +3046,7 @@ function getAiClient(): GoogleGenAI | null {
 
 app.post("/api/chat", async (req, res) => {
   const { message, chatHistory } = req.body;
-  const userReq = getUserFromRequest(req);
+  const userReq = getUserFromRequestLocal(req);
   const userRole = userReq ? userReq.role : (req.body.userRole || "member");
   const isLeader = userRole === "leader";
 
@@ -3764,8 +3408,8 @@ RECUERDA: La banda nunca envía emails directamente desde la app (lo hace el age
       }
     }
 
-    // We try gemini-3.5-flash first. If it is experiencing high demand (503), we fall back gracefully to other valid models.
-    const modelsToTry = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
+    // We try gemini-2.5-flash first, then gemini-2.5-pro as fallback.
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-pro'];
     let response: any = null;
     let lastError: any = null;
 
@@ -3884,7 +3528,7 @@ app.post("/api/write-reels-copy", async (req, res) => {
 
   try {
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: prompt
     });
     return res.json({ success: true, text: response.text });
@@ -4314,7 +3958,7 @@ Devuelve estrictamente un objeto JSON con el siguiente formato exacto, sin markd
       prompt += `\n\nAquí tienes la transcripción real del vídeo con sus marcas de tiempo exactas. Úsala para seleccionar los 3 fragmentos de mayor interés sin cortar frases a la mitad:\n${transcripcionConTiempos}`;
     }
 
-    const modelsToTry = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-pro'];
     let response: any = null;
     let lastError: any = null;
 
