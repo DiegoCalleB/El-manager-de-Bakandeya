@@ -1,5 +1,5 @@
 import { google } from "googleapis";
-import { Lead, EmailMessage } from "../src/types.js";
+import { Lead, EmailMessage, Concert, Payment, Rehearsal, SocialPost, SocialMetric } from "../src/types.js";
 
 export const DEFAULT_LEADS_HEADERS = [
   "id", "nombre_sala", "ciudad", "region", "aforo", "genero", "tipo",
@@ -524,6 +524,71 @@ export async function syncLeadMessagesInSheet(sheets: any, spreadsheetId: string
   }
 }
 
+export async function verifyLeadStatusAndWrite(
+  id: string, 
+  expectedStatus: string | undefined, 
+  updatedFields: Partial<Lead>,
+  loadState: () => any,
+  saveState: (state: any) => void
+): Promise<{ success: boolean; lead?: Lead; error?: string }> {
+  const state = loadState();
+  const idx = state.leads.findIndex((l: Lead) => l.id === id);
+  if (idx === -1) {
+    return { success: false, error: "Lead no encontrado localmente." };
+  }
+  
+  const currentLead = state.leads[idx];
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  
+  if (sheets && spreadsheetId) {
+    try {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: "leads!A:ZZ",
+      });
+      const rows = response.data.values;
+      if (rows && rows.length > 0) {
+        const headers = rows[0];
+        const headerMap = buildHeaderMap(headers);
+        const idColIdx = headerMap["id"];
+        const estadoColIdx = headerMap["estado"];
+
+        if (idColIdx !== undefined) {
+          const rowIndex = rows.findIndex((row, index) => index > 0 && String(row[idColIdx] || "") === id);
+          if (rowIndex !== -1) {
+            const sheetEstado = estadoColIdx !== undefined && estadoColIdx < rows[rowIndex].length ? rows[rowIndex][estadoColIdx] : "nuevo";
+            
+            if (expectedStatus && normalizeLeadStatus(sheetEstado) !== normalizeLeadStatus(expectedStatus)) {
+              console.warn(`Race condition avoided: Lead ${id} is in state '${sheetEstado}', but expected '${expectedStatus}'`);
+              
+              state.leads[idx] = rowToLeadDynamic(rows[rowIndex], headerMap);
+              saveState(state);
+              
+              return { 
+                success: false, 
+                error: `El estado de la sala en Google Sheets ha cambiado a '${sheetEstado}' en paralelo por otro usuario o cron job. Se han sincronizado los datos locales. Por favor, cancela y recarga.`,
+                lead: state.leads[idx]
+              };
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error verifying lead status in Google Sheet, continuing with local persistence:", error);
+    }
+  }
+  
+  state.leads[idx] = { ...currentLead, ...updatedFields };
+  saveState(state);
+  
+  if (sheets && spreadsheetId) {
+    await updateLeadInSheet(state.leads[idx]);
+  }
+  
+  return { success: true, lead: state.leads[idx] };
+}
+
 export async function updateLeadInSheet(lead: Lead) {
   const sheets = getSheetsClient();
   const spreadsheetId = process.env.SPREADSHEET_ID;
@@ -609,5 +674,548 @@ export async function appendLeadToSheet(lead: Lead) {
     await syncLeadMessagesInSheet(sheets, spreadsheetId, lead);
   } catch (error) {
     console.error(`Error appending Lead ${lead.id} to Google Sheet:`, error);
+  }
+}
+
+export function socialPostToRow(post: any): any[] {
+  return [
+    post.id || "",
+    post.fecha || "",
+    post.plataforma || "Instagram",
+    post.contenido || "",
+    post.estado || "borrador",
+    post.responsable || "",
+  ];
+}
+
+export async function updatePostInSheet(post: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "redes_sociales");
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "redes_sociales!A:A",
+    });
+    const rows = response.data.values;
+    if (rows) {
+      const rowIndex = rows.findIndex(row => row[0] === post.id);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `redes_sociales!A${sheetRowNumber}:F${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [socialPostToRow(post)] }
+        });
+        return;
+      }
+    }
+    await appendPostToSheet(post);
+  } catch (error) {
+    console.error(`Error updating SocialPost ${post.id} in Google Sheet:`, error);
+  }
+}
+
+export async function appendPostToSheet(post: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "redes_sociales");
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "redes_sociales!A:F",
+      valueInputOption: "RAW",
+      requestBody: { values: [socialPostToRow(post)] }
+    });
+  } catch (error) {
+    console.error(`Error appending SocialPost ${post.id} to Google Sheet:`, error);
+  }
+}
+
+export function socialMetricToRow(metric: any): any[] {
+  return [
+    metric.id || "",
+    metric.fecha || "",
+    metric.instagram || 0,
+    metric.tiktok || 0,
+    metric.youtube || 0,
+    metric.notas || "",
+  ];
+}
+
+export async function updateMetricInSheet(metric: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "seguidores");
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "seguidores!A:A",
+    });
+    const rows = response.data.values;
+    if (rows) {
+      const rowIndex = rows.findIndex(row => row[0] === metric.id);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `seguidores!A${sheetRowNumber}:F${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [socialMetricToRow(metric)] }
+        });
+        return;
+      }
+    }
+    await appendMetricToSheet(metric);
+  } catch (error) {
+    console.error(`Error updating SocialMetric ${metric.id} in Google Sheet:`, error);
+  }
+}
+
+export function concertToRow(c: Concert): any[] {
+  return [
+    c.id || "",
+    c.fecha || "",
+    c.ciudad || "",
+    c.sala || "",
+    c.cache || "",
+    c.aforo_vendido || 0,
+    c.aforo_total || 0,
+    c.contrato_firmado ? "SÍ" : "NO",
+    c.estado_pago || "pendiente",
+    c.notas || "",
+    c.tipo || "sala"
+  ];
+}
+
+export function paymentToRow(p: Payment): any[] {
+  return [
+    p.id || "",
+    p.tipo || "gasto",
+    p.categoria || "",
+    p.concepto || "",
+    p.importe || 0,
+    p.fecha || "",
+    p.estado || "pendiente"
+  ];
+}
+
+export function rehearsalToRow(r: Rehearsal): any[] {
+  return [
+    r.id || "",
+    r.fecha || "",
+    r.hora || "",
+    r.lugar || "",
+    Array.isArray(r.asistentes) ? r.asistentes.join(", ") : (r.asistentes || ""),
+    r.estado || "programado",
+    r.notas || ""
+  ];
+}
+
+export async function fetchRehearsalsFromSheet(fallback: Rehearsal[]): Promise<Rehearsal[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return fallback;
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "ensayos!A2:G",
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) return fallback;
+    return rows.map((r: any[]) => ({
+      id: r[0] || `reh-${Date.now()}`,
+      fecha: r[1] || "",
+      hora: r[2] || "",
+      lugar: r[3] || "",
+      asistentes: r[4] ? r[4].split(",").map((s: string) => s.trim()) : [],
+      estado: r[5] || "programado",
+      notas: r[6] || ""
+    }));
+  } catch (e) {
+    console.error("Error fetching rehearsals from sheet:", e);
+    return fallback;
+  }
+}
+
+export async function fetchConcertsFromSheet(fallback: Concert[]): Promise<Concert[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return fallback;
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "conciertos!A2:K",
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) return fallback;
+    return rows.map((r: any[]) => ({
+      id: r[0] || `cnc-${Date.now()}`,
+      fecha: r[1] || "",
+      ciudad: r[2] || "",
+      sala: r[3] || "",
+      cache: r[4] || "",
+      aforo_vendido: Number(r[5]) || 0,
+      aforo_total: Number(r[6]) || 0,
+      contrato_firmado: String(r[7]).toUpperCase() === "SÍ" || String(r[7]).toUpperCase() === "SI" || r[7] === true,
+      estado_pago: r[8] || "pendiente",
+      notas: r[9] || "",
+      tipo: r[10] || "sala"
+    }));
+  } catch (e) {
+    console.error("Error fetching concerts from sheet:", e);
+    return fallback;
+  }
+}
+
+export async function fetchPostsFromSheet(fallback: SocialPost[]): Promise<SocialPost[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return fallback;
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "redes_sociales!A2:F",
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) return fallback;
+    return rows.map((r: any[]) => ({
+      id: r[0] || `post-${Date.now()}`,
+      fecha: r[1] || "",
+      plataforma: r[2] || "Instagram",
+      contenido: r[3] || "",
+      estado: r[4] || "borrador",
+      responsable: r[5] || ""
+    }));
+  } catch (e) {
+    console.error("Error fetching posts from sheet:", e);
+    return fallback;
+  }
+}
+
+export async function fetchPaymentsFromSheet(fallback: Payment[]): Promise<Payment[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return fallback;
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "finanzas!A2:G",
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) return fallback;
+    return rows.map((r: any[]) => ({
+      id: r[0] || `pay-${Date.now()}`,
+      tipo: r[1] || "gasto",
+      categoria: r[2] || "",
+      concepto: r[3] || "",
+      importe: Number(r[4]) || 0,
+      fecha: r[5] || "",
+      estado: r[6] || "pendiente"
+    }));
+  } catch (e) {
+    console.error("Error fetching payments from sheet:", e);
+    return fallback;
+  }
+}
+
+export async function fetchMetricsFromSheet(fallback: SocialMetric[]): Promise<SocialMetric[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return fallback;
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "seguidores!A2:F",
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) return fallback;
+    return rows.map((r: any[]) => ({
+      id: r[0] || `met-${Date.now()}`,
+      fecha: r[1] || "",
+      instagram: Number(r[2]) || 0,
+      tiktok: Number(r[3]) || 0,
+      youtube: Number(r[4]) || 0,
+      notas: r[5] || ""
+    }));
+  } catch (e) {
+    console.error("Error fetching metrics from sheet:", e);
+    return fallback;
+  }
+}
+
+export async function fetchLogisticsFromSheet(fallbackRos: Record<string, any[]>, fallbackGear: Record<string, any[]>): Promise<{ runOfShow: Record<string, any[]>; gearChecklists: Record<string, any[]> }> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return { runOfShow: fallbackRos, gearChecklists: fallbackGear };
+  try {
+    const runOfShow: Record<string, any[]> = { ...fallbackRos };
+    const gearChecklists: Record<string, any[]> = { ...fallbackGear };
+
+    const rosRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "logistica_horarios!A2:E",
+    });
+    if (rosRes.data.values) {
+      rosRes.data.values.forEach((r: any[]) => {
+        const dateKey = r[0];
+        if (dateKey) {
+          if (!runOfShow[dateKey]) runOfShow[dateKey] = [];
+          const existingIdx = runOfShow[dateKey].findIndex((i: any) => i.id === r[1]);
+          const item = {
+            id: r[1] || `ros-${Date.now()}`,
+            time: r[2] || "",
+            activity: r[3] || "",
+            done: String(r[4]).toUpperCase() === "SÍ" || String(r[4]).toUpperCase() === "SI" || r[4] === true
+          };
+          if (existingIdx !== -1) {
+            runOfShow[dateKey][existingIdx] = item;
+          } else {
+            runOfShow[dateKey].push(item);
+          }
+        }
+      });
+    }
+
+    const gearRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "logistica_equipo!A2:D",
+    });
+    if (gearRes.data.values) {
+      gearRes.data.values.forEach((r: any[]) => {
+        const dateKey = r[0];
+        if (dateKey) {
+          if (!gearChecklists[dateKey]) gearChecklists[dateKey] = [];
+          const existingIdx = gearChecklists[dateKey].findIndex((i: any) => i.id === r[1]);
+          const item = {
+            id: r[1] || `gear-${Date.now()}`,
+            label: r[2] || "",
+            checked: String(r[3]).toUpperCase() === "SÍ" || String(r[3]).toUpperCase() === "SI" || r[3] === true
+          };
+          if (existingIdx !== -1) {
+            gearChecklists[dateKey][existingIdx] = item;
+          } else {
+            gearChecklists[dateKey].push(item);
+          }
+        }
+      });
+    }
+
+    return { runOfShow, gearChecklists };
+  } catch (e) {
+    console.error("Error fetching logistics from sheet:", e);
+    return { runOfShow: fallbackRos, gearChecklists: fallbackGear };
+  }
+}
+
+export async function updateRehearsalInSheet(rehearsal: Rehearsal) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "ensayos");
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "ensayos!A:A",
+    });
+    const rows = response.data.values;
+    if (rows) {
+      const rowIndex = rows.findIndex(row => row[0] === rehearsal.id);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `ensayos!A${sheetRowNumber}:G${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [rehearsalToRow(rehearsal)] }
+        });
+        return;
+      }
+    }
+    await appendRehearsalToSheet(rehearsal);
+  } catch (error) {
+    console.error(`Error updating Rehearsal ${rehearsal.id} in Google Sheet:`, error);
+  }
+}
+
+export async function appendRehearsalToSheet(rehearsal: Rehearsal) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "ensayos");
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "ensayos!A:G",
+      valueInputOption: "RAW",
+      requestBody: { values: [rehearsalToRow(rehearsal)] }
+    });
+  } catch (error) {
+    console.error(`Error appending Rehearsal ${rehearsal.id} to Google Sheet:`, error);
+  }
+}
+
+export async function updateConcertInSheet(concert: Concert) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "conciertos");
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "conciertos!A:A",
+    });
+    const rows = response.data.values;
+    if (rows) {
+      const rowIndex = rows.findIndex(row => row[0] === concert.id);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `conciertos!A${sheetRowNumber}:K${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [concertToRow(concert)] }
+        });
+        return;
+      }
+    }
+    await appendConcertToSheet(concert);
+  } catch (error) {
+    console.error(`Error updating Concert ${concert.id} in Google Sheet:`, error);
+  }
+}
+
+export async function appendConcertToSheet(concert: Concert) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "conciertos");
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "conciertos!A:K",
+      valueInputOption: "RAW",
+      requestBody: { values: [concertToRow(concert)] }
+    });
+  } catch (error) {
+    console.error(`Error appending Concert ${concert.id} to Google Sheet:`, error);
+  }
+}
+
+export async function syncLogisticsToSheet(runOfShow: Record<string, any[]>, gearChecklists: Record<string, any[]>) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "logistica_horarios");
+    await ensureSheetTabExists(sheets, spreadsheetId, "logistica_equipo");
+
+    const rosHeaders = ["Fecha", "ID", "Hora", "Actividad", "Completado"];
+    const rosRows: any[] = [rosHeaders];
+    if (runOfShow) {
+      Object.entries(runOfShow).forEach(([dateKey, items]) => {
+        if (Array.isArray(items)) {
+          items.forEach(item => {
+            rosRows.push([dateKey, item.id || "", item.time || "", item.activity || "", item.done ? "SÍ" : "NO"]);
+          });
+        }
+      });
+    }
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: "logistica_horarios!A1",
+      valueInputOption: "RAW",
+      requestBody: { values: rosRows }
+    });
+
+    const gearHeaders = ["Fecha", "ID", "Material", "Cargado"];
+    const gearRows: any[] = [gearHeaders];
+    if (gearChecklists) {
+      Object.entries(gearChecklists).forEach(([dateKey, items]) => {
+        if (Array.isArray(items)) {
+          items.forEach(item => {
+            gearRows.push([dateKey, item.id || "", item.label || "", item.checked ? "SÍ" : "NO"]);
+          });
+        }
+      });
+    }
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: "logistica_equipo!A1",
+      valueInputOption: "RAW",
+      requestBody: { values: gearRows }
+    });
+  } catch (error) {
+    console.error("Error syncing logistics to Google Sheet:", error);
+  }
+}
+
+export async function appendPaymentToSheet(payment: Payment) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "finanzas");
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "finanzas!A:G",
+      valueInputOption: "RAW",
+      requestBody: { values: [paymentToRow(payment)] }
+    });
+  } catch (error) {
+    console.error(`Error appending Payment ${payment.id} to Google Sheet:`, error);
+  }
+}
+
+export async function updatePaymentInSheet(payment: Payment) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "finanzas");
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "finanzas!A:A",
+    });
+    const rows = response.data.values;
+    if (rows) {
+      const rowIndex = rows.findIndex(row => row[0] === payment.id);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `finanzas!A${sheetRowNumber}:G${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [paymentToRow(payment)] }
+        });
+        return;
+      }
+    }
+    await appendPaymentToSheet(payment);
+  } catch (error) {
+    console.error(`Error updating Payment ${payment.id} in Google Sheet:`, error);
+  }
+}
+
+export async function appendMetricToSheet(metric: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "seguidores");
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "seguidores!A:F",
+      valueInputOption: "RAW",
+      requestBody: { values: [socialMetricToRow(metric)] }
+    });
+  } catch (error) {
+    console.error(`Error appending SocialMetric ${metric.id} to Google Sheet:`, error);
   }
 }

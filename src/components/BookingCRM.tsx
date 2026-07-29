@@ -796,6 +796,11 @@ Jon`);
                             <Users className={`w-3 h-3 ${isStitchLight ? 'text-slate-400' : 'text-neutral-500'}`} /> {lead.aforo || 'Desconocido'} pax
                           </span>
                           <span className={isStitchLight ? 'text-amber-700' : 'text-[#ffb596]/80'}>{lead.genero}</span>
+                          {lead.contacto_nombre && (
+                            <span className={`font-semibold ${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'}`}>
+                              👤 {lead.contacto_nombre}
+                            </span>
+                          )}
                         </div>
                         {lead.notas && (
                           <p className={`text-[10px] truncate mt-1 italic font-mono max-w-xl ${textMuted}`}>
@@ -1054,6 +1059,29 @@ Jon`);
                             <span>No Interesado 💤</span>
                             {selectedLead.estado === 'no_interesado' && <Check className="w-3.5 h-3.5 text-slate-400" />}
                           </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Contacto & Contexto Extra Info */}
+                  <div className={`space-y-3 border-t pt-4 ${isStitchLight ? 'border-slate-100' : 'border-[#99907c]/15'}`}>
+                    <div>
+                      <label className={`block text-[9px] uppercase font-mono tracking-wider ${textSub}`}>Contacto / Programador</label>
+                      <div className={`text-xs font-mono font-semibold mt-1 px-2.5 py-1.5 rounded border ${
+                        isStitchLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-[#131313] border-neutral-800 text-neutral-200'
+                      }`}>
+                        👤 {selectedLead.contacto_nombre || 'Sin contacto asignado'}
+                      </div>
+                    </div>
+
+                    {selectedLead.contexto_extra && (
+                      <div>
+                        <label className={`block text-[9px] uppercase font-mono tracking-wider ${textSub}`}>Contexto de la Sala / Programación</label>
+                        <div className={`text-[11px] font-mono mt-1 p-2.5 rounded border whitespace-pre-wrap leading-relaxed ${
+                          isStitchLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-[#131313] border-neutral-800 text-neutral-300'
+                        }`}>
+                          {selectedLead.contexto_extra}
                         </div>
                       </div>
                     )}

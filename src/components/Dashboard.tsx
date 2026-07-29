@@ -131,6 +131,8 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
     const regionVal = getScrapedVal(scrapedData.region);
     const generoVal = getScrapedVal(scrapedData.genero);
 
+    const contextoVal = getScrapedVal(scrapedData.contexto_extra);
+
     const updatedFields: Partial<Lead> = {
       email_contacto: emailVal || lead.email_contacto,
       telefono: telVal || lead.telefono,
@@ -140,7 +142,7 @@ export default function Dashboard({ leads, colors, onUpdateLead, onAddLead, metr
       aforo: (aforoVal && !isNaN(Number(aforoVal))) ? Number(aforoVal) : lead.aforo,
       region: regionVal || lead.region,
       genero: generoVal || lead.genero,
-      contexto_extra: `Scout: Email [${getScrapedConf(scrapedData.email_contacto)}], Tel [${getScrapedConf(scrapedData.telefono)}]`,
+      contexto_extra: (contextoVal && typeof contextoVal === 'string' && contextoVal.trim()) ? contextoVal.trim() : lead.contexto_extra,
       notas: updatedNotes
     };
 
