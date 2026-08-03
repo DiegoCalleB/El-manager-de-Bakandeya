@@ -1,19 +1,27 @@
 import express from "express";
 import path from "path";
+import crypto from "crypto";
 import * as XLSX from "xlsx";
 
-import { Lead, Concert, SocialPost, Payment, Rehearsal } from "./src/types";
+import { Lead, Concert, SocialPost, Payment, Rehearsal, Song, Setlist } from "./src/types";
 
 import { getSafeUsers, getUserFromRequest } from "./server/auth.js";
 import {
   getSheetsClient,
+  getSpreadsheetId,
+  parsePrivateKey,
   fetchLeadsFromSheet,
   fetchRehearsalsFromSheet,
   fetchConcertsFromSheet,
   fetchPostsFromSheet,
   fetchPaymentsFromSheet,
   fetchMetricsFromSheet,
-  fetchLogisticsFromSheet
+  fetchLogisticsFromSheet,
+  fetchSongsFromSheet,
+  fetchSetlistsFromSheet,
+  fetchBandsFromSheet,
+  fetchToursFromSheet,
+  ensureTemasYSetlistsSheets
 } from "./server/sheets.js";
 import { loadState, saveState } from "./server/state.js";
 
@@ -23,7 +31,11 @@ import metricsRouter from "./server/routes/metrics.js";
 import chatRouter from "./server/routes/chat.js";
 import leadsRouter from "./server/routes/leads.js";
 import concertsRouter from "./server/routes/concerts.js";
+import bandsRouter from "./server/routes/bands.js";
+import toursRouter from "./server/routes/tours.js";
 import agentRouter from "./server/routes/agent.js";
+import reelsRouter from "./server/routes/reels.js";
+import repertorioRouter from "./server/routes/repertorio.js";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -40,16 +52,81 @@ app.use("/api", metricsRouter);
 app.use("/api", chatRouter);
 app.use("/api", leadsRouter);
 app.use("/api", concertsRouter);
+app.use("/api", bandsRouter);
+app.use("/api", toursRouter);
 app.use("/api", agentRouter);
+app.use("/api", reelsRouter);
+app.use("/api", repertorioRouter);
 
-// System status and excel export endpoints
+// System status endpoint
+app.get("/api/debug-key", (req, res) => {
+  const rawKey = process.env.GOOGLE_PRIVATE_KEY || process.env.PRIVATE_KEY || "";
+  const parsedKey = parsePrivateKey(rawKey);
+  let works = false;
+  let keyTypeInfo = "";
+
+  if (parsedKey) {
+    try {
+      const pKey = crypto.createPrivateKey(parsedKey);
+      keyTypeInfo = `${pKey.type} - ${pKey.asymmetricKeyType}`;
+      works = true;
+    } catch {
+      // ignore
+    }
+  }
+
+  res.json({
+    configured: works,
+    keyTypeInfo
+  });
+});
+
 app.get("/api/check-sheets", async (req, res) => {
-  const sheets = getSheetsClient();
-  const spreadsheetId = process.env.SPREADSHEET_ID;
-  if (!sheets || !spreadsheetId) {
+  const email = (
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+    process.env.SERVICE_ACCOUNT_EMAIL ||
+    process.env.CLIENT_EMAIL ||
+    ""
+  ).trim();
+
+  const rawKey = (
+    process.env.GOOGLE_PRIVATE_KEY ||
+    process.env.PRIVATE_KEY ||
+    process.env.GCP_SA_KEY ||
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
+    process.env.GOOGLE_CREDENTIALS ||
+    process.env.GOOGLE_SHEETS_CREDENTIALS ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+    ""
+  );
+
+  const spreadsheetId = getSpreadsheetId();
+
+  const missing: string[] = [];
+  if (!email && !rawKey.includes("client_email")) missing.push("GOOGLE_SERVICE_ACCOUNT_EMAIL");
+  if (!rawKey) missing.push("GOOGLE_PRIVATE_KEY");
+  if (!spreadsheetId) missing.push("SPREADSHEET_ID");
+
+  if (missing.length > 0) {
     return res.json({
       configured: false,
-      error: "Google Sheets o SPREADSHEET_ID no configurado en el servidor."
+      error: `Faltan las siguientes variables de entorno para la integración con Google Sheets: ${missing.join(", ")}. Asegúrate de configurarlas en el menú de Secrets / Settings de AI Studio.`,
+      missing
+    });
+  }
+
+  const sheets = getSheetsClient();
+  if (!sheets) {
+    return res.json({
+      configured: false,
+      error: "No se pudo formatear la clave privada (GOOGLE_PRIVATE_KEY) o las credenciales de la Service Account. Verifica que en AI Studio Secrets la clave o el JSON contengan las credenciales PEM o JSON válidas."
+    });
+  }
+
+  if (!spreadsheetId) {
+    return res.json({
+      configured: false,
+      error: "No se encontró un SPREADSHEET_ID válido. Por favor ingresa el ID o la URL completa del Google Sheet en los Secrets de AI Studio."
     });
   }
 
@@ -58,9 +135,11 @@ app.get("/api/check-sheets", async (req, res) => {
     const sheetsList = meta.data.sheets || [];
     const existingTabs = sheetsList.map((s: any) => s.properties.title);
     
-    const required = ["leads", "ensayos", "conciertos", "redes_sociales", "finanzas", "seguidores", "hilos_emails", "logistica_horarios", "logistica_equipo"];
+    const required = ["leads", "ensayos", "conciertos", "redes_sociales", "finanzas", "seguidores", "hilos_emails", "logistica_horarios", "logistica_equipo", "canciones", "repertorios"];
     const status: Record<string, boolean> = {};
     const created: string[] = [];
+
+    await ensureTemasYSetlistsSheets(sheets, spreadsheetId);
 
     for (const tab of required) {
       if (existingTabs.includes(tab)) {
@@ -101,7 +180,7 @@ app.get("/api/check-sheets", async (req, res) => {
     console.error("Error checking Google Sheets:", error);
     res.status(500).json({
       configured: true,
-      error: error.message || "Fallo al conectar con la API de Google Sheets. Verifica los permisos de tu Service Account."
+      error: error.message || "Fallo al conectar con la API de Google Sheets. Verifica que el Spreadsheet ID sea correcto y que hayas compartido la hoja con permisos de Editor al email de la Service Account."
     });
   }
 });
@@ -217,6 +296,35 @@ app.get("/api/download-excel", (req, res) => {
     const wsGear = XLSX.utils.json_to_sheet(gearRows);
     XLSX.utils.book_append_sheet(wb, wsGear, "Logistica_Equipo");
 
+    const songsData = (state.songs || []).map((s: Song) => ({
+      ID: s.id,
+      Título: s.titulo,
+      Duración: s.duracion,
+      Tonalidad: s.tonalidad,
+      BPM: s.bpm,
+      Afinación: s.afinacion || "",
+      Álbum: s.albumDisco || "",
+      Estado: s.estadoTema || "listo",
+      "Es Cover": s.esVersionCovers ? "SÍ" : "NO",
+      Acordes: s.enlaceAcordes || "",
+      Notas: s.notasInternas || ""
+    }));
+    const wsSongs = XLSX.utils.json_to_sheet(songsData);
+    XLSX.utils.book_append_sheet(wb, wsSongs, "Canciones");
+
+    const setlistsData = (state.setlists || []).map((st: Setlist) => ({
+      ID: st.id,
+      Nombre: st.nombre,
+      Descripción: st.descripcion || "",
+      Formato: st.tipoFormato || "",
+      "Duración (min)": st.duracionTotalEstimadaMinutos || 0,
+      "Fecha Creación": st.fechaCreacion,
+      "Última Edición": st.fechaUltimaEdicion,
+      "Número Temas": st.items?.length || 0
+    }));
+    const wsSetlists = XLSX.utils.json_to_sheet(setlistsData);
+    XLSX.utils.book_append_sheet(wb, wsSetlists, "Repertorios");
+
     const excelBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -246,6 +354,10 @@ app.get("/api/state", async (req, res) => {
     const logistics = await fetchLogisticsFromSheet(state.runOfShow, state.gearChecklists);
     state.runOfShow = logistics.runOfShow;
     state.gearChecklists = logistics.gearChecklists;
+    state.songs = await fetchSongsFromSheet(state.songs);
+    state.setlists = await fetchSetlistsFromSheet(state.setlists);
+    state.bands = await fetchBandsFromSheet(state.bands || []);
+    state.tours = await fetchToursFromSheet(state.tours || []);
     saveState(state);
   } catch (error: any) {
     console.error("Error fetching state from Google Sheets, falling back to local cached state:", error.message || error);

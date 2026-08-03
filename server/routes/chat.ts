@@ -1,14 +1,15 @@
 import express from "express";
-import { KNOWN_LOCATIONS, CANONICAL_LOCATION_MAP } from "../../src/constants/regions.js";
+import { KNOWN_LOCATIONS, CANONICAL_LOCATION_MAP, getRegionForCity } from "../../src/constants/regions.js";
 import { Lead, Rehearsal, Concert } from "../../src/types.js";
 import { loadState, getUserFromRequestLocal } from "../state.js";
-import { getAiClient } from "../ai.js";
+import { getAiClient, generateContentWithFallback } from "../ai.js";
 import { safeParseJson } from "../utils.js";
 
 const router = express.Router();
 
 router.post("/chat", async (req, res) => {
-  const { message, chatHistory } = req.body;
+  const { message, chatHistory, agentsEnabled: agentsEnabledBody } = req.body;
+  const agentsEnabled = agentsEnabledBody !== false;
   const userReq = getUserFromRequestLocal(req);
   const userRole = userReq ? userReq.role : (req.body.userRole || "member");
   const isLeader = userRole === "leader";
@@ -26,9 +27,15 @@ router.post("/chat", async (req, res) => {
   }
   
   // Intercept agent trigger intents to bypass Gemini API completely
-  const isAgentQuery = lower.includes("enviador") || lower.includes("enviado") || lower.includes("envio") || lower.includes("envío") ||
-                       lower.includes("scout") || lower.includes("redactor") || lower.includes("lector") || lower.includes("descubridor") ||
-                       (lower.includes("agente") && (lower.includes("ejecutar") || lower.includes("lanzar") || lower.includes("correr") || lower.includes("disparar")));
+  // Only trigger if agents are enabled AND user explicitly requests to execute/launch an agent AND NOT expressing negative intent
+  const isNegativeAgentIntent = /(no quiero|no ejecutes|sin agentes|no lances|sin lanzar|sin disparar|no dispares|no usar|sin usar agentes|no hace falta agente)/i.test(lower);
+
+  const isExplicitAgentTrigger = agentsEnabled && !isNegativeAgentIntent && (
+    (lower.includes("ejecutar") || lower.includes("lanzar") || lower.includes("correr") || lower.includes("disparar") || lower.includes("iniciar") || lower.includes("arrancar")) &&
+    (lower.includes("agente") || lower.includes("scout") || lower.includes("redactor") || lower.includes("enviador") || lower.includes("lector") || lower.includes("descubridor"))
+  );
+
+  const isAgentQuery = agentsEnabled && !isNegativeAgentIntent && (isExplicitAgentTrigger || (lower.startsWith("agente ") && (lower.includes("scout") || lower.includes("redactor") || lower.includes("enviador") || lower.includes("lector") || lower.includes("descubridor"))));
 
   if (isAgentQuery) {
     let agentName = "Enviador";
@@ -51,7 +58,7 @@ router.post("/chat", async (req, res) => {
     let triggerParams: Record<string, any> = {};
 
     if (agentName === "Scout Descubridor" || agentName === "Scout") {
-      let detectedRegion = "Navarra";
+      let detectedRegion = "";
       const knownLocations = KNOWN_LOCATIONS;
       const canonicalMapping = CANONICAL_LOCATION_MAP;
 
@@ -65,7 +72,11 @@ router.post("/chat", async (req, res) => {
       }
 
       if (matchedLocation) {
-        detectedRegion = canonicalMapping[matchedLocation.toLowerCase()] || matchedLocation;
+        const canonical = canonicalMapping[matchedLocation.toLowerCase()] || matchedLocation;
+        const regionForCity = getRegionForCity(matchedLocation);
+        detectedRegion = canonical;
+        triggerParams.ciudad = canonical;
+        triggerParams.region = regionForCity || canonical;
       } else {
         const regionMatch = req.body.message?.match(/(?:en|para|región|region|provincia|de)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]+)?)/i);
         if (regionMatch && regionMatch[1]) {
@@ -76,11 +87,16 @@ router.post("/chat", async (req, res) => {
               if (["de", "la", "y", "o"].includes(word.toLowerCase())) return word.toLowerCase();
               return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
             }).join(" ");
+            triggerParams.region = detectedRegion;
+            triggerParams.ciudad = detectedRegion;
           }
         }
       }
 
-      triggerParams.region = detectedRegion;
+      if (!triggerParams.region) {
+        triggerParams.region = "Huelva";
+        triggerParams.ciudad = "Huelva";
+      }
 
       if (agentName === "Scout Descubridor") {
         let detectedTipo = "sala";
@@ -112,6 +128,9 @@ router.post("/chat", async (req, res) => {
       }]
     });
   }
+
+  // Allow all general chat messages, email drafting, searches, and questions to go directly to Gemini AI.
+  // Gemini receives the full stateSummary in system prompt and can process any request intelligently.
 
   const client = getAiClient();
   
@@ -166,8 +185,14 @@ router.post("/chat", async (req, res) => {
         region: l.region,
         aforo: l.aforo,
         genero: l.genero,
+        email_contacto: l.email_contacto,
+        telefono: l.telefono,
+        instagram: l.instagram,
+        fuente: l.fuente,
         estado: l.estado,
         notas: l.notas,
+        fecha_envio: l.fecha_envio,
+        fecha_ultima_respuesta: l.fecha_ultima_respuesta,
         hasPitch: !!l.pitch_generado
       })),
       rehearsals: state.rehearsals,
@@ -237,10 +262,16 @@ El JSON de respuesta debe tener la siguiente forma exacta:
 }
 
 Puedes proponer acciones como:
-1. 'propose_lead_approval' para salas en 'pendiente_aprobacion'.
-2. 'propose_status_change' con 'leadId' y 'newStatus' para cambiar la clasificación de interés de una sala.
-3. 'propose_rehearsal' para proponer un ensayo.
-4. 'propose_agent_trigger' con 'agentName' (debe ser obligatoriamente 'Scout', 'Scout Descubridor', 'Redactor', 'Enviador' o 'Lector') y un objeto 'params' opcional.
+1. 'propose_lead_approval' para salas en 'pendiente_aprobacion' (con 'leadId' y 'leadName').
+2. 'propose_status_change' con 'leadId', 'leadName' y 'newStatus' (por ejemplo 'interesado', 'negociando', 'no_interesado') para cambiar la clasificación de interés de una sala.
+3. 'propose_concert' para agendar/añadir un concierto o bolo en la agenda de la banda y Google Sheets (incluye 'description', opcional 'leadId', y un objeto 'concert' con { fecha: 'YYYY-MM-DD', ciudad: '...', sala: '...', cache: 0, aforo_total: 200, contrato_firmado: true, estado_pago: 'pendiente', notas: '...', tipo: 'sala' }).
+4. 'propose_rehearsal' para proponer/agendar un ensayo (incluye 'description' y un objeto 'rehearsal' con { fecha: 'YYYY-MM-DD', hora: '19:00', lugar: '...', asistentes: ['Banda'], notas: '...', estado: 'programado' }).
+5. 'propose_band' para añadir una nueva banda al CRM (incluye 'description' y un objeto 'band' con { nombre_banda: '...', estilo_musical: '...', localizacion: '...', estado_relacion: 'nuevo', contacto_nombre: '', email: '', telefono: '', instagram: '', notas_colaboracion: '' }).
+${agentsEnabled ? `5. 'propose_agent_trigger' con 'agentName' (debe ser obligatoriamente 'Scout', 'Scout Descubridor', 'Redactor', 'Enviador' o 'Lector') y un objeto 'params' opcional. Usar SOLO cuando el usuario solicite explícitamente ejecutar/lanzar un agente de GitHub Actions.` : `5. [MODO AGENTES GITHUB ACTIONS DESACTIVADO]: El modo de ejecuciones externas de Python está DESACTIVADO por el usuario. NUNCA propongas 'propose_agent_trigger' bajo ningún concepto.`}
+
+REGLA DE AGENTES Y GEMINI: ${agentsEnabled ? `Si el usuario indica que NO quiere usar o lanzar agentes de Python ("no quiero agentes", "sin agentes", "hazlo tú"), NUNCA propongas 'propose_agent_trigger'.` : `El modo Agentes Python está desactivado en la interfaz. NUNCA menciones lanzar agentes de Python ni propongas 'propose_agent_trigger'. Tú como Gemini gestionas directamente la redacción de pitches, búsquedas, filtrados y consultas.`}
+
+REGLA IMPORTANTE: Si el usuario te pide agendar, añadir o programar un concierto o bolo (por ejemplo "añade concierto en Sala Villanos" o "hemos cerrado bolo"), SIEMPRE debes incluir una acción 'propose_concert' con el objeto 'concert' relleno. No te limites solo a cambiar el estado del lead, crea la acción 'propose_concert' para que el concierto se guarde en la pestaña 'conciertos' de Google Sheets.
 
 Si no hay ninguna acción lógica que proponer, devuelve 'proposedActions' como una lista vacía [].
 Nunca inventories datos. Si el usuario pregunta por algo que no está en el JSON de estado, indícale amablemente que no tienes registro de ello.`;
@@ -292,29 +323,19 @@ Nunca inventories datos. Si el usuario pregunta por algo que no está en el JSON
       }
     }
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.5-pro'];
     let response: any = null;
     let lastError: any = null;
 
-    for (const modelName of modelsToTry) {
-      try {
-        console.log(`[Gemini API] Intentando generar contenido usando el modelo: ${modelName}...`);
-        response = await client.models.generateContent({
-          model: modelName,
-          contents: contents,
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json'
-          }
-        });
-        if (response) {
-          console.log(`[Gemini API] ¡Éxito al responder con el modelo: ${modelName}!`);
-          break;
+    try {
+      response = await generateContentWithFallback(client, {
+        contents: contents,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json'
         }
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`[Gemini API] Falló el modelo '${modelName}': ${err.message || err}`);
-      }
+      });
+    } catch (err: any) {
+      lastError = err;
     }
 
     if (!response) {
@@ -324,11 +345,12 @@ Nunca inventories datos. Si el usuario pregunta por algo que no está en el JSON
       let reply = "⚠️ **Servicio de Inteligencia Artificial No Disponible Temporalmente**\n\n";
       
       if (errMessage.includes("quota") || errMessage.includes("exhausted") || errMessage.includes("429") || errMessage.includes("limit")) {
-        reply += `El límite de peticiones gratuitas de Google Gemini para este entorno se ha superado temporalmente (Error: Quota Exceeded).\n\n` +
-                 `**¿Cómo solucionarlo para seguir usando el asistente?**\n` +
-                 `1. **Configura tu propia clave de API de Gemini**: Consigue una clave gratuita en [Google AI Studio](https://aistudio.google.com/), añádela en la pestaña de configuración del panel de la derecha de tu pantalla como la variable de entorno \`GEMINI_API_KEY\`, y reinicia el servidor.\n` +
-                 `2. **Espera un poco**: Los límites de la cuota gratuita suelen restablecerse automáticamente tras unos minutos.\n\n` +
-                 `*Mientras tanto, puedes seguir operando todo el panel de control, aprobar correos de presentación de salas, cambiar clasificaciones y coordinar tu logística con total normalidad.*`;
+        reply += `El límite de peticiones de Google Gemini para la clave actual se ha alcanzado (Error: Quota Exceeded / Rate Limit).\n\n` +
+                 `**Explicación y Solución:**\n` +
+                 `1. **Clave compartida por defecto**: El entorno de vista previa utiliza una clave gratuita con un límite estricto de **20 peticiones al día por proyecto** (\`GenerateRequestsPerDay-FreeTier\`).\n` +
+                 `2. **Usa tu clave personal de Google AI Studio**: Ve a [aistudio.google.com](https://aistudio.google.com/), crea una API Key (empieza por \`AIzaSy...\`) e introdúcela en la sección de **Settings / Variables de entorno** como \`GEMINI_API_KEY\`. Tu clave personal tiene una cuota diaria mucho más amplia (1,500 solicitudes/día gratis).\n` +
+                 `3. **Reinicio de cuota**: Si estás usando la clave por defecto, la cuota se restablecerá automáticamente.\n\n` +
+                 `*Nota: Todas las demás funciones del panel (Google Sheets, gestión de salas, agenda de ensayos y envío de correos) siguen funcionando con normalidad.*`;
       } else {
         reply += `Ha ocurrido un error inesperado al conectar con Google Gemini:\n\n` +
                  `\`\`\`\n${errMessage}\n\`\`\`\n\n` +
@@ -372,12 +394,29 @@ Nunca inventories datos. Si el usuario pregunta por algo que no está en el JSON
       });
     }
 
-    const textResult = response.text || "";
+    let textResult = "";
+    try {
+      textResult = response.text || "";
+    } catch (_) {
+      try {
+        textResult = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      } catch (__) {
+        textResult = "";
+      }
+    }
+
+    if (!textResult) {
+      textResult = "No se pudo obtener un texto claro del modelo en este momento.";
+    }
+
     let parsed;
     try {
       parsed = safeParseJson(textResult);
-      if (!parsed || typeof parsed !== "object" || !parsed.text) {
-        parsed = { text: textResult, proposedActions: [] };
+      if (!parsed || typeof parsed !== "object" || typeof parsed.text !== "string") {
+        parsed = {
+          text: typeof parsed?.text === "string" ? parsed.text : textResult,
+          proposedActions: Array.isArray(parsed?.proposedActions) ? parsed.proposedActions : []
+        };
       }
     } catch (parseErr) {
       console.warn("[Gemini API] No se pudo parsear el JSON de respuesta. Usando texto plano en su lugar:", parseErr);
@@ -385,9 +424,12 @@ Nunca inventories datos. Si el usuario pregunta por algo que no está en el JSON
     }
     res.json(parsed);
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in Gemini API chat proxy:", error);
-    res.status(500).json({ error: "Fallo en la comunicación con el asistente virtual", details: String(error) });
+    res.json({
+      text: `⚠️ **Aviso del Mánager Virtual AI:** Ocurrió un inconveniente al procesar tu consulta (${error?.message || error}). Por favor, vuelve a intentarlo.`,
+      proposedActions: []
+    });
   }
 });
 
@@ -398,19 +440,18 @@ router.post("/write-reels-copy", async (req, res) => {
   
   const baseIdea = idea || "un ensayo improvisando ritmos ska";
   const prompt = style === "hype" 
-    ? `Eres el redactor de redes de la banda "Bakandeya". Genera una publicación para Instagram Reels o TikTok con un estilo de "Balkan Hype" salvaje, enérgico, callejero, de fiesta descontrolada y directo sudoroso. Usa muchos emojis de fuego, instrumentos de metal, trompetas, saltos, y hashtags de balkan ska, mestizaje, trompetas locas y rock. Sé muy cañero, breve y directo. La idea es: "${baseIdea}"`
-    : `Eres el redactor de redes de la banda "Bakandeya". Genera una publicación para Instagram Reels o TikTok con un estilo de "Reggae Chill", relajado, místico, fumeta pero profesional, de buenas vibras veraniegas, paz, amor y conexión con el ritmo de la tierra. Usa emojis de paz, sol, plantas, nubes de humo discretas, olas y hashtags de roots reggae, reggae español, mestizaje y ska tranquilo. Sé breve y deja que la vibra fluya. La idea es: "${baseIdea}"`;
+    ? `Eres el redactor de redes de la banda "Bakandeya". Genera una publicación para Instagram Reels o TikTok con un estilo de "Balkan Hype" salvaje, enérgico, callejero, de fiesta descontrolada y directo sudoroso. Usa emojis de fuego, violín, sintetizadores, percusión, saltos, y hashtags de balkan ska, mestizaje, violin en directo, sintetizadores y rock. REGLA OBLIGATORIA: Bakandeya NO TIENE instrumentos de viento (trompetas, saxos, trombones); NUNCA uses la palabra vientos, trompetas, ni saxos. Sé muy cañero, breve y directo. La idea es: "${baseIdea}"`
+    : `Eres el redactor de redes de la banda "Bakandeya". Genera una publicación para Instagram Reels o TikTok con un estilo de "Reggae Chill", relajado, místico, de buenas vibras veraniegas, paz, amor y conexión con el ritmo de la tierra. Usa emojis de paz, sol, violín, plantas, olas y hashtags de roots reggae, reggae español, mestizaje y ska tranquilo. REGLA OBLIGATORIA: Bakandeya NO TIENE instrumentos de viento; NUNCA uses vientos, trompetas ni saxos. Sé breve y deja que la vibra fluya. La idea es: "${baseIdea}"`;
 
   if (!client) {
     const copy = style === "hype"
-      ? `🔥 ¡ESTO VA A EXPLODAR! 🎺💥 Nos hemos encerrado en el local y ha salido esta LOCURA DE RITMO BALKÁNICO. Si te gusta sudar y saltar hasta romper la zapatilla, guárdate este vídeo. ¡Nos vemos en los escenarios de la gira Bakandeya 2026! 🥁🚀\n\n#Bakandeya #BalkanSka #Fiesta #Mestizaje #TrompetasLocas #Directo`
+      ? `🔥 ¡ESTO VA A EXPLODAR! 🎻💥 Nos hemos encerrado en el local y ha salido esta LOCURA DE RITMO BALKÁNICO. Si te gusta sudar y saltar con violín virtuoso y sintetizadores hasta romper la zapatilla, guárdate este vídeo. ¡Nos vemos en los escenarios de la gira Bakandeya 2026! 🥁🚀\n\n#Bakandeya #BalkanSka #Fiesta #Mestizaje #ViolinEnDirecto #Directo`
       : `✨ Buenas vibras y buenas energías. 🌴 Sol, ritmo y espacio para respirar con Bakandeya. La música sana y une. ¿Sientes el groove? Dejad un comentario con vuestra energía. 🌿✌️\n\n#Bakandeya #ReggaeChill #RootsReggae #BuenasVibras #MusicaReal #Groove`;
     return res.json({ copy });
   }
 
   try {
-    const response = await client.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateContentWithFallback(client, {
       contents: prompt
     });
     res.json({ copy: response.text });

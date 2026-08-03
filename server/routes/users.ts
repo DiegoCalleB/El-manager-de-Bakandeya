@@ -22,7 +22,11 @@ router.post("/auth/login", (req, res) => {
   }
 
   const token = crypto.randomBytes(32).toString("hex");
-  ACTIVE_SESSIONS[token] = { userId: user.id, createdAt: Date.now() };
+  const sessionObj = { userId: user.id, createdAt: Date.now() };
+  ACTIVE_SESSIONS[token] = sessionObj;
+  if (!state.sessions) state.sessions = {};
+  state.sessions[token] = sessionObj;
+  saveState(state);
 
   const { passwordHash, salt, ...safeUser } = user;
   res.json({ token, user: safeUser });
@@ -31,14 +35,16 @@ router.post("/auth/login", (req, res) => {
 // Verify current session
 router.get("/auth/me", (req, res) => {
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.query.token as string);
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.headers["x-auth-token"] as string || req.query.token as string);
 
-  if (!token || !ACTIVE_SESSIONS[token]) {
+  const state = loadState();
+  const session = (token && ACTIVE_SESSIONS[token]) || (token && state.sessions && state.sessions[token]);
+
+  if (!token || !session) {
     return res.status(401).json({ error: "Sesión no válida o expirada" });
   }
 
-  const session = ACTIVE_SESSIONS[token];
-  const state = loadState();
+  if (token) ACTIVE_SESSIONS[token] = session;
   const user = state.users.find((u: any) => u.id === session.userId);
 
   if (!user) {
@@ -52,8 +58,13 @@ router.get("/auth/me", (req, res) => {
 // Logout
 router.post("/auth/logout", (req, res) => {
   const { token } = req.body;
-  if (token && ACTIVE_SESSIONS[token]) {
+  if (token) {
     delete ACTIVE_SESSIONS[token];
+    const state = loadState();
+    if (state.sessions && state.sessions[token]) {
+      delete state.sessions[token];
+      saveState(state);
+    }
   }
   res.json({ success: true });
 });

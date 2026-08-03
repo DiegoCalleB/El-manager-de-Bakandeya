@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 560" width="100%" height="100%">
+  <defs>
+    <!-- Background Dark Atmosphere -->
+    <radialGradient id="bgGlow" cx="50%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#1f1a10"/>
+      <stop offset="40%" stop-color="#121116"/>
+      <stop offset="100%" stop-color="#070709"/>
+    </radialGradient>
+
+    <!-- Metallic Gold Ribbon Gradient -->
+    <linearGradient id="goldRibbon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff5c0"/>
+      <stop offset="20%" stop-color="#fcd868"/>
+      <stop offset="50%" stop-color="#e5b128"/>
+      <stop offset="85%" stop-color="#be8513"/>
+      <stop offset="100%" stop-color="#8a5c05"/>
+    </linearGradient>
+
+    <!-- Soundwave Equalizer Bars Gradient -->
+    <linearGradient id="soundwaveGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fffde0"/>
+      <stop offset="30%" stop-color="#f2ca50"/>
+      <stop offset="100%" stop-color="#d49b13"/>
+    </linearGradient>
+
+    <!-- Stage Spotlight Beams Gradients -->
+    <linearGradient id="spotlightLeft" x1="50%" y1="0%" x2="20%" y2="100%">
+      <stop offset="0%" stop-color="#ffe885" stop-opacity="0.95"/>
+      <stop offset="30%" stop-color="#f5c238" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#d4900a" stop-opacity="0.0"/>
+    </linearGradient>
+
+    <linearGradient id="spotlightCenter" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.98"/>
+      <stop offset="20%" stop-color="#ffe082" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#e69c0e" stop-opacity="0.0"/>
+    </linearGradient>
+
+    <linearGradient id="spotlightRight" x1="50%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#ffe885" stop-opacity="0.9"/>
+      <stop offset="30%" stop-color="#f5c238" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#d4900a" stop-opacity="0.0"/>
+    </linearGradient>
+
+    <!-- Soft Fog Haze Filter -->
+    <filter id="stageHaze" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <filter id="glowEffect" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Clip Path for Concert Stage inside lower loop of 'B' -->
+    <clipPath id="lowerLoopClip">
+      <path d="M 180 215 H 310 C 380 215, 410 265, 410 325 C 410 385, 365 435, 290 435 H 180 V 215 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="100%" height="100%" fill="url(#bgGlow)" rx="20"/>
+
+  <!-- Golden Ambient Stage Glow in Background -->
+  <circle cx="250" cy="220" r="180" fill="#f2ca50" opacity="0.08" filter="url(#glowEffect)"/>
+
+  <!-- LOGO SYMBOL GROUP -->
+  <g transform="translate(0, 5)">
+
+    <!-- AI Sparkle Star (Top Right) -->
+    <g filter="url(#glowEffect)">
+      <path d="M 370 45 Q 370 77, 338 77 Q 370 77, 370 109 Q 370 77, 402 77 Q 370 77, 370 45 Z" fill="url(#goldRibbon)"/>
+      <circle cx="370" cy="77" r="4" fill="#ffffff"/>
+    </g>
+
+    <!-- Equalizer Soundwave Bars (Left Vertical Stem) -->
+    <g fill="url(#soundwaveGrad)">
+      <rect x="95" y="175" width="18" height="70" rx="9"/>
+      <rect x="125" y="125" width="18" height="170" rx="9"/>
+      <rect x="155" y="145" width="18" height="130" rx="9"/>
+      <rect x="185" y="185" width="18" height="50" rx="9"/>
+    </g>
+
+    <!-- Main Golden 'B' Ribbon Outer Path -->
+    <path d="M 180 65 H 290 C 350 65, 380 105, 380 145 C 380 185, 345 215, 290 215 H 180 M 180 215 H 310 C 380 215, 410 265, 410 325 C 410 385, 365 435, 290 435 H 125 C 110 435, 98 423, 98 408 C 98 393, 110 381, 125 381 H 180" 
+          stroke="url(#goldRibbon)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#glowEffect)"/>
+
+    <!-- CONCERT STAGE INSIDE LOWER LOOP -->
+    <g clip-path="url(#lowerLoopClip)">
+      <!-- Stage Background Dark Warm Amber -->
+      <rect x="160" y="200" width="260" height="250" fill="#140f06"/>
+
+      <!-- Stage Spotlight Beams -->
+      <g filter="url(#stageHaze)">
+        <!-- Left Beam -->
+        <polygon points="220,215 150,435 270,435" fill="url(#spotlightLeft)"/>
+        <!-- Center Beam -->
+        <polygon points="295,215 230,435 360,435" fill="url(#spotlightCenter)"/>
+        <!-- Right Beam -->
+        <polygon points="360,215 320,435 420,435" fill="url(#spotlightRight)"/>
+      </g>
+
+      <!-- Spotlight Flares on Stage Origin -->
+      <ellipse cx="220" cy="218" rx="14" ry="6" fill="#fff5c0" opacity="0.9"/>
+      <ellipse cx="295" cy="218" rx="18" ry="7" fill="#ffffff" opacity="0.95"/>
+      <ellipse cx="360" cy="218" rx="14" ry="6" fill="#fff5c0" opacity="0.9"/>
+
+      <!-- Crowd Silhouettes (Dark Shadows against Bright Stage Lights) -->
+      <!-- Back Crowd Row -->
+      <path d="M 160 435 Q 180 395, 200 420 Q 220 385, 240 410 Q 265 375, 285 405 Q 310 380, 330 410 Q 355 385, 375 415 Q 395 390, 420 435 Z" fill="#18130e"/>
+
+      <!-- Front Crowd Row with Detailed Raised Arms & Rock Horns -->
+      <path d="M 160 435 
+               C 170 410, 180 415, 190 430
+               C 200 395, 212 400, 222 435
+               C 230 380, 248 385, 258 435
+               C 270 365, 288 370, 298 435
+               C 310 375, 328 380, 338 435
+               C 350 390, 368 395, 378 435
+               C 390 405, 405 410, 420 435
+               Z" fill="#08070a"/>
+
+      <!-- Raised Rock Horns (🤘) Arms Silhouettes -->
+      <g stroke="#08070a" stroke-width="5" stroke-linecap="round">
+        <!-- Arm 1 Left -->
+        <path d="M 205 425 L 202 385 M 200 378 L 200 388 M 205 378 L 205 388"/>
+        <!-- Arm 2 Center Left (Rock Horns) -->
+        <path d="M 252 425 L 255 365 M 250 355 L 252 368 M 259 355 L 257 368"/>
+        <!-- Arm 3 Center Main (Big Rock Horns in middle spotlight) -->
+        <path d="M 292 425 L 295 350 M 288 338 L 292 355 M 299 338 L 296 355"/>
+        <!-- Arm 4 Center Right -->
+        <path d="M 332 425 L 330 362 M 326 352 L 328 365 M 334 352 L 332 365"/>
+        <!-- Arm 5 Right -->
+        <path d="M 372 425 L 375 380 M 371 372 L 373 382 M 378 372 L 376 382"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- BRAND TYPOGRAPHY -->
+  <g text-anchor="middle">
+    <!-- BANDMANAGER.ai -->
+    <text x="250" y="482" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', Roboto, sans-serif" font-weight="900" font-size="34" letter-spacing="2.5">
+      <tspan fill="#ffffff">BANDMANAGER</tspan><tspan fill="#f2ca50">.ai</tspan>
+    </text>
+
+    <!-- IA AGÉNTICA PARA TU BANDA -->
+    <text x="250" y="522" fill="#f2ca50" font-family="'SF Mono', 'Roboto Mono', Consolas, monospace" font-weight="800" font-size="13" letter-spacing="5">
+      IA AGÉNTICA PARA TU BANDA
+    </text>
+  </g>
+</svg>

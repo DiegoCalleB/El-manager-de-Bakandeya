@@ -1,6 +1,6 @@
 {
-  "name": "Bakandeya Virtual Manager",
-  "description": "Plataforma integral de gestión y manager virtual para la banda de música Bakandeya. Controla ensayos, conciertos, redes, contratos, facturas y logística con ayuda de Inteligencia Artificial.",
-  "requestFramePermissions": ["microphone"],
+  "name": "BandManager.ai",
+  "description": "Plataforma SaaS & Mánager Virtual con Inteligencia Artificial Agéntica para bandas de música y artistas. Automatiza booking, prensa, creación de Reels, logística de giras y finanzas.",
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

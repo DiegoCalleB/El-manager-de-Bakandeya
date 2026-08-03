@@ -1,8 +1,9 @@
+import crypto from "crypto";
 import { google } from "googleapis";
-import { Lead, EmailMessage, Concert, Payment, Rehearsal, SocialPost, SocialMetric } from "../src/types.js";
+import { Lead, EmailMessage, Concert, Payment, Rehearsal, SocialPost, SocialMetric, Song, Setlist } from "../src/types.js";
 
 export const DEFAULT_LEADS_HEADERS = [
-  "id", "nombre_sala", "ciudad", "region", "aforo", "genero", "tipo",
+  "id", "nombre_sala", "ciudad", "region", "direccion", "aforo", "genero", "tipo",
   "email_contacto", "telefono", "website", "instagram", "contacto_nombre",
   "fuente", "estado", "pitch_generado", "fecha_envio", "fecha_ultima_respuesta",
   "contexto_extra", "notas", "hilo_emails"
@@ -64,9 +65,10 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
   };
 
   const idVal = String(getVal("id") || "");
-  const nombreSalaVal = String(getVal("nombre_sala") || "");
+  const nombreSalaVal = String(getVal("nombre_sala") || getVal("nombre_medio") || getVal("medio") || getVal("nombre") || "");
   const ciudadVal = String(getVal("ciudad") || "");
   const regionVal = String(getVal("region") || "");
+  const direccionVal = String(getVal("direccion") || getVal("dir") || getVal("direccion_sala") || getVal("domicilio") || "");
   const aforoVal = Number(getVal("aforo")) || 0;
   const generoVal = String(getVal("genero") || "");
   const tipoVal = normalizeLeadType(getVal("tipo"));
@@ -98,6 +100,7 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
     nombre_sala: nombreSalaVal,
     ciudad: ciudadVal,
     region: regionVal,
+    direccion: direccionVal || undefined,
     aforo: aforoVal,
     genero: generoVal,
     tipo: tipoVal,
@@ -155,6 +158,12 @@ export function leadToRowDynamic(
         break;
       case "region":
         row[idx] = lead.region || "";
+        break;
+      case "direccion":
+      case "dir":
+      case "direccion_sala":
+      case "domicilio":
+        row[idx] = lead.direccion || "";
         break;
       case "aforo":
         row[idx] = lead.aforo || 0;
@@ -239,23 +248,56 @@ export function rowToMessage(row: any[]): { leadId: string; msg: any } {
   };
 }
 
+export function getSpreadsheetId(): string | null {
+  const raw = (
+    process.env.SPREADSHEET_ID ||
+    process.env.GOOGLE_SPREADSHEET_ID ||
+    process.env.SPREADSHEET_URL ||
+    ""
+  ).trim();
+
+  if (!raw) return null;
+  let val = raw;
+
+  // Strip wrapping quotes
+  while (
+    (val.startsWith('"') && val.endsWith('"')) ||
+    (val.startsWith("'") && val.endsWith("'"))
+  ) {
+    val = val.slice(1, -1).trim();
+  }
+
+  // Extract ID from full Google Sheet URL e.g. https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
+  const urlMatch = val.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (urlMatch && urlMatch[1]) {
+    return urlMatch[1];
+  }
+
+  return val || null;
+}
+
 export function parsePrivateKey(rawKey?: string): string | null {
   if (!rawKey) return null;
   let key = rawKey.trim();
 
-  // If passed as a JSON object string
-  if (key.startsWith("{") && key.endsWith("}")) {
+  // If passed as a JSON object string or contains JSON
+  if (key.includes("{") && key.includes("}")) {
     try {
-      const parsed = JSON.parse(key);
+      const startIdx = key.indexOf("{");
+      const endIdx = key.lastIndexOf("}") + 1;
+      const jsonCandidate = key.substring(startIdx, endIdx);
+      const parsed = JSON.parse(jsonCandidate);
       if (parsed.private_key) {
         key = parsed.private_key;
+      } else if (parsed.privateKey) {
+        key = parsed.privateKey;
       }
     } catch {
       // Not JSON
     }
   }
 
-  // Strip wrapping quotes repeatedly
+  // Remove wrapping quotes repeatedly
   while (
     (key.startsWith('"') && key.endsWith('"')) ||
     (key.startsWith("'") && key.endsWith("'"))
@@ -263,32 +305,178 @@ export function parsePrivateKey(rawKey?: string): string | null {
     key = key.slice(1, -1).trim();
   }
 
-  // Replace escaped newlines
-  key = key.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\"/g, '"');
+  // Remove literal escaped newlines (\n, \r, \\n, \\r) and actual newlines completely
+  key = key
+    .split("\\n").join("")
+    .split("\\r").join("")
+    .split("\n").join("")
+    .split("\r").join("")
+    .replace(/\\"/g, '"')
+    .trim();
 
-  // If base64 encoded
-  if (!key.includes("-----BEGIN") && key.length > 100) {
+  // Check if key is a base64-encoded JSON or base64-encoded PEM string
+  // (Base64 for '{"' is 'ey', base64 for '-----BEGIN' is 'LS0t')
+  if (!key.includes("BEGIN") && (key.startsWith("ey") || key.startsWith("LS0t") || key.includes("LS0t"))) {
     try {
-      const decoded = Buffer.from(key, "base64").toString("utf8");
-      if (decoded.includes("-----BEGIN")) {
-        key = decoded;
+      const decodedStr = Buffer.from(key, "base64").toString("utf8");
+      if (decodedStr.includes("BEGIN") || decodedStr.includes("PRIVATE KEY") || decodedStr.includes("{")) {
+        key = decodedStr;
+        console.log("[Sheets Auth Fix] Decoded base64 PEM/JSON key string.");
       }
     } catch {
-      // Not base64
+      // ignore
     }
   }
 
-  if (!key.includes("-----BEGIN") || !key.includes("-----END")) {
-    console.warn("[Google Sheets Auth] GOOGLE_PRIVATE_KEY does not contain valid PEM delimiters (-----BEGIN PRIVATE KEY-----).");
-    return null;
+  // Check again for JSON if base64 decoded
+  if (key.includes("{") && key.includes("}")) {
+    try {
+      const startIdx = key.indexOf("{");
+      const endIdx = key.lastIndexOf("}") + 1;
+      const jsonCandidate = key.substring(startIdx, endIdx);
+      const parsed = JSON.parse(jsonCandidate);
+      if (parsed.private_key) {
+        key = parsed.private_key;
+      } else if (parsed.privateKey) {
+        key = parsed.privateKey;
+      }
+    } catch {
+      // ignore
+    }
   }
 
-  return key;
+  // Extract base64 body if PEM headers exist
+  const pemMatch = key.match(/(-----BEGIN\s+[A-Z0-9\s_]+-----)([\s\S]+?)(-----END\s+[A-Z0-9\s_]+-----)/i);
+
+  let rawBody = "";
+  if (pemMatch) {
+    rawBody = pemMatch[2];
+  } else {
+    rawBody = key;
+  }
+
+  let cleanBody = rawBody
+    .split("\\n").join("")
+    .split("\\r").join("")
+    .split("\n").join("")
+    .split("\r").join("")
+    .replace(/\\"/g, '"')
+    .trim();
+
+  cleanBody = cleanBody.replace(/[^A-Za-z0-9+/=]/g, "");
+
+  // Strip leading artifact characters (like 'n' or 'rn') before 'MII' (standard PKCS#8 DER base64 sequence header)
+  const miiIdx = cleanBody.indexOf("MII");
+  if (miiIdx > 0 && miiIdx < 10) {
+    console.log(`[Sheets Auth Fix] Stripping ${miiIdx} artifact characters before 'MII' base64 header.`);
+    cleanBody = cleanBody.substring(miiIdx);
+  }
+
+  // Ensure base64 padding is valid (length multiple of 4)
+  while (cleanBody.length % 4 !== 0) {
+    cleanBody += "=";
+  }
+
+  if (cleanBody.length > 30) {
+    const lines = cleanBody.match(/.{1,64}/g) || [cleanBody];
+    const formattedKey = `-----BEGIN PRIVATE KEY-----\n${lines.join("\n")}\n-----END PRIVATE KEY-----\n`;
+
+    // Validate with crypto.createPrivateKey
+    try {
+      const pKey = crypto.createPrivateKey(formattedKey);
+      console.log(`[Sheets Auth Fix] Private key validated successfully! (${pKey.type} - ${pKey.asymmetricKeyType})`);
+      return formattedKey;
+    } catch (err: any) {
+      console.warn("[Sheets Auth Fix] Standard PKCS#8 format failed validation:", err.message || err);
+
+      // Try RSA Private Key format
+      try {
+        const rsaKey = `-----BEGIN RSA PRIVATE KEY-----\n${lines.join("\n")}\n-----END RSA PRIVATE KEY-----\n`;
+        const pKey2 = crypto.createPrivateKey(rsaKey);
+        console.log(`[Sheets Auth Fix] RSA private key format validated successfully! (${pKey2.type})`);
+        return rsaKey;
+      } catch (err2: any) {
+        console.warn("[Sheets Auth Fix] RSA key format failed validation:", err2.message || err2);
+      }
+
+      return formattedKey;
+    }
+  }
+
+  console.warn("[Google Sheets Auth] GOOGLE_PRIVATE_KEY does not contain valid PEM key content.");
+  return null;
 }
 
 export function getSheetsClient() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
-  const rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY;
+  let email = (
+    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+    process.env.SERVICE_ACCOUNT_EMAIL ||
+    process.env.CLIENT_EMAIL ||
+    ""
+  ).trim();
+
+  let rawPrivateKey = (
+    process.env.GOOGLE_PRIVATE_KEY ||
+    process.env.PRIVATE_KEY ||
+    ""
+  );
+
+  const possibleJsonCreds = [
+    process.env.GCP_SA_KEY,
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
+    process.env.GOOGLE_CREDENTIALS,
+    process.env.GOOGLE_SHEETS_CREDENTIALS,
+    process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON,
+    process.env.GMAIL_CREDENTIALS_JSON,
+  ];
+
+  for (const jsonCreds of possibleJsonCreds) {
+    if (jsonCreds && jsonCreds.trim().length > 0) {
+      try {
+        let rawStr = jsonCreds.trim();
+        // If base64 encoded
+        if (!rawStr.startsWith("{") && rawStr.length > 100 && !rawStr.includes(" ")) {
+          try {
+            const decoded = Buffer.from(rawStr, "base64").toString("utf-8");
+            if (decoded.includes("{") && decoded.includes("private_key")) {
+              rawStr = decoded;
+            }
+          } catch (_) {}
+        }
+        const parsed = typeof rawStr === "string" ? JSON.parse(rawStr) : rawStr;
+        if (parsed.client_email) email = parsed.client_email.trim();
+        if (parsed.private_key) rawPrivateKey = parsed.private_key;
+        if (email && rawPrivateKey) break;
+      } catch {
+        // not valid json
+      }
+    }
+  }
+
+  if (email && email.includes("{") && email.includes("}")) {
+    try {
+      const startIdx = email.indexOf("{");
+      const endIdx = email.lastIndexOf("}") + 1;
+      const parsed = JSON.parse(email.substring(startIdx, endIdx));
+      if (parsed.client_email) email = parsed.client_email.trim();
+      if (parsed.private_key && !rawPrivateKey) rawPrivateKey = parsed.private_key;
+    } catch {
+      // ignore
+    }
+  }
+
+  if (rawPrivateKey && rawPrivateKey.includes("{") && rawPrivateKey.includes("}")) {
+    try {
+      const startIdx = rawPrivateKey.indexOf("{");
+      const endIdx = rawPrivateKey.lastIndexOf("}") + 1;
+      const parsed = JSON.parse(rawPrivateKey.substring(startIdx, endIdx));
+      if (parsed.client_email && !email) email = parsed.client_email.trim();
+      if (parsed.private_key) rawPrivateKey = parsed.private_key;
+    } catch {
+      // ignore
+    }
+  }
 
   if (!email || !rawPrivateKey) {
     return null;
@@ -313,12 +501,22 @@ export function getSheetsClient() {
 }
 
 export async function ensureSheetTabExists(sheets: any, spreadsheetId: string, tabName: string) {
+  const normalized = tabName.toLowerCase();
+  if (verifiedTabsSet.has(normalized)) {
+    return;
+  }
   try {
     const meta = await sheets.spreadsheets.get({ spreadsheetId });
-    const sheetExists = meta.data.sheets?.some(
-      (s: any) => s.properties?.title?.toLowerCase() === tabName.toLowerCase()
-    );
-    if (!sheetExists) {
+    if (meta.data.sheets) {
+      meta.data.sheets.forEach((s: any) => {
+        const title = s.properties?.title;
+        if (title) verifiedTabsSet.add(title.toLowerCase());
+        if (s.properties?.sheetId !== undefined && title) {
+          sheetIdsMap.set(title.toLowerCase(), s.properties.sheetId);
+        }
+      });
+    }
+    if (!verifiedTabsSet.has(normalized)) {
       console.log(`Creating tab "${tabName}" in Google Sheet...`);
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
@@ -332,6 +530,7 @@ export async function ensureSheetTabExists(sheets: any, spreadsheetId: string, t
           ]
         }
       });
+      verifiedTabsSet.add(normalized);
     }
   } catch (error: any) {
     const errMsg = error.message || String(error);
@@ -344,15 +543,168 @@ export async function ensureSheetTabExists(sheets: any, spreadsheetId: string, t
   }
 }
 
+/**
+ * Verifies if the 'Medios' tab exists in the Google Sheet.
+ * If it does not exist, creates it with the required header columns:
+ * ID, Nombre, Tipo, Estado, Contacto, Notas.
+ */
+export async function ensureMediosSheet(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  const tabName = "Medios";
+  try {
+    const s = sheets || getSheetsClient();
+    const id = spreadsheetId || getSpreadsheetId();
+    if (!s || !id) {
+      console.log("[ensureMediosSheet] Google Sheets credentials or Spreadsheet ID not configured.");
+      return false;
+    }
+
+    await ensureSheetTabExists(s, id, tabName);
+
+    try {
+      const response = await s.spreadsheets.values.get({
+        spreadsheetId: id,
+        range: `${tabName}!A1:F1`,
+      });
+
+      const values = response.data?.values;
+      if (!values || values.length === 0 || !values[0] || values[0].length === 0) {
+        console.log(`Writing required headers to "${tabName}" tab...`);
+        const headers = ["ID", "Nombre", "Tipo", "Estado", "Contacto", "Notas"];
+        await s.spreadsheets.values.update({
+          spreadsheetId: id,
+          range: `${tabName}!A1:F1`,
+          valueInputOption: "RAW",
+          requestBody: { values: [headers] },
+        });
+        console.log(`[ensureMediosSheet] Tab "${tabName}" initialized with headers: ${headers.join(", ")}`);
+      }
+    } catch (headerErr: any) {
+      console.warn(`[ensureMediosSheet] Could not verify/write headers for "${tabName}":`, headerErr.message || headerErr);
+      const headers = ["ID", "Nombre", "Tipo", "Estado", "Contacto", "Notas"];
+      await s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: `${tabName}!A1:F1`,
+        valueInputOption: "RAW",
+        requestBody: { values: [headers] },
+      }).catch(() => {});
+    }
+
+    return true;
+  } catch (error: any) {
+    console.error(`[ensureMediosSheet] Error ensuring "${tabName}" sheet:`, error.message || error);
+    return false;
+  }
+}
+
 export async function getSheetId(sheets: any, spreadsheetId: string, tabName: string): Promise<number | null> {
+  const normalized = tabName.toLowerCase();
+  if (sheetIdsMap.has(normalized)) {
+    return sheetIdsMap.get(normalized)!;
+  }
   try {
     const meta = await sheets.spreadsheets.get({ spreadsheetId });
-    const found = meta.data.sheets?.find(
-      (s: any) => s.properties?.title?.toLowerCase() === tabName.toLowerCase()
-    );
-    return found?.properties?.sheetId ?? null;
+    if (meta.data.sheets) {
+      meta.data.sheets.forEach((s: any) => {
+        const title = s.properties?.title;
+        if (title) {
+          verifiedTabsSet.add(title.toLowerCase());
+          if (s.properties?.sheetId !== undefined) {
+            sheetIdsMap.set(title.toLowerCase(), s.properties.sheetId);
+          }
+        }
+      });
+    }
+    return sheetIdsMap.get(normalized) ?? null;
   } catch (error) {
     return null;
+  }
+}
+
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+const valuesCache = new Map<string, CacheEntry>();
+const verifiedTabsSet = new Set<string>();
+const sheetIdsMap = new Map<string, number>();
+
+export async function retrySheetsWrite<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 1500): Promise<T | null> {
+  let delay = initialDelay;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const isQuota = err?.status === 429 || err?.code === 429 || (err?.message && String(err.message).includes("Quota exceeded"));
+      if (isQuota && attempt < maxRetries - 1) {
+        console.warn(`[Google Sheets Rate Limit 429] Retrying write in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+        await new Promise(res => setTimeout(res, delay));
+        delay *= 2;
+      } else {
+        if (isQuota) {
+          console.warn(`[Google Sheets Rate Limit 429] Quota exceeded after ${maxRetries} attempts. Local state remains preserved.`);
+          return null;
+        }
+        throw err;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Perform a cached values.get request to Google Sheets API.
+ * Default TTL is 30,000ms (30 seconds).
+ * On rate limit (429 / Quota Exceeded), returns cached data if available.
+ */
+export async function getValuesCached(
+  sheets: any,
+  params: { spreadsheetId: string; range: string },
+  ttlMs = 30000
+): Promise<any> {
+  const cacheKey = `${params.spreadsheetId}:${params.range}`;
+  const now = Date.now();
+  const cached = valuesCache.get(cacheKey);
+
+  if (cached && (now - cached.timestamp < ttlMs)) {
+    return cached.data;
+  }
+
+  try {
+    const response = await sheets.spreadsheets.values.get(params);
+    valuesCache.set(cacheKey, { data: response, timestamp: now });
+    return response;
+  } catch (err: any) {
+    const isQuotaError = err?.status === 429 || 
+      err?.code === 429 || 
+      String(err?.message || "").toLowerCase().includes("quota") ||
+      String(err?.errors?.[0]?.message || "").toLowerCase().includes("quota");
+
+    if (cached) {
+      if (isQuotaError) {
+        console.warn(`[Google Sheets Cache] Límite de cuota alcanzado para '${params.range}'. Usando datos cacheados (${Math.round((now - cached.timestamp) / 1000)}s de antigüedad).`);
+      } else {
+        console.warn(`[Google Sheets Cache] Error consultando '${params.range}'. Usando datos cacheados:`, err?.message || err);
+      }
+      return cached.data;
+    }
+
+    if (isQuotaError) {
+      console.warn(`[Google Sheets Rate Limit] Excedida cuota de lectura para '${params.range}'. No hay caché previa.`);
+    }
+    throw err;
+  }
+}
+
+export function invalidateValuesCache(rangePrefix?: string) {
+  if (!rangePrefix) {
+    valuesCache.clear();
+    return;
+  }
+  for (const key of valuesCache.keys()) {
+    if (key.includes(rangePrefix)) {
+      valuesCache.delete(key);
+    }
   }
 }
 
@@ -367,32 +719,98 @@ export async function fetchLeadsFromSheet(localLeads: Lead[]): Promise<Lead[]> {
   try {
     await ensureSheetTabExists(sheets, spreadsheetId, "leads");
     await ensureSheetTabExists(sheets, spreadsheetId, "hilos_emails");
+    await ensureMediosSheet(sheets, spreadsheetId);
 
-    // Fetch full headers & rows dynamically
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "leads!A1:ZZ",
-    });
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
+    // Fetch leads tab
+    let leadsFromSheet: Lead[] = [];
+    try {
+      const response = await getValuesCached(sheets, {
+        spreadsheetId,
+        range: "leads!A1:ZZ",
+      });
+      const rows = response.data?.values;
+      if (rows && rows.length > 1) {
+        const headers = rows[0];
+        const headerMap = buildHeaderMap(headers);
+        const dataRows = rows.slice(1);
+        leadsFromSheet = dataRows.map(row => rowToLeadDynamic(row, headerMap));
+      }
+    } catch (e: any) {
+      console.error("Error reading leads tab:", e?.message || e);
+    }
+
+    // Fetch Medios tab (if present)
+    let mediosFromSheet: Lead[] = [];
+    try {
+      let responseMedios: any = null;
+      try {
+        responseMedios = await getValuesCached(sheets, {
+          spreadsheetId,
+          range: "Medios!A1:ZZ",
+        });
+      } catch (_) {
+        responseMedios = await getValuesCached(sheets, {
+          spreadsheetId,
+          range: "medios!A1:ZZ",
+        });
+      }
+      if (responseMedios?.data?.values && responseMedios.data.values.length > 1) {
+        const rows = responseMedios.data.values;
+        const headers = rows[0];
+        const headerMap = buildHeaderMap(headers);
+        const dataRows = rows.slice(1);
+        mediosFromSheet = dataRows.map(row => {
+          const l = rowToLeadDynamic(row, headerMap);
+          if (!l.tipo || l.tipo === 'sala') l.tipo = 'medio';
+          return l;
+        });
+      }
+    } catch (e: any) {
+      // Medios tab might not exist or be empty
+    }
+
+    const rawLeads = [...leadsFromSheet, ...mediosFromSheet];
+
+    if (rawLeads.length === 0) {
       console.log("Sheet is empty. Bootstrapping with dynamic headers and default leads...");
       await bootstrapSheet(sheets, spreadsheetId, localLeads);
       await bootstrapHilosEmailsSheet(sheets, spreadsheetId, localLeads);
       return localLeads;
     }
 
-    const headers = rows[0];
-    const headerMap = buildHeaderMap(headers);
-    const dataRows = rows.slice(1);
+    // Deduplicate leads by ID to prevent React duplicate key warnings
+    const seenLeadIds = new Set<string>();
+    const allSheetLeads: Lead[] = [];
+    for (const l of rawLeads) {
+      let leadId = (l.id || '').trim();
+      if (!leadId) {
+        leadId = `lead_${Math.random().toString(36).substring(2, 9)}`;
+        l.id = leadId;
+      }
+      if (!seenLeadIds.has(leadId)) {
+        seenLeadIds.add(leadId);
+        allSheetLeads.push(l);
+      } else {
+        let counter = 2;
+        let altId = `${leadId}_${counter}`;
+        while (seenLeadIds.has(altId)) {
+          counter++;
+          altId = `${leadId}_${counter}`;
+        }
+        l.id = altId;
+        seenLeadIds.add(altId);
+        allSheetLeads.push(l);
+      }
+    }
 
     // Fetch and index hilos_emails
     let messagesByLeadId: { [leadId: string]: EmailMessage[] } = {};
     try {
-      const hilosResponse = await sheets.spreadsheets.values.get({
+      const hilosResponse = await getValuesCached(sheets, {
         spreadsheetId,
         range: "hilos_emails!A1:H",
       });
-      const hilosRows = hilosResponse.data.values || [];
+      const hilosRows = hilosResponse.data?.values || [];
       if (hilosRows.length <= 1) {
         await bootstrapHilosEmailsSheet(sheets, spreadsheetId, localLeads);
         for (const lead of localLeads) {
@@ -416,8 +834,7 @@ export async function fetchLeadsFromSheet(localLeads: Lead[]): Promise<Lead[]> {
       console.error("Error reading hilos_emails tab:", e.message || e);
     }
 
-    const leads = dataRows.map(row => rowToLeadDynamic(row, headerMap));
-    for (const lead of leads) {
+    for (const lead of allSheetLeads) {
       if (messagesByLeadId[lead.id] && messagesByLeadId[lead.id].length > 0) {
         lead.hilo_emails = messagesByLeadId[lead.id].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
       } else {
@@ -430,7 +847,7 @@ export async function fetchLeadsFromSheet(localLeads: Lead[]): Promise<Lead[]> {
         }
       }
     }
-    return leads;
+    return allSheetLeads;
   } catch (error: any) {
     console.error("Error fetching leads from Google Sheet, falling back to local:", error.message || error);
     return localLeads;
@@ -482,20 +899,20 @@ export async function bootstrapHilosEmailsSheet(sheets: any, spreadsheetId: stri
 export async function syncLeadMessagesInSheet(sheets: any, spreadsheetId: string, lead: Lead) {
   if (!lead.hilo_emails || lead.hilo_emails.length === 0) return;
   try {
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "hilos_emails!A:H",
-    });
-    const rows = response.data.values || [];
+    }, 5000);
+    const rows = response.data?.values || [];
 
     if (rows.length === 0) {
       const headers = ["id", "lead_id", "nombre_sala", "fecha", "remitente", "remitente_nombre", "asunto", "mensaje"];
-      await sheets.spreadsheets.values.update({
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
         spreadsheetId,
         range: "hilos_emails!A1",
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [headers] }
-      });
+      }));
     }
 
     const existingMsgIds = new Set<string>();
@@ -509,18 +926,22 @@ export async function syncLeadMessagesInSheet(sheets: any, spreadsheetId: string
 
     if (newMessagesToAppend.length > 0) {
       const newRows = newMessagesToAppend.map(msg => messageToRow(lead.id, lead.nombre_sala, msg));
-      await sheets.spreadsheets.values.append({
+      await retrySheetsWrite(() => sheets.spreadsheets.values.append({
         spreadsheetId,
         range: "hilos_emails!A:H",
         valueInputOption: "USER_ENTERED",
         requestBody: { values: newRows }
-      });
+      }));
       console.log(`[hilos_emails] Surgical append: added ${newRows.length} new messages for lead ${lead.id}`);
     } else {
       console.log(`[hilos_emails] No new messages needed for lead ${lead.id}`);
     }
-  } catch (error) {
-    console.error(`Error appending messages for Lead ${lead.id} in Google Sheet:`, error);
+  } catch (error: any) {
+    if (error?.status === 429 || error?.code === 429 || String(error?.message || "").includes("Quota exceeded")) {
+      console.warn(`Notice appending messages for Lead ${lead.id} in Google Sheet: Quota exceeded (will retry on next sync).`);
+    } else {
+      console.error(`Error appending messages for Lead ${lead.id} in Google Sheet:`, error);
+    }
   }
 }
 
@@ -543,35 +964,43 @@ export async function verifyLeadStatusAndWrite(
   
   if (sheets && spreadsheetId) {
     try {
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: "leads!A:ZZ",
-      });
-      const rows = response.data.values;
-      if (rows && rows.length > 0) {
-        const headers = rows[0];
-        const headerMap = buildHeaderMap(headers);
-        const idColIdx = headerMap["id"];
-        const estadoColIdx = headerMap["estado"];
+      const tabsToCheck = currentLead.tipo === 'medio' ? ["Medios", "medios", "leads"] : ["leads", "Medios", "medios"];
+      for (const tabName of tabsToCheck) {
+        try {
+          const response = await getValuesCached(sheets, {
+            spreadsheetId,
+            range: `${tabName}!A:ZZ`,
+          }, 5000);
+          const rows = response.data?.values;
+          if (rows && rows.length > 0) {
+            const headers = rows[0];
+            const headerMap = buildHeaderMap(headers);
+            const idColIdx = headerMap["id"];
+            const estadoColIdx = headerMap["estado"];
 
-        if (idColIdx !== undefined) {
-          const rowIndex = rows.findIndex((row, index) => index > 0 && String(row[idColIdx] || "") === id);
-          if (rowIndex !== -1) {
-            const sheetEstado = estadoColIdx !== undefined && estadoColIdx < rows[rowIndex].length ? rows[rowIndex][estadoColIdx] : "nuevo";
-            
-            if (expectedStatus && normalizeLeadStatus(sheetEstado) !== normalizeLeadStatus(expectedStatus)) {
-              console.warn(`Race condition avoided: Lead ${id} is in state '${sheetEstado}', but expected '${expectedStatus}'`);
-              
-              state.leads[idx] = rowToLeadDynamic(rows[rowIndex], headerMap);
-              saveState(state);
-              
-              return { 
-                success: false, 
-                error: `El estado de la sala en Google Sheets ha cambiado a '${sheetEstado}' en paralelo por otro usuario o cron job. Se han sincronizado los datos locales. Por favor, cancela y recarga.`,
-                lead: state.leads[idx]
-              };
+            if (idColIdx !== undefined) {
+              const rowIndex = rows.findIndex((row: any[], index: number) => index > 0 && String(row[idColIdx] || "") === id);
+              if (rowIndex !== -1) {
+                const sheetEstado = estadoColIdx !== undefined && estadoColIdx < rows[rowIndex].length ? rows[rowIndex][estadoColIdx] : "nuevo";
+                
+                if (expectedStatus && normalizeLeadStatus(sheetEstado) !== normalizeLeadStatus(expectedStatus)) {
+                  console.warn(`Race condition avoided: Lead ${id} is in state '${sheetEstado}', but expected '${expectedStatus}'`);
+                  
+                  state.leads[idx] = rowToLeadDynamic(rows[rowIndex], headerMap);
+                  saveState(state);
+                  
+                  return { 
+                    success: false, 
+                    error: `El estado en Google Sheets (${tabName}) ha cambiado a '${sheetEstado}' en paralelo por otro usuario o cron job. Se han sincronizado los datos locales. Por favor, recarga.`,
+                    lead: state.leads[idx]
+                  };
+                }
+                break;
+              }
             }
           }
+        } catch (_) {
+          // Tab might not exist, proceed to next
         }
       }
     } catch (error) {
@@ -595,52 +1024,60 @@ export async function updateLeadInSheet(lead: Lead) {
   if (!sheets || !spreadsheetId) return;
 
   try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "leads!A1:ZZ",
-    });
-    const rows = response.data.values;
-    if (!rows || rows.length === 0) {
-      await appendLeadToSheet(lead);
-      return;
-    }
+    const tabsToCheck = lead.tipo === 'medio' ? ["Medios", "medios", "leads"] : ["leads", "Medios", "medios"];
+    let updated = false;
 
-    const headers = rows[0];
-    const headerMap = buildHeaderMap(headers);
-    const idColIdx = headerMap["id"];
+    for (const tabName of tabsToCheck) {
+      try {
+        const response = await getValuesCached(sheets, {
+          spreadsheetId,
+          range: `${tabName}!A1:ZZ`,
+        }, 5000);
+        const rows = response.data?.values;
+        if (!rows || rows.length === 0) continue;
 
-    if (idColIdx === undefined) {
-      console.error("Could not find 'id' column in leads sheet headers.");
-      return;
-    }
+        const headers = rows[0];
+        const headerMap = buildHeaderMap(headers);
+        const idColIdx = headerMap["id"];
 
-    let rowIndex = -1;
-    for (let i = 1; i < rows.length; i++) {
-      if (String(rows[i][idColIdx] || "") === lead.id) {
-        rowIndex = i;
-        break;
+        if (idColIdx === undefined) continue;
+
+        let rowIndex = -1;
+        for (let i = 1; i < rows.length; i++) {
+          if (String(rows[i][idColIdx] || "") === lead.id) {
+            rowIndex = i;
+            break;
+          }
+        }
+
+        if (rowIndex !== -1) {
+          const sheetRowNumber = rowIndex + 1;
+          const existingRow = rows[rowIndex];
+          const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
+          const updatedRow = leadToRowDynamic(lead, headers, hilosSheetId, existingRow);
+
+          const endColLetter = getColumnLetter(updatedRow.length - 1);
+          await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${tabName}!A${sheetRowNumber}:${endColLetter}${sheetRowNumber}`,
+            valueInputOption: "USER_ENTERED",
+            requestBody: {
+              values: [updatedRow]
+            }
+          }));
+          console.log(`Successfully updated Lead ${lead.id} in sheet tab ${tabName} row ${sheetRowNumber}`);
+
+          invalidateValuesCache(tabName);
+          await syncLeadMessagesInSheet(sheets, spreadsheetId, lead);
+          updated = true;
+          break;
+        }
+      } catch (_) {
+        // Tab might not exist yet
       }
     }
 
-    if (rowIndex !== -1) {
-      const sheetRowNumber = rowIndex + 1;
-      const existingRow = rows[rowIndex];
-      const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
-      const updatedRow = leadToRowDynamic(lead, headers, hilosSheetId, existingRow);
-
-      const endColLetter = getColumnLetter(updatedRow.length - 1);
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `leads!A${sheetRowNumber}:${endColLetter}${sheetRowNumber}`,
-        valueInputOption: "USER_ENTERED",
-        requestBody: {
-          values: [updatedRow]
-        }
-      });
-      console.log(`Successfully updated Lead ${lead.id} dynamically at sheet row ${sheetRowNumber}`);
-
-      await syncLeadMessagesInSheet(sheets, spreadsheetId, lead);
-    } else {
+    if (!updated) {
       await appendLeadToSheet(lead);
     }
   } catch (error) {
@@ -654,23 +1091,33 @@ export async function appendLeadToSheet(lead: Lead) {
   if (!sheets || !spreadsheetId) return;
 
   try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "leads!1:1",
-    });
-    const headers = (response.data.values && response.data.values[0]) || DEFAULT_LEADS_HEADERS;
+    const targetTab = lead.tipo === 'medio' ? "Medios" : "leads";
+    await ensureSheetTabExists(sheets, spreadsheetId, targetTab);
+
+    let headers = DEFAULT_LEADS_HEADERS;
+    try {
+      const response = await getValuesCached(sheets, {
+        spreadsheetId,
+        range: `${targetTab}!1:1`,
+      }, 5000);
+      if (response.data?.values && response.data.values[0]) {
+        headers = response.data.values[0];
+      }
+    } catch (_) {}
+
     const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
     const newRow = leadToRowDynamic(lead, headers, hilosSheetId);
 
-    await sheets.spreadsheets.values.append({
+    await retrySheetsWrite(() => sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "leads!A:A",
+      range: `${targetTab}!A:A`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [newRow]
       }
-    });
-    console.log(`Successfully appended Lead ${lead.id} to Google Sheet`);
+    }));
+    console.log(`Successfully appended Lead ${lead.id} to Google Sheet tab ${targetTab}`);
+    invalidateValuesCache(targetTab);
     await syncLeadMessagesInSheet(sheets, spreadsheetId, lead);
   } catch (error) {
     console.error(`Error appending Lead ${lead.id} to Google Sheet:`, error);
@@ -694,13 +1141,13 @@ export async function updatePostInSheet(post: any) {
   if (!sheets || !spreadsheetId) return;
   try {
     await ensureSheetTabExists(sheets, spreadsheetId, "redes_sociales");
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "redes_sociales!A:A",
-    });
-    const rows = response.data.values;
+    }, 5000);
+    const rows = response.data?.values;
     if (rows) {
-      const rowIndex = rows.findIndex(row => row[0] === post.id);
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === post.id);
       if (rowIndex !== -1) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
@@ -709,6 +1156,7 @@ export async function updatePostInSheet(post: any) {
           valueInputOption: "RAW",
           requestBody: { values: [socialPostToRow(post)] }
         });
+        invalidateValuesCache("redes_sociales");
         return;
       }
     }
@@ -730,6 +1178,7 @@ export async function appendPostToSheet(post: any) {
       valueInputOption: "RAW",
       requestBody: { values: [socialPostToRow(post)] }
     });
+    invalidateValuesCache("redes_sociales");
   } catch (error) {
     console.error(`Error appending SocialPost ${post.id} to Google Sheet:`, error);
   }
@@ -752,13 +1201,13 @@ export async function updateMetricInSheet(metric: any) {
   if (!sheets || !spreadsheetId) return;
   try {
     await ensureSheetTabExists(sheets, spreadsheetId, "seguidores");
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "seguidores!A:A",
-    });
-    const rows = response.data.values;
+    }, 5000);
+    const rows = response.data?.values;
     if (rows) {
-      const rowIndex = rows.findIndex(row => row[0] === metric.id);
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === metric.id);
       if (rowIndex !== -1) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
@@ -767,6 +1216,7 @@ export async function updateMetricInSheet(metric: any) {
           valueInputOption: "RAW",
           requestBody: { values: [socialMetricToRow(metric)] }
         });
+        invalidateValuesCache("seguidores");
         return;
       }
     }
@@ -782,6 +1232,7 @@ export function concertToRow(c: Concert): any[] {
     c.fecha || "",
     c.ciudad || "",
     c.sala || "",
+    c.direccion || "",
     c.cache || "",
     c.aforo_vendido || 0,
     c.aforo_total || 0,
@@ -821,23 +1272,33 @@ export async function fetchRehearsalsFromSheet(fallback: Rehearsal[]): Promise<R
   const spreadsheetId = process.env.SPREADSHEET_ID;
   if (!sheets || !spreadsheetId) return fallback;
   try {
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "ensayos!A2:G",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
-    return rows.map((r: any[]) => ({
-      id: r[0] || `reh-${Date.now()}`,
-      fecha: r[1] || "",
-      hora: r[2] || "",
-      lugar: r[3] || "",
-      asistentes: r[4] ? r[4].split(",").map((s: string) => s.trim()) : [],
-      estado: r[5] || "programado",
-      notas: r[6] || ""
-    }));
-  } catch (e) {
-    console.error("Error fetching rehearsals from sheet:", e);
+    const seen = new Set<string>();
+    return rows.map((r: any[], idx: number) => {
+      let id = r[0] ? String(r[0]).trim() : `reh-${idx + 1}`;
+      if (!id || seen.has(id)) {
+        id = `reh-${idx + 1}-${Date.now()}`;
+      }
+      seen.add(id);
+      return {
+        id,
+        fecha: r[1] || "",
+        hora: r[2] || "",
+        lugar: r[3] || "",
+        asistentes: r[4] ? r[4].split(",").map((s: string) => s.trim()) : [],
+        estado: r[5] || "programado",
+        notas: r[6] || ""
+      };
+    });
+  } catch (e: any) {
+    if (e?.status !== 429 && e?.code !== 429) {
+      console.error("Error fetching rehearsals from sheet:", e?.message || e);
+    }
     return fallback;
   }
 }
@@ -847,27 +1308,67 @@ export async function fetchConcertsFromSheet(fallback: Concert[]): Promise<Conce
   const spreadsheetId = process.env.SPREADSHEET_ID;
   if (!sheets || !spreadsheetId) return fallback;
   try {
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "conciertos!A2:K",
+      range: "conciertos!A2:L",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
-    return rows.map((r: any[]) => ({
-      id: r[0] || `cnc-${Date.now()}`,
-      fecha: r[1] || "",
-      ciudad: r[2] || "",
-      sala: r[3] || "",
-      cache: r[4] || "",
-      aforo_vendido: Number(r[5]) || 0,
-      aforo_total: Number(r[6]) || 0,
-      contrato_firmado: String(r[7]).toUpperCase() === "SÍ" || String(r[7]).toUpperCase() === "SI" || r[7] === true,
-      estado_pago: r[8] || "pendiente",
-      notas: r[9] || "",
-      tipo: r[10] || "sala"
-    }));
-  } catch (e) {
-    console.error("Error fetching concerts from sheet:", e);
+    const seen = new Set<string>();
+    return rows.map((r: any[], idx: number) => {
+      let id = r[0] ? String(r[0]).trim() : `cnc-${idx + 1}`;
+      if (!id || seen.has(id)) {
+        id = `cnc-${idx + 1}-${Date.now()}`;
+      }
+      seen.add(id);
+
+      let direccion = "";
+      let cache = "";
+      let aforo_vendido = 0;
+      let aforo_total = 0;
+      let contrato_firmado = false;
+      let estado_pago: 'pendiente' | 'pagado' | 'anticipo' = 'pendiente';
+      let notas = "";
+      let tipo: 'sala' | 'festival' | 'ayuntamiento' = "sala";
+
+      if (r.length >= 12) {
+        direccion = r[4] || "";
+        cache = r[5] || "";
+        aforo_vendido = Number(r[6]) || 0;
+        aforo_total = Number(r[7]) || 0;
+        contrato_firmado = String(r[8]).toUpperCase() === "SÍ" || String(r[8]).toUpperCase() === "SI" || r[8] === true;
+        estado_pago = (r[9] as any) || "pendiente";
+        notas = r[10] || "";
+        tipo = (r[11] as any) || "sala";
+      } else {
+        cache = r[4] || "";
+        aforo_vendido = Number(r[5]) || 0;
+        aforo_total = Number(r[6]) || 0;
+        contrato_firmado = String(r[7]).toUpperCase() === "SÍ" || String(r[7]).toUpperCase() === "SI" || r[7] === true;
+        estado_pago = (r[8] as any) || "pendiente";
+        notas = r[9] || "";
+        tipo = (r[10] as any) || "sala";
+      }
+
+      return {
+        id,
+        fecha: r[1] || "",
+        ciudad: r[2] || "",
+        sala: r[3] || "",
+        direccion,
+        cache: Number(cache) || 0,
+        aforo_vendido,
+        aforo_total,
+        contrato_firmado,
+        estado_pago,
+        notas,
+        tipo
+      };
+    });
+  } catch (e: any) {
+    if (e?.status !== 429 && e?.code !== 429) {
+      console.error("Error fetching concerts from sheet:", e?.message || e);
+    }
     return fallback;
   }
 }
@@ -877,22 +1378,32 @@ export async function fetchPostsFromSheet(fallback: SocialPost[]): Promise<Socia
   const spreadsheetId = process.env.SPREADSHEET_ID;
   if (!sheets || !spreadsheetId) return fallback;
   try {
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "redes_sociales!A2:F",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
-    return rows.map((r: any[]) => ({
-      id: r[0] || `post-${Date.now()}`,
-      fecha: r[1] || "",
-      plataforma: r[2] || "Instagram",
-      contenido: r[3] || "",
-      estado: r[4] || "borrador",
-      responsable: r[5] || ""
-    }));
-  } catch (e) {
-    console.error("Error fetching posts from sheet:", e);
+    const seen = new Set<string>();
+    return rows.map((r: any[], idx: number) => {
+      let id = r[0] ? String(r[0]).trim() : `post-${idx + 1}`;
+      if (!id || seen.has(id)) {
+        id = `post-${idx + 1}-${Date.now()}`;
+      }
+      seen.add(id);
+      return {
+        id,
+        fecha: r[1] || "",
+        plataforma: r[2] || "Instagram",
+        contenido: r[3] || "",
+        estado: r[4] || "borrador",
+        responsable: r[5] || ""
+      };
+    });
+  } catch (e: any) {
+    if (e?.status !== 429 && e?.code !== 429) {
+      console.error("Error fetching posts from sheet:", e?.message || e);
+    }
     return fallback;
   }
 }
@@ -902,23 +1413,33 @@ export async function fetchPaymentsFromSheet(fallback: Payment[]): Promise<Payme
   const spreadsheetId = process.env.SPREADSHEET_ID;
   if (!sheets || !spreadsheetId) return fallback;
   try {
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "finanzas!A2:G",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
-    return rows.map((r: any[]) => ({
-      id: r[0] || `pay-${Date.now()}`,
-      tipo: r[1] || "gasto",
-      categoria: r[2] || "",
-      concepto: r[3] || "",
-      importe: Number(r[4]) || 0,
-      fecha: r[5] || "",
-      estado: r[6] || "pendiente"
-    }));
-  } catch (e) {
-    console.error("Error fetching payments from sheet:", e);
+    const seen = new Set<string>();
+    return rows.map((r: any[], idx: number) => {
+      let id = r[0] ? String(r[0]).trim() : `pay-${idx + 1}`;
+      if (!id || seen.has(id)) {
+        id = `pay-${idx + 1}-${Date.now()}`;
+      }
+      seen.add(id);
+      return {
+        id,
+        tipo: r[1] || "gasto",
+        categoria: r[2] || "",
+        concepto: r[3] || "",
+        importe: Number(r[4]) || 0,
+        fecha: r[5] || "",
+        estado: r[6] || "pendiente"
+      };
+    });
+  } catch (e: any) {
+    if (e?.status !== 429 && e?.code !== 429) {
+      console.error("Error fetching payments from sheet:", e?.message || e);
+    }
     return fallback;
   }
 }
@@ -928,22 +1449,32 @@ export async function fetchMetricsFromSheet(fallback: SocialMetric[]): Promise<S
   const spreadsheetId = process.env.SPREADSHEET_ID;
   if (!sheets || !spreadsheetId) return fallback;
   try {
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "seguidores!A2:F",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
-    return rows.map((r: any[]) => ({
-      id: r[0] || `met-${Date.now()}`,
-      fecha: r[1] || "",
-      instagram: Number(r[2]) || 0,
-      tiktok: Number(r[3]) || 0,
-      youtube: Number(r[4]) || 0,
-      notas: r[5] || ""
-    }));
-  } catch (e) {
-    console.error("Error fetching metrics from sheet:", e);
+    const seen = new Set<string>();
+    return rows.map((r: any[], idx: number) => {
+      let id = r[0] ? String(r[0]).trim() : `met-${idx + 1}`;
+      if (!id || seen.has(id)) {
+        id = `met-${idx + 1}-${Date.now()}`;
+      }
+      seen.add(id);
+      return {
+        id,
+        fecha: r[1] || "",
+        instagram: Number(r[2]) || 0,
+        tiktok: Number(r[3]) || 0,
+        youtube: Number(r[4]) || 0,
+        notas: r[5] || ""
+      };
+    });
+  } catch (e: any) {
+    if (e?.status !== 429 && e?.code !== 429) {
+      console.error("Error fetching metrics from sheet:", e?.message || e);
+    }
     return fallback;
   }
 }
@@ -956,11 +1487,11 @@ export async function fetchLogisticsFromSheet(fallbackRos: Record<string, any[]>
     const runOfShow: Record<string, any[]> = { ...fallbackRos };
     const gearChecklists: Record<string, any[]> = { ...fallbackGear };
 
-    const rosRes = await sheets.spreadsheets.values.get({
+    const rosRes = await getValuesCached(sheets, {
       spreadsheetId,
       range: "logistica_horarios!A2:E",
     });
-    if (rosRes.data.values) {
+    if (rosRes.data?.values) {
       rosRes.data.values.forEach((r: any[]) => {
         const dateKey = r[0];
         if (dateKey) {
@@ -981,11 +1512,11 @@ export async function fetchLogisticsFromSheet(fallbackRos: Record<string, any[]>
       });
     }
 
-    const gearRes = await sheets.spreadsheets.values.get({
+    const gearRes = await getValuesCached(sheets, {
       spreadsheetId,
       range: "logistica_equipo!A2:D",
     });
-    if (gearRes.data.values) {
+    if (gearRes.data?.values) {
       gearRes.data.values.forEach((r: any[]) => {
         const dateKey = r[0];
         if (dateKey) {
@@ -1006,8 +1537,10 @@ export async function fetchLogisticsFromSheet(fallbackRos: Record<string, any[]>
     }
 
     return { runOfShow, gearChecklists };
-  } catch (e) {
-    console.error("Error fetching logistics from sheet:", e);
+  } catch (e: any) {
+    if (e?.status !== 429 && e?.code !== 429) {
+      console.error("Error fetching logistics from sheet:", e?.message || e);
+    }
     return { runOfShow: fallbackRos, gearChecklists: fallbackGear };
   }
 }
@@ -1018,13 +1551,13 @@ export async function updateRehearsalInSheet(rehearsal: Rehearsal) {
   if (!sheets || !spreadsheetId) return;
   try {
     await ensureSheetTabExists(sheets, spreadsheetId, "ensayos");
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "ensayos!A:A",
-    });
-    const rows = response.data.values;
+    }, 5000);
+    const rows = response.data?.values;
     if (rows) {
-      const rowIndex = rows.findIndex(row => row[0] === rehearsal.id);
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === rehearsal.id);
       if (rowIndex !== -1) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
@@ -1033,6 +1566,7 @@ export async function updateRehearsalInSheet(rehearsal: Rehearsal) {
           valueInputOption: "RAW",
           requestBody: { values: [rehearsalToRow(rehearsal)] }
         });
+        invalidateValuesCache("ensayos");
         return;
       }
     }
@@ -1054,6 +1588,7 @@ export async function appendRehearsalToSheet(rehearsal: Rehearsal) {
       valueInputOption: "RAW",
       requestBody: { values: [rehearsalToRow(rehearsal)] }
     });
+    invalidateValuesCache("ensayos");
   } catch (error) {
     console.error(`Error appending Rehearsal ${rehearsal.id} to Google Sheet:`, error);
   }
@@ -1065,21 +1600,22 @@ export async function updateConcertInSheet(concert: Concert) {
   if (!sheets || !spreadsheetId) return;
   try {
     await ensureSheetTabExists(sheets, spreadsheetId, "conciertos");
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "conciertos!A:A",
-    });
-    const rows = response.data.values;
+    }, 5000);
+    const rows = response.data?.values;
     if (rows) {
-      const rowIndex = rows.findIndex(row => row[0] === concert.id);
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === concert.id);
       if (rowIndex !== -1) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `conciertos!A${sheetRowNumber}:K${sheetRowNumber}`,
+          range: `conciertos!A${sheetRowNumber}:L${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: { values: [concertToRow(concert)] }
         });
+        invalidateValuesCache("conciertos");
         return;
       }
     }
@@ -1097,10 +1633,11 @@ export async function appendConcertToSheet(concert: Concert) {
     await ensureSheetTabExists(sheets, spreadsheetId, "conciertos");
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "conciertos!A:K",
+      range: "conciertos!A:L",
       valueInputOption: "RAW",
       requestBody: { values: [concertToRow(concert)] }
     });
+    invalidateValuesCache("conciertos");
   } catch (error) {
     console.error(`Error appending Concert ${concert.id} to Google Sheet:`, error);
   }
@@ -1151,6 +1688,7 @@ export async function syncLogisticsToSheet(runOfShow: Record<string, any[]>, gea
       valueInputOption: "RAW",
       requestBody: { values: gearRows }
     });
+    invalidateValuesCache("logistica");
   } catch (error) {
     console.error("Error syncing logistics to Google Sheet:", error);
   }
@@ -1168,6 +1706,7 @@ export async function appendPaymentToSheet(payment: Payment) {
       valueInputOption: "RAW",
       requestBody: { values: [paymentToRow(payment)] }
     });
+    invalidateValuesCache("finanzas");
   } catch (error) {
     console.error(`Error appending Payment ${payment.id} to Google Sheet:`, error);
   }
@@ -1179,13 +1718,13 @@ export async function updatePaymentInSheet(payment: Payment) {
   if (!sheets || !spreadsheetId) return;
   try {
     await ensureSheetTabExists(sheets, spreadsheetId, "finanzas");
-    const response = await sheets.spreadsheets.values.get({
+    const response = await getValuesCached(sheets, {
       spreadsheetId,
       range: "finanzas!A:A",
-    });
-    const rows = response.data.values;
+    }, 5000);
+    const rows = response.data?.values;
     if (rows) {
-      const rowIndex = rows.findIndex(row => row[0] === payment.id);
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === payment.id);
       if (rowIndex !== -1) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
@@ -1194,6 +1733,7 @@ export async function updatePaymentInSheet(payment: Payment) {
           valueInputOption: "RAW",
           requestBody: { values: [paymentToRow(payment)] }
         });
+        invalidateValuesCache("finanzas");
         return;
       }
     }
@@ -1217,5 +1757,703 @@ export async function appendMetricToSheet(metric: any) {
     });
   } catch (error) {
     console.error(`Error appending SocialMetric ${metric.id} to Google Sheet:`, error);
+  }
+}
+
+export function songToRow(song: Song): any[] {
+  return [
+    song.id || "",
+    song.titulo || "",
+    song.duracion || "",
+    song.duracionSegundos || 0,
+    song.tonalidad || "",
+    song.bpm || 120,
+    song.afinacion || "",
+    song.albumDisco || "",
+    song.estadoTema || "listo",
+    song.esVersionCovers ? "SÍ" : "NO",
+    song.enlaceAcordes || "",
+    song.notasInternas || ""
+  ];
+}
+
+export function rowToSong(r: any[]): Song {
+  return {
+    id: String(r[0] || "").trim(),
+    titulo: String(r[1] || "").trim(),
+    duracion: String(r[2] || "03:30"),
+    duracionSegundos: Number(r[3]) || 210,
+    tonalidad: String(r[4] || "Am"),
+    bpm: Number(r[5]) || 120,
+    afinacion: String(r[6] || ""),
+    albumDisco: String(r[7] || ""),
+    estadoTema: (r[8] as any) || "listo",
+    esVersionCovers: String(r[9]).toUpperCase() === "SÍ" || String(r[9]).toUpperCase() === "SI" || r[9] === true,
+    enlaceAcordes: String(r[10] || ""),
+    notasInternas: String(r[11] || "")
+  };
+}
+
+export function setlistToRow(st: Setlist): any[] {
+  return [
+    st.id || "",
+    st.nombre || "",
+    st.descripcion || "",
+    st.tipoFormato || "",
+    st.duracionTotalEstimadaMinutos || 0,
+    st.fechaCreacion || "",
+    st.fechaUltimaEdicion || "",
+    JSON.stringify(st.items || [])
+  ];
+}
+
+export function rowToSetlist(r: any[]): Setlist {
+  let items = [];
+  if (r[7]) {
+    try {
+      items = typeof r[7] === "string" ? JSON.parse(r[7]) : r[7];
+    } catch {
+      items = [];
+    }
+  }
+  return {
+    id: String(r[0] || "").trim(),
+    nombre: String(r[1] || "").trim(),
+    descripcion: String(r[2] || ""),
+    tipoFormato: (r[3] as any) || "sala_larga",
+    duracionTotalEstimadaMinutos: Number(r[4]) || 0,
+    fechaCreacion: String(r[5] || ""),
+    fechaUltimaEdicion: String(r[6] || ""),
+    items: Array.isArray(items) ? items : []
+  };
+}
+
+export async function ensureTemasYSetlistsSheets(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  try {
+    const s = sheets || getSheetsClient();
+    const id = spreadsheetId || getSpreadsheetId();
+    if (!s || !id) return false;
+
+    await ensureSheetTabExists(s, id, "canciones");
+    try {
+      const resC = await s.spreadsheets.values.get({ spreadsheetId: id, range: "canciones!A1:L1" });
+      if (!resC.data?.values || resC.data.values.length === 0) {
+        const headers = ["id", "titulo", "duracion", "duracion_segundos", "tonalidad", "bpm", "afinacion", "album_disco", "estado_tema", "es_cover", "enlace_acordes", "notas_internas"];
+        await s.spreadsheets.values.update({
+          spreadsheetId: id,
+          range: "canciones!A1:L1",
+          valueInputOption: "RAW",
+          requestBody: { values: [headers] }
+        });
+      }
+    } catch (_) {}
+
+    await ensureSheetTabExists(s, id, "repertorios");
+    try {
+      const resR = await s.spreadsheets.values.get({ spreadsheetId: id, range: "repertorios!A1:H1" });
+      if (!resR.data?.values || resR.data.values.length === 0) {
+        const headers = ["id", "nombre", "descripcion", "tipo_formato", "duracion_estimada_min", "fecha_creacion", "fecha_ultima_edicion", "items_json"];
+        await s.spreadsheets.values.update({
+          spreadsheetId: id,
+          range: "repertorios!A1:H1",
+          valueInputOption: "RAW",
+          requestBody: { values: [headers] }
+        });
+      }
+    } catch (_) {}
+
+    return true;
+  } catch (err: any) {
+    console.error("Error ensuring canciones & repertorios sheets:", err.message || err);
+    return false;
+  }
+}
+
+export async function fetchSongsFromSheet(fallback: Song[]): Promise<Song[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return fallback;
+  try {
+    await ensureTemasYSetlistsSheets(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "canciones!A2:L",
+    });
+    const rows = response.data?.values;
+    if (!rows || rows.length === 0) {
+      if (fallback && fallback.length > 0) {
+        console.log("Populating initial canciones to Google Sheet in batch...");
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "canciones!A:L",
+          valueInputOption: "RAW",
+          requestBody: { values: fallback.map(s => songToRow(s)) }
+        }));
+        invalidateValuesCache("canciones");
+      }
+      return fallback;
+    }
+    const seen = new Set<string>();
+    return rows.filter((r: any[]) => r[0] && String(r[0]).trim() !== "").map((r: any[], idx: number) => {
+      let id = String(r[0]).trim();
+      if (seen.has(id)) id = `${id}-${idx}`;
+      seen.add(id);
+      return rowToSong(r);
+    });
+  } catch (e: any) {
+    if (e?.status !== 429 && e?.code !== 429) {
+      console.warn("Notice reading songs from sheet:", e?.message || e);
+    }
+    return fallback;
+  }
+}
+
+export async function fetchSetlistsFromSheet(fallback: Setlist[]): Promise<Setlist[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return fallback;
+  try {
+    await ensureTemasYSetlistsSheets(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "repertorios!A2:H",
+    });
+    const rows = response.data?.values;
+    if (!rows || rows.length === 0) {
+      if (fallback && fallback.length > 0) {
+        console.log("Populating initial repertorios to Google Sheet in batch...");
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "repertorios!A:H",
+          valueInputOption: "RAW",
+          requestBody: { values: fallback.map(st => setlistToRow(st)) }
+        }));
+        invalidateValuesCache("repertorios");
+      }
+      return fallback;
+    }
+    const seen = new Set<string>();
+    return rows.filter((r: any[]) => r[0] && String(r[0]).trim() !== "").map((r: any[], idx: number) => {
+      let id = String(r[0]).trim();
+      if (seen.has(id)) id = `${id}-${idx}`;
+      seen.add(id);
+      return rowToSetlist(r);
+    });
+  } catch (e: any) {
+    if (e?.status !== 429 && e?.code !== 429) {
+      console.warn("Notice reading setlists from sheet:", e?.message || e);
+    }
+    return fallback;
+  }
+}
+
+export async function updateSongInSheet(song: Song) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "canciones");
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "canciones!A:A",
+    }, 5000);
+    const rows = response.data?.values;
+    if (rows) {
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === song.id);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `canciones!A${sheetRowNumber}:L${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [songToRow(song)] }
+        });
+        invalidateValuesCache("canciones");
+        return;
+      }
+    }
+    await appendSongToSheet(song);
+  } catch (error) {
+    console.error(`Error updating Song ${song.id} in Google Sheet:`, error);
+  }
+}
+
+export async function appendSongToSheet(song: Song) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "canciones");
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "canciones!A:L",
+      valueInputOption: "RAW",
+      requestBody: { values: [songToRow(song)] }
+    });
+    invalidateValuesCache("canciones");
+  } catch (error) {
+    console.error(`Error appending Song ${song.id} to Google Sheet:`, error);
+  }
+}
+
+export async function deleteSongInSheet(songId: string) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "canciones");
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "canciones!A:A",
+    }, 5000);
+    const rows = response.data?.values;
+    if (rows) {
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === songId);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId,
+          range: `canciones!A${sheetRowNumber}:L${sheetRowNumber}`
+        });
+        invalidateValuesCache("canciones");
+      }
+    }
+  } catch (error) {
+    console.error(`Error deleting Song ${songId} in Google Sheet:`, error);
+  }
+}
+
+export async function updateSetlistInSheet(st: Setlist) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "repertorios");
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "repertorios!A:A",
+    }, 5000);
+    const rows = response.data?.values;
+    if (rows) {
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === st.id);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `repertorios!A${sheetRowNumber}:H${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [setlistToRow(st)] }
+        });
+        invalidateValuesCache("repertorios");
+        return;
+      }
+    }
+    await appendSetlistToSheet(st);
+  } catch (error) {
+    console.error(`Error updating Setlist ${st.id} in Google Sheet:`, error);
+  }
+}
+
+export async function appendSetlistToSheet(st: Setlist) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "repertorios");
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "repertorios!A:H",
+      valueInputOption: "RAW",
+      requestBody: { values: [setlistToRow(st)] }
+    });
+    invalidateValuesCache("repertorios");
+  } catch (error) {
+    console.error(`Error appending Setlist ${st.id} to Google Sheet:`, error);
+  }
+}
+
+export async function deleteSetlistInSheet(stId: string) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+  try {
+    await ensureSheetTabExists(sheets, spreadsheetId, "repertorios");
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "repertorios!A:A",
+    }, 5000);
+    const rows = response.data?.values;
+    if (rows) {
+      const rowIndex = rows.findIndex((row: any[]) => row[0] === stId);
+      if (rowIndex !== -1) {
+        const sheetRowNumber = rowIndex + 1;
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId,
+          range: `repertorios!A${sheetRowNumber}:H${sheetRowNumber}`
+        });
+        invalidateValuesCache("repertorios");
+      }
+    }
+  } catch (error) {
+    console.error(`Error deleting Setlist ${stId} in Google Sheet:`, error);
+  }
+}
+
+export function bandToRow(b: any): any[] {
+  return [
+    b.id || "",
+    b.nombre_banda || "",
+    b.estilo_musical || "",
+    b.localizacion || "",
+    b.estado_relacion || "",
+    b.ultimo_contacto || "",
+    b.contacto_nombre || "",
+    b.email || "",
+    b.telefono || "",
+    b.instagram || "",
+    b.spotify_youtube || "",
+    b.aforo_promedio || 0,
+    b.notas_colaboracion || "",
+    b.ciudad_origen_swap || ""
+  ];
+}
+
+export function rowToBand(r: any[]): any {
+  return {
+    id: String(r[0] || ""),
+    nombre_banda: String(r[1] || ""),
+    estilo_musical: String(r[2] || ""),
+    localizacion: String(r[3] || ""),
+    estado_relacion: String(r[4] || "sin_contactar"),
+    ultimo_contacto: String(r[5] || ""),
+    contacto_nombre: String(r[6] || ""),
+    email: String(r[7] || ""),
+    telefono: String(r[8] || ""),
+    instagram: String(r[9] || ""),
+    spotify_youtube: String(r[10] || ""),
+    aforo_promedio: Number(r[11]) || 0,
+    notas_colaboracion: String(r[12] || ""),
+    ciudad_origen_swap: String(r[13] || "")
+  };
+}
+
+export async function ensureBandasSheet(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  try {
+    const s = sheets || getSheetsClient();
+    const id = spreadsheetId || getSpreadsheetId();
+    if (!s || !id) return false;
+    
+    await ensureSheetTabExists(s, id, "bandas");
+    
+    const headers = [
+      "id", "nombre_banda", "estilo_musical", "localizacion", "estado_relacion", "ultimo_contacto", 
+      "contacto_nombre", "email", "telefono", "instagram", "spotify_youtube", "aforo_promedio", 
+      "notas_colaboracion", "ciudad_origen_swap"
+    ];
+    
+    const res = await s.spreadsheets.values.get({ spreadsheetId: id, range: "bandas!A1:N1" });
+    if (!res.data.values || res.data.values.length === 0 || !res.data.values[0][0]) {
+      await s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: "bandas!A1:N1",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [headers] }
+      });
+    }
+    return true;
+  } catch (err: any) {
+    console.error("Error ensuring bandas sheet:", err.message);
+    return false;
+  }
+}
+
+export async function fetchBandsFromSheet(fallback: any[]): Promise<any[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return fallback;
+
+  try {
+    await ensureBandasSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "bandas!A2:N",
+    });
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) {
+      for (const b of fallback) {
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "bandas!A:N",
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: [bandToRow(b)] },
+        }));
+      }
+      invalidateValuesCache("bandas");
+      return fallback;
+    }
+    return rows.map(rowToBand).filter((b: any) => b.id);
+  } catch (err: any) {
+    console.error("Error fetching bands from sheet:", err.message);
+    return fallback;
+  }
+}
+
+export async function updateBandInSheet(band: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureBandasSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "bandas!A2:N",
+    });
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex((row: any) => row[0] === band.id);
+
+    if (rowIndex !== -1) {
+      const range = `bandas!A${rowIndex + 2}:N${rowIndex + 2}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [bandToRow(band)] },
+      });
+      invalidateValuesCache("bandas");
+    } else {
+      await appendBandToSheet(band);
+    }
+  } catch (error) {
+    console.error("Error updating band in sheet:", error);
+  }
+}
+
+export async function appendBandToSheet(band: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureBandasSheet(sheets, spreadsheetId);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "bandas!A:N",
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [bandToRow(band)] },
+    });
+    invalidateValuesCache("bandas");
+  } catch (error) {
+    console.error("Error appending band to sheet:", error);
+  }
+}
+
+export async function deleteBandInSheet(bandId: string) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "bandas!A2:N",
+    });
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex((row: any) => row[0] === bandId);
+
+    if (rowIndex !== -1) {
+      const range = `bandas!A${rowIndex + 2}:N${rowIndex + 2}`;
+      await sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range,
+      });
+      invalidateValuesCache("bandas");
+    }
+  } catch (error) {
+    console.error("Error deleting band in sheet:", error);
+  }
+}
+
+
+// --- TOURS ---
+
+export async function ensureToursSheet(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  const s = sheets || getSheetsClient();
+  const id = spreadsheetId || process.env.SPREADSHEET_ID;
+  if (!s || !id) return false;
+
+  try {
+    await ensureSheetTabExists(s, id, "tours");
+    
+    // Check headers
+    const check = await getValuesCached(s, {
+      spreadsheetId: id,
+      range: "tours!A1:H1",
+    });
+    
+    if (!check.data?.values || check.data.values.length === 0) {
+      await retrySheetsWrite(() => s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: "tours!A1:H1",
+        valueInputOption: "RAW",
+        requestBody: {
+          values: [["ID", "Nombre", "Vehículo", "Estado", "FechaInicio", "FechaFin", "Presupuesto", "Stops (JSON)"]]
+        }
+      }));
+      invalidateValuesCache("tours");
+    }
+    return true;
+  } catch (error: any) {
+    console.error("Error ensuring tours sheet:", error.message || error);
+    return false;
+  }
+}
+
+export function tourToRow(tour: any): any[] {
+  return [
+    tour.id || "",
+    tour.nombre || "",
+    tour.vehiculo || "",
+    tour.estado || "",
+    tour.fechaInicio || "",
+    tour.fechaFin || "",
+    tour.presupuestoLogistica || 0,
+    JSON.stringify(tour.stops || [])
+  ];
+}
+
+export function rowToTour(r: any[]): any {
+  let stops = [];
+  if (r[7]) {
+    try {
+      stops = typeof r[7] === "string" ? JSON.parse(r[7]) : r[7];
+    } catch {
+      stops = [];
+    }
+  }
+  return {
+    id: String(r[0] || "").trim(),
+    nombre: String(r[1] || "").trim(),
+    vehiculo: String(r[2] || "").trim(),
+    estado: String(r[3] || "planificacion").trim(),
+    fechaInicio: String(r[4] || "").trim(),
+    fechaFin: String(r[5] || "").trim(),
+    presupuestoLogistica: Number(r[6]) || 0,
+    stops
+  };
+}
+
+export async function fetchToursFromSheet(fallback: any[]): Promise<any[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return fallback;
+
+  try {
+    await ensureToursSheet(sheets, spreadsheetId);
+    
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "tours!A2:H",
+    });
+    
+    const rows = response.data?.values;
+    if (!rows || rows.length === 0) {
+      if (fallback && fallback.length > 0) {
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "tours!A:H",
+          valueInputOption: "RAW",
+          requestBody: { values: fallback.map(t => tourToRow(t)) }
+        }));
+        invalidateValuesCache("tours");
+      }
+      return fallback;
+    }
+    
+    return rows.filter((r: any[]) => r[0] && String(r[0]).trim() !== "").map(rowToTour);
+  } catch (err: any) {
+    if (err?.status !== 429 && err?.code !== 429) {
+      console.warn("Notice reading tours from sheet:", err.message);
+    }
+    return fallback;
+  }
+}
+
+export async function appendTourToSheet(tour: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureToursSheet(sheets, spreadsheetId);
+    await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "tours!A:H",
+      valueInputOption: "RAW",
+      requestBody: { values: [tourToRow(tour)] }
+    }));
+    invalidateValuesCache("tours");
+  } catch (error: any) {
+    console.error("Error appending tour:", error.message || error);
+  }
+}
+
+export async function updateTourInSheet(tour: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "tours!A2:A",
+    });
+    
+    const rows = response.data?.values || [];
+    const rowIndex = rows.findIndex((r: any[]) => r[0] === tour.id);
+    
+    if (rowIndex >= 0) {
+      const rowNumber = rowIndex + 2;
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `tours!A${rowNumber}:H${rowNumber}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [tourToRow(tour)] }
+      }));
+      invalidateValuesCache("tours");
+    } else {
+      await appendTourToSheet(tour);
+    }
+  } catch (error: any) {
+    console.error("Error updating tour:", error.message || error);
+  }
+}
+
+export async function deleteTourInSheet(id: string) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "tours!A2:A",
+    });
+    
+    const rows = response.data?.values || [];
+    const rowIndex = rows.findIndex((r: any[]) => r[0] === id);
+    
+    if (rowIndex >= 0) {
+      const rowNumber = rowIndex + 2;
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `tours!A${rowNumber}:H${rowNumber}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [Array(8).fill("")] }
+      }));
+      invalidateValuesCache("tours");
+    }
+  } catch (error: any) {
+    console.error("Error deleting tour:", error.message || error);
   }
 }

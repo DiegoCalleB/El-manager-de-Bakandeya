@@ -83,4 +83,48 @@ router.post("/posts/sync", requireAuth, async (req, res) => {
   }
 });
 
+// Trigger direct external publishing webhook (Make.com, Zapier, Ayrshare, or Python agent)
+router.post("/posts/trigger-webhook", requireAuth, async (req, res) => {
+  const { post, webhookUrl } = req.body;
+  const targetWebhook = webhookUrl || process.env.PUBLISH_WEBHOOK_URL;
+
+  if (!targetWebhook) {
+    return res.status(400).json({
+      success: false,
+      error: "No se ha configurado ninguna URL de Webhook (PUBLISH_WEBHOOK_URL). Puedes configurar Make.com, Zapier o un servicio de autopublicación."
+    });
+  }
+
+  try {
+    const response = await fetch(targetWebhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: "post_scheduled",
+        post,
+        timestamp: new Date().toISOString()
+      })
+    });
+
+    if (response.ok) {
+      return res.json({
+        success: true,
+        message: "Webhook de publicación disparado con éxito."
+      });
+    } else {
+      const text = await response.text();
+      return res.status(400).json({
+        success: false,
+        error: `El webhook respondió con error ${response.status}: ${text}`
+      });
+    }
+  } catch (err: any) {
+    console.error("Error triggering publish webhook:", err);
+    return res.status(500).json({
+      success: false,
+      error: `Error al conectar con el webhook de publicación: ${err.message || err}`
+    });
+  }
+});
+
 export default router;

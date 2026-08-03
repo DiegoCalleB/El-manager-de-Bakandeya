@@ -19,54 +19,74 @@ const router = express.Router();
 
 // Update rehearsal
 router.put("/rehearsals/:id", requireAuth, async (req, res) => {
-  const { id } = req.params;
-  const updated: Partial<Rehearsal> = req.body;
-  const state = loadState();
-  const idx = state.rehearsals.findIndex((r: Rehearsal) => r.id === id);
-  if (idx !== -1) {
-    state.rehearsals[idx] = { ...state.rehearsals[idx], ...updated };
-    saveState(state);
-    await updateRehearsalInSheet(state.rehearsals[idx]);
-    res.json({ success: true, rehearsal: state.rehearsals[idx] });
-  } else {
-    res.status(404).json({ error: "Rehearsal not found" });
+  try {
+    const { id } = req.params;
+    const updated: Partial<Rehearsal> = req.body;
+    const state = loadState();
+    const idx = state.rehearsals.findIndex((r: Rehearsal) => r.id === id);
+    if (idx !== -1) {
+      state.rehearsals[idx] = { ...state.rehearsals[idx], ...updated };
+      saveState(state);
+      await updateRehearsalInSheet(state.rehearsals[idx]);
+      res.json({ success: true, rehearsal: state.rehearsals[idx] });
+    } else {
+      res.status(404).json({ error: "Rehearsal not found" });
+    }
+  } catch (err: any) {
+    console.error("Error updating rehearsal:", err);
+    res.status(500).json({ error: err?.message || "Error al actualizar ensayo." });
   }
 });
 
 // Create rehearsal
 router.post("/rehearsals", requireAuth, async (req, res) => {
-  const newRehearsal: Rehearsal = req.body;
-  const state = loadState();
-  state.rehearsals.push(newRehearsal);
-  saveState(state);
-  await appendRehearsalToSheet(newRehearsal);
-  res.json({ success: true, rehearsal: newRehearsal });
+  try {
+    const newRehearsal: Rehearsal = req.body;
+    const state = loadState();
+    state.rehearsals.push(newRehearsal);
+    saveState(state);
+    await appendRehearsalToSheet(newRehearsal);
+    res.json({ success: true, rehearsal: newRehearsal });
+  } catch (err: any) {
+    console.error("Error creating rehearsal:", err);
+    res.status(500).json({ error: err?.message || "Error al crear ensayo." });
+  }
 });
 
 // Update concert
 router.put("/concerts/:id", requireAuth, async (req, res) => {
-  const { id } = req.params;
-  const updated: Partial<Concert> = req.body;
-  const state = loadState();
-  const idx = state.concerts.findIndex((c: Concert) => c.id === id);
-  if (idx !== -1) {
-    state.concerts[idx] = { ...state.concerts[idx], ...updated };
-    saveState(state);
-    await updateConcertInSheet(state.concerts[idx]);
-    res.json({ success: true, concert: state.concerts[idx] });
-  } else {
-    res.status(404).json({ error: "Concert not found" });
+  try {
+    const { id } = req.params;
+    const updated: Partial<Concert> = req.body;
+    const state = loadState();
+    const idx = state.concerts.findIndex((c: Concert) => c.id === id);
+    if (idx !== -1) {
+      state.concerts[idx] = { ...state.concerts[idx], ...updated };
+      saveState(state);
+      await updateConcertInSheet(state.concerts[idx]);
+      res.json({ success: true, concert: state.concerts[idx] });
+    } else {
+      res.status(404).json({ error: "Concert not found" });
+    }
+  } catch (err: any) {
+    console.error("Error updating concert:", err);
+    res.status(500).json({ error: err?.message || "Error al actualizar concierto." });
   }
 });
 
 // Create concert
 router.post("/concerts", requireAuth, async (req, res) => {
-  const newConcert: Concert = req.body;
-  const state = loadState();
-  state.concerts.push(newConcert);
-  saveState(state);
-  await appendConcertToSheet(newConcert);
-  res.json({ success: true, concert: newConcert });
+  try {
+    const newConcert: Concert = req.body;
+    const state = loadState();
+    state.concerts.push(newConcert);
+    saveState(state);
+    await appendConcertToSheet(newConcert);
+    res.json({ success: true, concert: newConcert });
+  } catch (err: any) {
+    console.error("Error creating concert:", err);
+    res.status(500).json({ error: err?.message || "Error al crear concierto." });
+  }
 });
 
 // Sync all concerts with Google Sheet

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import express from "express";
-import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES, INITIAL_SOCIAL_METRICS, INITIAL_USERS } from "../src/db_seed.js";
+import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES, INITIAL_SOCIAL_METRICS, INITIAL_USERS, INITIAL_SONGS, INITIAL_SETLISTS, INITIAL_BANDS } from "../src/db_seed.js";
 import { ACTIVE_SESSIONS, hashPassword, getUserFromRequest, createAuthMiddleware, createLeaderMiddleware, createCronOrAuthMiddleware } from "./auth.js";
 
 const DATA_FILE = path.join(process.cwd(), "data.json");
@@ -54,6 +54,24 @@ export function loadState(): any {
 
       if (!state.gearChecklists) {
         state.gearChecklists = INITIAL_GEAR_CHECKLISTS;
+        changed = true;
+      }
+
+      if (!state.songs || !Array.isArray(state.songs)) {
+        state.songs = INITIAL_SONGS;
+        changed = true;
+      }
+
+      if (!state.setlists || !Array.isArray(state.setlists)) {
+        state.setlists = INITIAL_SETLISTS;
+        changed = true;
+      }
+      if (!state.tours || !Array.isArray(state.tours)) {
+        state.tours = [];
+        changed = true;
+      }
+      if (!state.bands || !Array.isArray(state.bands)) {
+        state.bands = INITIAL_BANDS;
         changed = true;
       }
 
@@ -131,6 +149,10 @@ export function loadState(): any {
     metrics: INITIAL_SOCIAL_METRICS,
     runOfShow: INITIAL_RUN_OF_SHOW,
     gearChecklists: INITIAL_GEAR_CHECKLISTS,
+    songs: INITIAL_SONGS,
+    setlists: INITIAL_SETLISTS,
+    bands: INITIAL_BANDS,
+    tours: [],
     users: INITIAL_USERS.map((u: any) => {
       const { hash, salt } = hashPassword(u.initialPassword);
       return {
