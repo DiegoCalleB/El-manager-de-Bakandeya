@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import express from "express";
-import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES, INITIAL_SOCIAL_METRICS, INITIAL_USERS, INITIAL_SONGS, INITIAL_SETLISTS, INITIAL_BANDS } from "../src/db_seed.js";
+import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES, INITIAL_SOCIAL_METRICS, INITIAL_USERS, INITIAL_SONGS, INITIAL_SETLISTS, INITIAL_BANDS, INITIAL_TOURS } from "../src/db_seed.js";
 import { ACTIVE_SESSIONS, hashPassword, getUserFromRequest, createAuthMiddleware, createLeaderMiddleware, createCronOrAuthMiddleware } from "./auth.js";
 
 const DATA_FILE = path.join(process.cwd(), "data.json");
@@ -34,6 +34,59 @@ const INITIAL_GEAR_CHECKLISTS: Record<string, any[]> = {
   ]
 };
 
+const DEFAULT_EPK_CONFIG = {
+  biografia: "Bakandeya es una propuesta vibrante de mestizaje, ska-rock, reggae y ritmos latinos con sección de metales potente y letras combativas pero festivas. Con más de 40 conciertos a sus espaldas en salas y festivales de la península, Bakandeya ofrece un directo arrollador de 90 minutos concebido para hacer bailar e involucrar a todo el público de principio a fin.",
+  logoUrl: "/logo_bakandeya.jpg",
+  bandPhotos: [
+    "/logo_bakandeya.jpg"
+  ],
+  riderTecnico: "- 1 PA estéreo adecuada para el aforo de la sala/escenario (mín. 2000W)\n- Manguera de 16 canales con 4 envíos de monitores o sistema IEM inalámbrico\n- 3 Micrófonos dinámicos vocal (Shure SM58)\n- Miking completo para sección de metales (2 x SM57 / clip condenser)\n- 2 Cajas de inyección DI para teclados/secuencias\n- Microfonía para batería estándar (Kick, Snare, 2 Toms, Overheads)",
+  enlacesRedes: {
+    spotify: "https://open.spotify.com/artist/bakandeya",
+    youtube: "https://youtube.com/@bakandeya_oficial",
+    instagram: "https://instagram.com/bakandeya_oficial",
+    tiktok: "https://tiktok.com/@bakandeya_oficial",
+    website: "https://bakandeya.es"
+  },
+  contactoBooking: {
+    nombre: "Diego de la Calle / Mánager Bakandeya",
+    email: "diego.delacalleb@gmail.com",
+    telefono: "+34 612 345 678"
+  },
+  temasDestacadosIds: ["s-1", "s-2", "s-3"],
+  incentivoFans: {
+    mensajeAgradecimiento: "¡Muchas gracias por unirte a la familia de Bakandeya! Aquí tienes tu regalo exclusivo por apoyarnos en el concierto.",
+    enlaceDescarga: "https://bakandeya.es/descargas/tema-inedito-directo.mp3",
+    codigoDescuento: "BAKANDEYA-FAN-10"
+  },
+  ciudadesConfig: ["Madrid", "Sevilla", "Barcelona", "Málaga", "Valencia", "Granada", "Cádiz"]
+};
+
+const INITIAL_FANS = [
+  {
+    id: "fan-1",
+    nombre: "Laura Giménez",
+    email: "laura.gimenez@gmail.com",
+    ciudad: "Madrid",
+    comoConocio: "Concierto Sala Caracol",
+    conciertoOrigenId: "cnc-1",
+    conciertoOrigenNombre: "Sala Caracol (Madrid)",
+    fechaCaptura: "2026-03-15",
+    consentimientoRGPD: true
+  },
+  {
+    id: "fan-2",
+    nombre: "Carlos Ruiz",
+    email: "cruiz.ska@hotmail.com",
+    ciudad: "Valencia",
+    comoConocio: "Festival ViñaRock",
+    conciertoOrigenId: "cnc-2",
+    conciertoOrigenNombre: "16 Toneladas (Valencia)",
+    fechaCaptura: "2026-04-02",
+    consentimientoRGPD: true
+  }
+];
+
 export function loadState(): any {
   if (fs.existsSync(DATA_FILE)) {
     try {
@@ -41,6 +94,16 @@ export function loadState(): any {
       const state = JSON.parse(content);
       
       let changed = false;
+
+      if (!state.epkConfig) {
+        state.epkConfig = DEFAULT_EPK_CONFIG;
+        changed = true;
+      }
+
+      if (!state.fans || !Array.isArray(state.fans)) {
+        state.fans = INITIAL_FANS;
+        changed = true;
+      }
       
       if (!state.metrics) {
         state.metrics = INITIAL_SOCIAL_METRICS;
@@ -67,7 +130,7 @@ export function loadState(): any {
         changed = true;
       }
       if (!state.tours || !Array.isArray(state.tours)) {
-        state.tours = [];
+        state.tours = INITIAL_TOURS;
         changed = true;
       }
       if (!state.bands || !Array.isArray(state.bands)) {
@@ -140,6 +203,8 @@ export function loadState(): any {
   }
   
   const defaultState = {
+    epkConfig: DEFAULT_EPK_CONFIG,
+    fans: INITIAL_FANS,
     leads: INITIAL_LEADS,
     rehearsals: INITIAL_REHEARSALS,
     concerts: INITIAL_CONCERTS,
@@ -152,7 +217,7 @@ export function loadState(): any {
     songs: INITIAL_SONGS,
     setlists: INITIAL_SETLISTS,
     bands: INITIAL_BANDS,
-    tours: [],
+    tours: INITIAL_TOURS,
     users: INITIAL_USERS.map((u: any) => {
       const { hash, salt } = hashPassword(u.initialPassword);
       return {

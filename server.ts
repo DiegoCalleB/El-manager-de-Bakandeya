@@ -21,7 +21,11 @@ import {
   fetchSetlistsFromSheet,
   fetchBandsFromSheet,
   fetchToursFromSheet,
-  ensureTemasYSetlistsSheets
+  fetchFansFromSheet,
+  ensureTemasYSetlistsSheets,
+  ensureFansSheet,
+  ensureBandasSheet,
+  ensureToursSheet
 } from "./server/sheets.js";
 import { loadState, saveState } from "./server/state.js";
 
@@ -36,6 +40,8 @@ import toursRouter from "./server/routes/tours.js";
 import agentRouter from "./server/routes/agent.js";
 import reelsRouter from "./server/routes/reels.js";
 import repertorioRouter from "./server/routes/repertorio.js";
+import epkFansRouter from "./server/routes/epk_fans.js";
+import uploadRouter from "./server/routes/upload.js";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -43,7 +49,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Mount modular Express routers
 app.use("/api", usersRouter);
@@ -57,6 +64,9 @@ app.use("/api", toursRouter);
 app.use("/api", agentRouter);
 app.use("/api", reelsRouter);
 app.use("/api", repertorioRouter);
+app.use("/api", epkFansRouter);
+app.use("/api/upload", uploadRouter);
+app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 
 // System status endpoint
 app.get("/api/debug-key", (req, res) => {
@@ -135,11 +145,14 @@ app.get("/api/check-sheets", async (req, res) => {
     const sheetsList = meta.data.sheets || [];
     const existingTabs = sheetsList.map((s: any) => s.properties.title);
     
-    const required = ["leads", "ensayos", "conciertos", "redes_sociales", "finanzas", "seguidores", "hilos_emails", "logistica_horarios", "logistica_equipo", "canciones", "repertorios"];
+    const required = ["leads", "ensayos", "conciertos", "redes_sociales", "finanzas", "seguidores", "hilos_emails", "logistica_horarios", "logistica_equipo", "canciones", "repertorios", "fans", "bandas", "tours"];
     const status: Record<string, boolean> = {};
     const created: string[] = [];
 
     await ensureTemasYSetlistsSheets(sheets, spreadsheetId);
+    await ensureFansSheet(sheets, spreadsheetId);
+    await ensureBandasSheet(sheets, spreadsheetId);
+    await ensureToursSheet(sheets, spreadsheetId);
 
     for (const tab of required) {
       if (existingTabs.includes(tab)) {
@@ -325,6 +338,32 @@ app.get("/api/download-excel", (req, res) => {
     const wsSetlists = XLSX.utils.json_to_sheet(setlistsData);
     XLSX.utils.book_append_sheet(wb, wsSetlists, "Repertorios");
 
+    const fansData = (state.fans || []).map((f: any) => ({
+      ID: f.id,
+      Nombre: f.nombre,
+      Email: f.email,
+      Ciudad: f.ciudad || "",
+      "Cómo conoció": f.comoConocio || "",
+      Concierto: f.conciertoOrigenNombre || "",
+      "Fecha Captura": f.fechaCaptura || "",
+      RGPD: f.consentimientoRGPD ? "SÍ" : "NO"
+    }));
+    const wsFans = XLSX.utils.json_to_sheet(fansData);
+    XLSX.utils.book_append_sheet(wb, wsFans, "Fans_Tribu");
+
+    const toursData = (state.tours || []).map((t: any) => ({
+      ID: t.id,
+      Nombre: t.nombre,
+      Vehículo: t.vehiculo,
+      Estado: t.estado,
+      "Fecha Inicio": t.fechaInicio,
+      "Fecha Fin": t.fechaFin,
+      "Presupuesto Logística": t.presupuestoLogistica || 0,
+      "Número Paradas": t.stops?.length || 0
+    }));
+    const wsTours = XLSX.utils.json_to_sheet(toursData);
+    XLSX.utils.book_append_sheet(wb, wsTours, "Giras");
+
     const excelBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -358,6 +397,7 @@ app.get("/api/state", async (req, res) => {
     state.setlists = await fetchSetlistsFromSheet(state.setlists);
     state.bands = await fetchBandsFromSheet(state.bands || []);
     state.tours = await fetchToursFromSheet(state.tours || []);
+    state.fans = await fetchFansFromSheet(state.fans || []);
     saveState(state);
   } catch (error: any) {
     console.error("Error fetching state from Google Sheets, falling back to local cached state:", error.message || error);

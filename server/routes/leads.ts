@@ -42,6 +42,68 @@ router.post("/leads", requireAuth, async (req, res) => {
 });
 
 // Custom simulation endpoint to generate custom venue or band negotiation emails using Gemini
+router.post("/leads/ai-lookup", requireAuth, async (req, res) => {
+  const { nombre_sala, ciudad, tipo, leadId } = req.body;
+  if (!nombre_sala) {
+    return res.status(400).json({ error: "Nombre de sala o medio requerido" });
+  }
+
+  const client = getAiClient();
+  if (!client) {
+    return res.status(500).json({ error: "Servicio de IA no disponible o API key no configurada." });
+  }
+
+  const prompt = `Busca información pública y sobre todo la URL del LOGO o IMAGEN OFICIAL de la sala, festival o medio de comunicación "${nombre_sala}" ${ciudad ? `en ${ciudad}` : ''} en España.
+Devuelve EXCLUSIVAMENTE un objeto JSON con la estructura exacta:
+{
+  "nombre_oficial": "nombre oficial",
+  "ciudad": "ciudad",
+  "website": "sitio web oficial si existe",
+  "instagram": "usuario o URL de instagram",
+  "imagen_url": "URL pública directa del logo oficial o portada de la sala/medio (extraída de Instagram, Facebook, Wikipedia, web oficial o Spotify)",
+  "icono": "un emoji característico según el tipo (ej: 📻 para radio/medio, 📰 para prensa, 🎙️ para podcast, 📺 para TV, 🏛️ para sala de conciertos, 🎪 para festival, 🪩 para discoteca, 🎸 para sala de rock)"
+}
+Si no encuentras una URL de logo válida, usa cadena vacía "". No inventes URLs ficticias.`;
+
+  try {
+    const response = await generateContentWithFallback(client, {
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }]
+      }
+    });
+
+    const text = response.text || "{}";
+    let parsed: any = {};
+    try {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      } else {
+        parsed = JSON.parse(text);
+      }
+    } catch (_) {
+      parsed = {};
+    }
+
+    if (leadId && (parsed.imagen_url || parsed.icono)) {
+      const state = loadState();
+      const idx = state.leads.findIndex((l: any) => l.id === leadId);
+      if (idx !== -1) {
+        if (parsed.imagen_url) state.leads[idx].imagen_url = parsed.imagen_url;
+        if (parsed.icono) state.leads[idx].icono = parsed.icono;
+        saveState(state);
+        await updateLeadInSheet(state.leads[idx]);
+      }
+    }
+
+    res.json({ success: true, data: parsed });
+  } catch (err: any) {
+    console.error("Error en búsqueda de logo con IA:", err);
+    res.status(500).json({ error: "Fallo al buscar el logo con IA." });
+  }
+});
+
 router.post("/generate-simulated-email", requireAuth, async (req, res) => {
   const { leadId, role, scenario, customInstruction, senderName } = req.body;
   if (!leadId) {
@@ -181,12 +243,12 @@ Buscamos información de la siguiente sala:
 REGLAS OBLIGATORIAS E INNEGOCIABLES:
 1. PROHIBIDO INVENTAR, ESTIMAR O GENERAR DATOS FALSOS (no crees emails tipo info@sala.com o teléfonos aleatorios). Extrae ÚNICAMENTE información real que encuentres mediante búsqueda web.
 2. Si no localizas un dato con total certeza, deja el campo valor como cadena vacía ("") y marca la confianza como "baja".
-3. Para cada campo (email_contacto, telefono, website, instagram, contacto_nombre, aforo, region, genero), debes indicar:
-   - valor: el dato real o "" (o null para aforo)
+3. Para cada campo (email_contacto, telefono, website, instagram, contacto_nombre, aforo, region, genero, imagen_url, icono), debes indicar:
+   - valor: el dato real o "" (o null para aforo). Para imagen_url, la URL pública del logo o foto oficial de la sala, festival, medio, revista o emisora. Para icono, un emoji adecuado (ej: 📻 para radio, 📰 para prensa, 🌐 para web, 🎙️ para podcast, 📺 para TV, 🏛️ para sala, 🎪 para festival, 🪩 para club, 🎸 para grupo).
    - confianza: "alta" (sitio oficial / canal verificado), "media" (directorio secundario), "baja" (desconocido)
    - fuente: URL o referencia del resultado hallado
 
-Devuelve estrictamente un objeto JSON con esta estructura exacta:
+Devuelve strictly un objeto JSON con esta estructura exacta:
 {
   "email_contacto": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
   "telefono": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
@@ -196,6 +258,8 @@ Devuelve estrictamente un objeto JSON con esta estructura exacta:
   "aforo": { "valor": null, "confianza": "alta"|"media"|"baja", "fuente": "" },
   "region": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
   "genero": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "imagen_url": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
+  "icono": { "valor": "", "confianza": "alta"|"media"|"baja", "fuente": "" },
   "source_info": "Resumen técnico de los hallazgos de búsqueda"
 }`;
 

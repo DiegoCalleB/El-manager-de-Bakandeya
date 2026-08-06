@@ -4,15 +4,32 @@ import crypto from "crypto";
 // Active sessions stored in memory and persisted
 export const ACTIVE_SESSIONS: Record<string, { userId: string; createdAt: number }> = {};
 
-export function hashPassword(password: string, salt?: string) {
+export function hashPassword(password: string, salt?: string, iterations = 100000) {
   const actualSalt = salt || crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, actualSalt, 1000, 64, "sha512").toString("hex");
-  return { hash, salt: actualSalt };
+  const hash = crypto.pbkdf2Sync(password, actualSalt, iterations, 64, "sha512").toString("hex");
+  return { hash, salt: actualSalt, iterations };
 }
 
 export function verifyPassword(password: string, hash: string, salt: string) {
-  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
-  return hash === verifyHash;
+  if (!password || !hash || !salt) return false;
+
+  try {
+    // Try OWASP standard 100,000 iterations first
+    const verifyHash100k = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+    if (hash.length === verifyHash100k.length && crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(verifyHash100k))) {
+      return true;
+    }
+
+    // Fallback for legacy hashes generated with 1000 iterations
+    const verifyHash1k = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+    if (hash.length === verifyHash1k.length && crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(verifyHash1k))) {
+      return true;
+    }
+  } catch (e) {
+    return false;
+  }
+
+  return false;
 }
 
 export function getSafeUsers(users: any[]) {

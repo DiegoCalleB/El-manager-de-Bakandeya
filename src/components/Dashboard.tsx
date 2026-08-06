@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Lead, LeadType, ThemeColors, SocialMetric, Concert, Rehearsal } from '../types';
+import DirectionsCard from './DirectionsCard';
+import { AddLeadModal } from './dashboard/AddLeadModal';
 import { 
  Search, MapPin, Music, Globe, Phone, Instagram, 
  Plus, X, Calendar, AlertCircle, Sparkles, Loader2, Check, RefreshCw, 
@@ -267,6 +269,8 @@ export default function Dashboard({
  day: string;
  month: string;
  location: string;
+ locationQuery?: string;
+ address?: string;
  badge: string;
  details: string;
  }> = [];
@@ -286,7 +290,9 @@ export default function Dashboard({
  dateStr: c.fecha,
  day,
  month,
- location: `${c.ciudad}`,
+ location: c.sala ? `${c.sala} (${c.ciudad})` : c.ciudad,
+ locationQuery: c.direccion || `${c.sala}, ${c.ciudad}`,
+ address: c.direccion,
  badge: c.contrato_firmado ? 'Contrato Firmado' : 'Confirmado',
  details: `Caché: ${c.cache ? `${c.cache}€` : 'A convenir'} • Aforo: ${c.aforo_total || 500} pax`
  });
@@ -308,6 +314,8 @@ export default function Dashboard({
  day,
  month,
  location: r.lugar || 'Local de Jon',
+ locationQuery: `${r.lugar || 'Local de Jon'}, Madrid`,
+ address: undefined,
  badge: r.estado === 'completado' ? 'Completado' : 'Programado',
  details: `Horario: ${r.hora || '18:00'} • Asistentes: ${r.asistentes ? (Array.isArray(r.asistentes) ? r.asistentes.join(', ') : r.asistentes) : 'Jon, Jose, Elyar, Raúl'}`
  });
@@ -323,7 +331,9 @@ export default function Dashboard({
  dateStr: '2026-08-15',
  day: '15',
  month: 'AGO',
- location: 'Sala Apolo, Barcelona',
+ location: 'Sala Apolo (Barcelona)',
+ locationQuery: 'Sala Apolo, Carrer Nou de la Rambla 113, Barcelona',
+ address: 'Carrer Nou de la Rambla 113, Barcelona',
  badge: 'Confirmado',
  details: 'Caché: 1.800€ • Aforo: 900 pax • Prueba de sonido: 18:00h'
  },
@@ -334,7 +344,9 @@ export default function Dashboard({
  dateStr: '2026-08-20',
  day: '20',
  month: 'AGO',
- location: 'Camerinos Rock Palace, Madrid',
+ location: 'Rock Palace (Madrid)',
+ locationQuery: 'Rock Palace, Calle Vara de Rey 6, Madrid',
+ address: 'Calle Vara de Rey 6, Madrid',
  badge: 'Programado',
  details: 'Horario: 17:00 a 21:00 • Preparación de repertorio y beatbox'
  },
@@ -346,6 +358,8 @@ export default function Dashboard({
  day: '05',
  month: 'SEP',
  location: 'Anfiteatro de Granada',
+ locationQuery: 'Anfiteatro de Granada, Paseo del Salón',
+ address: 'Paseo del Salón, Granada',
  badge: 'En Negociación',
  details: 'Caché: 3.500€ • Aforo: 1.200 pax • Escenario Principal'
  }
@@ -645,7 +659,7 @@ export default function Dashboard({
  </span>
  </div>
 
- <h4 className={`text-[10px] font-bold font-display tracking-wide mt-1 truncate ${textTitle}`}>
+ <h4 className={`text-base sm:text-lg font-bold font-display tracking-wide mt-1.5 truncate ${textTitle}`}>
  {item.title}
  </h4>
 
@@ -657,35 +671,13 @@ export default function Dashboard({
  </div>
 
  {item.location && (
- <div className="mt-4" onClick={(e) => e.stopPropagation()}>
- <a
- id={`dashboard-maps-btn-${item.id}`}
- href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`}
- target="_blank"
- rel="noopener noreferrer"
- className="block relative w-full h-20 rounded-xl overflow-hidden group hover:-zinc-700 transition-colors"
- >
- {/* Simulated Map Background */}
- <div className="absolute inset-0 bg-[#1A1918] opacity-80" />
- <div 
- className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity"
- style={{
- backgroundImage: `radial-gradient(circle at 50% 50%, #3f3f46 1px, transparent 1px)`,
- backgroundSize: '12px 12px'
- }}
+ <div className="mt-3 flex justify-center">
+ <DirectionsCard 
+ query={item.locationQuery || item.location} 
+ locationName={item.location} 
+ address={item.address}
+ isStitchLight={isStitchLight} 
  />
- 
- {/* Content Overlay */}
- <div className="absolute inset-0 p-3 flex items-center gap-3 bg-gradient-to-r from-[#121110] via-[#121110]/80 to-transparent">
- <div className="w-10 h-10 rounded-full bg-zinc-800/80 flex items-center justify-center shrink-0 shadow-lg group-hover:scale-105 transition-transform">
- <Navigation className="w-4 h-4 text-zinc-300" />
- </div>
- <div className="flex flex-col min-w-0 pr-8">
- <span className="text-[10px] font-bold text-zinc-200 truncate">Cómo llegar</span>
- <span className="text-[10px] text-zinc-400 truncate">{item.location}</span>
- </div>
- </div>
- </a>
  </div>
  )}
 
@@ -701,7 +693,7 @@ export default function Dashboard({
  </div>
 
  {/* 2. SECCIÓN: EMBUDO OPERATIVO DE BOOKING (MÉTRICAS CLAVE REALES) */}
- <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+ <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
  
  {/* Metric 1: Pitches pendientes de aprobar */}
  <div 
@@ -1309,159 +1301,29 @@ export default function Dashboard({
  </div>
 
  {/* MODAL: AGREGAR NUEVA SALA */}
- {isAddModalOpen && (
- <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
- <div className="bg-[#1c1b1b] rounded-xl w-full max-w-lg overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-200">
- 
- <div className="p-4 flex justify-between items-center bg-[#1A1918]">
- <h3 className="text-sm font-bold font-display uppercase tracking-widest text-zinc-100 flex items-center gap-1.5">
- <Plus className="w-4 h-4" /> Agregar Nueva Sala a la Hoja
- </h3>
- <button 
- onClick={() => setIsAddModalOpen(false)}
- className="text-neutral-400 hover:text-white transition-colors cursor-pointer"
- >
- <X className="w-4 h-4" />
- </button>
- </div>
-
- <form onSubmit={handleAddSubmit} className="p-5 space-y-4 text-[10px] font-sans">
- <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
- <div className="space-y-1.5">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Nombre de la Sala*</label>
- <input
- id="new-lead-sala"
- type="text"
- required
- value={newSala}
- onChange={(e) => setNewSala(e.target.value)}
- placeholder="Ej: Sala Apolo"
- className="w-full bg-[#1A1918] rounded px-2 py-1 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-mono"
+ <AddLeadModal
+ isOpen={isAddModalOpen}
+ onClose={() => setIsAddModalOpen(false)}
+ onAddSubmit={handleAddSubmit}
+ newSala={newSala}
+ setNewSala={setNewSala}
+ newCiudad={newCiudad}
+ setNewCiudad={setNewCiudad}
+ newRegion={newRegion}
+ setNewRegion={setNewRegion}
+ newAforo={newAforo}
+ setNewAforo={setNewAforo}
+ newGenero={newGenero}
+ setNewGenero={setNewGenero}
+ newTipo={newTipo}
+ setNewTipo={setNewTipo}
+ newEmail={newEmail}
+ setNewEmail={setNewEmail}
+ newInstagram={newInstagram}
+ setNewInstagram={setNewInstagram}
+ newNotas={newNotas}
+ setNewNotas={setNewNotas}
  />
- </div>
-
- <div className="space-y-1.5">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Ciudad*</label>
- <input
- id="new-lead-ciudad"
- type="text"
- required
- value={newCiudad}
- onChange={(e) => setNewCiudad(e.target.value)}
- placeholder="Ej: Barcelona"
- className="w-full bg-[#1A1918] rounded px-2 py-1 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-mono"
- />
- </div>
-
- <div className="space-y-1.5">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Región / Provincia</label>
- <input
- id="new-lead-region"
- type="text"
- value={newRegion}
- onChange={(e) => setNewRegion(e.target.value)}
- placeholder="Ej: Cataluña"
- className="w-full bg-[#1A1918] rounded px-2 py-1 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-mono"
- />
- </div>
-
- <div className="space-y-1.5">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Aforo Estimado (Pax)</label>
- <input
- id="new-lead-aforo"
- type="number"
- value={newAforo}
- onChange={(e) => setNewAforo(Number(e.target.value))}
- className="w-full bg-[#1A1918] rounded px-2 py-1 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-mono"
- />
- </div>
-
- <div className="space-y-1.5">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Género Musical Preferente</label>
- <input
- id="new-lead-genero"
- type="text"
- value={newGenero}
- onChange={(e) => setNewGenero(e.target.value)}
- className="w-full bg-[#1A1918] rounded px-2 py-1 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-mono"
- />
- </div>
-
- <div className="space-y-1.5">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Categoría de Contacto</label>
- <select
- id="new-lead-tipo"
- value={newTipo}
- onChange={(e) => setNewTipo(e.target.value as LeadType)}
- className="w-full bg-[#1A1918] rounded px-2 py-1 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-mono cursor-pointer"
- >
- <option value="sala">🏛️ Sala / Teatro (Booking directo)</option>
- <option value="festival">🎪 Festival (Escenarios / Carteles)</option>
- <option value="ayuntamiento">🎆 Ayuntamiento / Fiestas Patronales</option>
- <option value="grupo">🎸 Grupo / Artista (Colaboración)</option>
- <option value="productora">💼 Productora / Agencia Management</option>
- <option value="medio">📻 Medio de Comunicación (Radio 3 / Prensa / TV)</option>
- </select>
- </div>
-
- <div className="space-y-1.5">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Usuario de Instagram (@)</label>
- <input
- id="new-lead-instagram"
- type="text"
- value={newInstagram}
- onChange={(e) => setNewInstagram(e.target.value)}
- placeholder="Ej: @sala_apolo"
- className="w-full bg-[#1A1918] rounded px-2 py-1 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-mono"
- />
- </div>
- </div>
-
- <div className="space-y-1.5 col-span-2">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Email de Contacto (Opcional, sino Scout lo buscará)</label>
- <input
- id="new-lead-email"
- type="email"
- value={newEmail}
- onChange={(e) => setNewEmail(e.target.value)}
- placeholder="Ej: booking@salaapolo.com"
- className="w-full bg-[#1A1918] rounded px-2 py-1 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-mono"
- />
- </div>
-
- <div className="space-y-1.5 col-span-2">
- <label className="block text-[10px] uppercase font-mono tracking-wider text-neutral-400">Notas Iniciales</label>
- <textarea
- id="new-lead-notes"
- rows={3}
- value={newNotas}
- onChange={(e) => setNewNotas(e.target.value)}
- placeholder="Alguna instrucción de booking, contacto recomendado..."
- className="w-full bg-[#1A1918] rounded p-3 focus:outline-none focus:-zinc-500/50 text-zinc-100 font-sans leading-relaxed"
- />
- </div>
-
- <div className="flex gap-3 justify-end pt-3">
- <button
- id="btn-add-cancel"
- type="button"
- onClick={() => setIsAddModalOpen(false)}
- className="px-2 py-1 bg-neutral-900 text-neutral-400 font-mono text-[10px] uppercase rounded-lg transition-all cursor-pointer"
- >
- Cancelar
- </button>
- <button
- id="btn-add-submit"
- type="submit"
- className="px-2 py-1 bg-zinc-100 hover:bg-white text-zinc-900 font-mono font-bold text-[10px] uppercase rounded-lg transition-all cursor-pointer shadow-lg shadow-zinc-500/10"
- >
- Confirmar Registro
- </button>
- </div>
- </form>
- </div>
- </div>
- )}
 
  </div>
  );

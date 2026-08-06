@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Rehearsal, Concert, ThemeColors } from '../types';
+import DirectionsCard from './DirectionsCard';
 import { Calendar, Clock, MapPin, CheckSquare, Sparkles, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, Plus, Trash2, Download, Navigation, Disc3, Music } from 'lucide-react';
 
 interface CalendarViewProps {
@@ -550,9 +551,9 @@ export default function CalendarView({
  )}
 
  {/* Weekday Labels */}
- <div className={`grid grid-cols-7 gap-1.5 text-center text-[10px] font-mono mb-2 font-bold uppercase ${textSub}`}>
+ <div className={`grid grid-cols-7 gap-1.5 text-center text-[10px] font-mono mb-2.5 font-bold uppercase ${textSub} bg-slate-950/60 p-2 rounded-xl border border-slate-800/80`}>
  {weekdays.map(day => (
- <div key={day} className="py-0.5">{day}</div>
+ <div key={day} className="py-0.5 tracking-wider">{day}</div>
  ))}
  </div>
 
@@ -574,59 +575,72 @@ export default function CalendarView({
 
  const isToday = isThisRealMonth && cell.day === realToday.getDate();
 
+ // Stylish border logic for non-selected vs event vs selected days
+ let borderAndBgClass = "";
+ if (isSelected) {
+ borderAndBgClass = isStitchLight
+ ? 'bg-sky-500 text-white font-extrabold border-2 border-sky-300 shadow-xl shadow-sky-500/20 scale-[1.05] z-20'
+ : 'bg-amber-500 text-slate-950 font-black border-2 border-amber-300 shadow-xl shadow-amber-500/25 scale-[1.05] z-20';
+ } else if (isToday) {
+ borderAndBgClass = 'bg-amber-500/15 text-amber-300 font-bold border-2 border-amber-500/80 shadow-md shadow-amber-500/10 hover:border-amber-400 z-10';
+ } else if (hasConcert && hasRehearsal) {
+ borderAndBgClass = 'bg-gradient-to-br from-amber-950/40 to-emerald-950/40 border border-amber-500/50 hover:border-amber-400 hover:shadow-md hover:shadow-amber-500/10 text-white';
+ } else if (hasConcert) {
+ borderAndBgClass = 'bg-amber-950/20 border border-amber-500/40 hover:border-amber-400 hover:shadow-md hover:shadow-amber-500/10 text-amber-200';
+ } else if (hasRehearsal) {
+ borderAndBgClass = 'bg-emerald-950/20 border border-emerald-500/40 hover:border-emerald-400 hover:shadow-md hover:shadow-emerald-500/10 text-emerald-200';
+ } else {
+ borderAndBgClass = isStitchLight
+ ? 'bg-white border border-slate-200 hover:border-sky-400 hover:bg-slate-50 text-slate-800 shadow-xs'
+ : 'bg-slate-900/80 border border-slate-800 hover:border-amber-500/60 hover:bg-slate-800/80 hover:shadow-md hover:shadow-amber-500/10 text-slate-200 shadow-xs';
+ }
+
  return (
  <button
  id={`calendar-day-${formattedDate}`}
  key={`day-${formattedDate}`}
  onClick={() => setSelectedDate(new Date(year, month, cell.day))}
- className={`aspect-square rounded-lg flex flex-col items-center justify-between p-1 relative transition-all cursor-pointer ${
- isToday ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-neutral-900 z-10' : ''
- } ${
- isSelected
- ? isStitchLight
- ? 'bg-sky-500/15 text-white font-bold shadow-md shadow-indigo-150 scale-[1.03]'
- : 'bg-[#f2ca50] text-[#3c2f00] font-bold shadow-lg shadow-[#f2ca50]/15 scale-[1.03]'
- : isToday
- ? isStitchLight
- ? 'bg-[#d1b375]/15 text-[#d1b375] font-bold'
- : 'bg-[#d1b375]/15 text-[#d1b375] font-bold shadow-md shadow-amber-500/10'
- : isStitchLight
- ? 'bg-white hover:-indigo-300 hover:bg-slate-50 text-slate-800'
- : 'bg-[#131313] hover:-[#99907c]/35 hover:bg-[#1c1b1b]'
- }`}
+ className={`aspect-square rounded-xl flex flex-col items-center justify-between p-1.5 relative transition-all duration-150 cursor-pointer ${borderAndBgClass}`}
  >
  {isToday && (
- <span className={`absolute.5 text-[6.5px] font-mono font-black uppercase px-2 py-1 rounded shadow-md z-20 ${
- isStitchLight ? 'bg-[#d1b375]/15 text-white' : 'bg-[#d1b375]/15 text-stone-950'
+ <span className={`absolute -top-2 left-1/2 -translate-x-1/2 text-[7px] font-mono font-black uppercase px-1.5 py-[1px] rounded-full border shadow-md z-30 ${
+ isSelected 
+ ? 'bg-slate-950 text-amber-400 border-amber-300' 
+ : 'bg-amber-500 text-slate-950 border-amber-300'
  }`}>
  HOY
  </span>
  )}
- <span className={`text-[10px] ${
+
+ <span className={`text-xs font-mono font-bold ${
  isSelected 
- ? isStitchLight ? 'text-white' : 'text-[#3c2f00]' 
+ ? isStitchLight ? 'text-white' : 'text-slate-950 font-black' 
  : isToday
- ? isStitchLight ? 'text-[#d1b375] font-black' : 'text-[#d1b375] font-black'
- : isStitchLight ? 'text-slate-800' : 'text-neutral-100'
+ ? 'text-amber-300 font-extrabold'
+ : hasConcert
+ ? 'text-amber-300 font-bold'
+ : hasRehearsal
+ ? 'text-emerald-300 font-bold'
+ : isStitchLight ? 'text-slate-800' : 'text-slate-200'
  }`}>
  {cell.day}
  </span>
  
  {/* Glowing Dots Indicator */}
- <div className="flex gap-1 justify-center w-full mb-0.5">
+ <div className="flex gap-1 justify-center items-center w-full mb-0.5">
  {hasConcert && (
  <span className={`w-1.5 h-1.5 rounded-full ${
  isSelected 
- ? isStitchLight ? 'bg-white' : 'bg-[#3c2f00]' 
- : isStitchLight ? 'bg-sky-500/15' : 'bg-[#f2ca50] shadow-[0_0_8px_#f2ca50]'
- }`} />
+ ? 'bg-slate-950 shadow-none' 
+ : 'bg-amber-400 shadow-[0_0_8px_#f59e0b]'
+ }`} title="Concierto" />
  )}
  {hasRehearsal && (
  <span className={`w-1.5 h-1.5 rounded-full ${
  isSelected 
- ? isStitchLight ? 'bg-white' : 'bg-[#3c2f00]' 
- : isStitchLight ? 'bg-[#10b981]/15' : 'bg-[#b8d6b8] shadow-[0_0_8px_#b8d6b8]'
- }`} />
+ ? 'bg-slate-950 shadow-none' 
+ : 'bg-emerald-400 shadow-[0_0_8px_#10b981]'
+ }`} title="Ensayo" />
  )}
  </div>
  </button>
@@ -877,24 +891,14 @@ export default function CalendarView({
  {conc.direccion && (
  <p className={`text-[10px] font-sans ${textSub}`}>📍 {conc.direccion}</p>
  )}
- <a
- id={`btn-maps-quick-${conc.id}`}
- href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`}
- target="_blank"
- rel="noopener noreferrer"
- onClick={(e) => e.stopPropagation()}
- className={`group flex items-center justify-between px-2 py-1 rounded-full text-[10px] font-sans transition-all duration-200 cursor-pointer shadow-sm active:scale-95 ${
- isStitchLight
- ? 'bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 text-white shadow-indigo-100'
- : 'bg-gradient-to-r from-[#f2ca50] via-[#f2ca50] to-[#e6b830] text-[#2b2100]'
- }`}
- >
- <div className="flex items-center gap-1.5 font-bold">
- <MapPin className="w-3 h-3" />
- <span>Cómo llegar (Google Maps)</span>
+ <div className="mt-1 flex justify-center">
+ <DirectionsCard 
+ query={query} 
+ locationName={conc.sala} 
+ address={conc.direccion || conc.ciudad} 
+ isStitchLight={isStitchLight} 
+ />
  </div>
- <Navigation className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
- </a>
  </div>
  );
  })}
@@ -935,33 +939,13 @@ export default function CalendarView({
  </div>
  </div>
  {selectedEventDetails.locationQuery && selectedEventDetails.type !== 'free' && (
- <div className={` pt-3 mt-2.5 ${isStitchLight ? '-slate-100' : '-neutral-900'}`}>
- <a
- id="btn-google-maps-location"
- href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedEventDetails.locationQuery)}`}
- target="_blank"
- rel="noopener noreferrer"
- className={`group w-full flex items-center justify-between px-2 py-1 rounded-full text-[10px] font-sans transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg active:scale-95 ${
- isStitchLight
- ? 'bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white shadow-indigo-200/50'
- : 'bg-gradient-to-r from-[#f2ca50] via-[#f2ca50] to-[#e6b830] hover:from-[#ffe088] hover:to-[#f2ca50] text-[#2b2100] shadow-[#f2ca50]/20'
- }`}
- >
- <div className="flex items-center gap-2">
- <div className={`p-1.5 rounded-full ${
- isStitchLight ? 'bg-white/20 text-white' : 'bg-black/15 text-[#2b2100]'
- }`}>
- <MapPin className="w-3.5 h-3.5" />
- </div>
- <span className="font-bold tracking-wide">Cómo llegar (Google Maps)</span>
- </div>
- <div className={`flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-1 rounded-full ${
- isStitchLight ? 'bg-white/20 text-white' : 'bg-black/15 text-[#2b2100]'
- }`}>
- <span>Abrir</span>
- <Navigation className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
- </div>
- </a>
+ <div className="pt-3 mt-2.5 flex justify-center">
+ <DirectionsCard 
+ query={selectedEventDetails.locationQuery} 
+ locationName={selectedEventDetails.lugar} 
+ address={selectedEventDetails.direccion} 
+ isStitchLight={isStitchLight} 
+ />
  </div>
  )}
  {selectedEventDetails.type === 'concert' && (
@@ -971,6 +955,23 @@ export default function CalendarView({
  <span className="text-[#10b981] dark:text-[#b8d6b8] font-bold font-mono">{selectedEventDetails.fee}</span>
  </div>
  )}
+ {selectedEventDetails.type === 'concert' && selectedConcert && (() => {
+ const g = selectedConcert.gastosDetalle;
+ const totalG = g ? ((g.gasolina || 0) + (g.dietas || 0) + (g.alquilerVehiculo || 0) + (g.alojamiento || 0) + (g.otros || 0)) : (selectedConcert.gastosEstimadosTipicos || 150);
+ const net = (selectedConcert.cache || 0) - totalG;
+ return (
+ <div className={`flex items-center justify-between text-[10px] pt-1.5 mt-1`}>
+ <span className={`font-mono ${textSub}`}>Rentabilidad neta:</span>
+ <span className={`font-bold font-mono px-2 py-0.5 rounded-full ${
+ net < 0 ? 'bg-rose-950/80 text-rose-400' :
+ net < 150 ? 'bg-amber-950/80 text-amber-300' :
+ 'bg-emerald-950/80 text-emerald-400'
+ }`}>
+ {net >= 0 ? `+${net}€ Neto` : `${net}€ En pérdidas`}
+ </span>
+ </div>
+ );
+ })()}
  {selectedEventDetails.notes && (
  <div className={`text-[10px] font-sans italic pt-2 leading-relaxed ${isStitchLight ? '-slate-100 text-slate-500' : '-neutral-900 text-neutral-400'}`}>
  &ldquo;{selectedEventDetails.notes}&rdquo;
@@ -1153,18 +1154,18 @@ export default function CalendarView({
  body { font-family: system-ui, -apple-system, sans-serif; margin: 30px; color: #111; line-height: 1.5; }
  h1 { font-size: 22px; margin: 0; text-transform: uppercase; color: #d97706; }
  h2 { font-size: 14px; color: #555; margin-top: 2px; margin-bottom: 20px; font-weight: normal; }
- .badge { display: inline-block; padding: 4px 10px; background: #fef3c7; color: #92400e; font-weight: bold; -radius: 4px; font-size: 11px; font-family: monospace; }
+ .badge { display: inline-block; padding: 4px 10px; background: #fef3c7; color: #92400e; font-weight: bold; border-radius: 4px; font-size: 11px; font-family: monospace; }
  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
- .card { : 1px solid #e5e7eb; padding: 12px 15px; -radius: 8px; background: #fafafa; }
+ .card { border: 1px solid #e5e7eb; padding: 12px 15px; border-radius: 8px; background: #fafafa; }
  .card-title { font-size: 11px; text-transform: uppercase; font-weight: bold; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 6px; }
- .item-row { display: flex; justify-content: space-between; padding: 5px 0; -bottom: 1px dashed #e5e7eb; font-size: 12px; }
+ .item-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #e5e7eb; font-size: 12px; }
  .time { font-weight: bold; font-family: monospace; color: #d97706; width: 60px; }
- pre { font-family: monospace; font-size: 11px; background: #fff; padding: 10px; : 1px solid #e5e7eb; -radius: 6px; white-space: pre-wrap; margin: 0; }
- .footer { margin-top: 30px; -top: 1px solid #e5e7eb; padding-top: 10px; font-size: 10px; color: #888; text-align: center; }
+ pre { font-family: monospace; font-size: 11px; background: #fff; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; white-space: pre-wrap; margin: 0; }
+ .footer { margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 10px; font-size: 10px; color: #888; text-align: center; }
  </style>
  </head>
  <body>
- <div style="display:flex; justify-content:space-between; align-items:center; -bottom:2px solid #f59e0b; padding-bottom:12px; margin-bottom:20px;">
+ <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #f59e0b; padding-bottom:12px; margin-bottom:20px;">
  <div>
  <h1>Bakandeya — Hoja de Ruta de Gira</h1>
  <h2>${selectedConcert ? `${selectedConcert.sala} (${selectedConcert.ciudad})` : selectedEventTitle}</h2>

@@ -1,4 +1,4 @@
-import { Lead, Rehearsal, Concert, SocialPost, Payment, Message, SocialMetric } from './types';
+import { Lead, Rehearsal, Concert, SocialPost, Payment, Message, SocialMetric, Tour } from './types';
 
 export const INITIAL_LEADS: Lead[] = [
   {
@@ -1039,6 +1039,67 @@ export const INITIAL_USERS = [
 
 export const INITIAL_SONGS = [
   {
+    id: 'song-cm-1',
+    titulo: 'Intro (Live Casa México)',
+    duracion: '1:30',
+    duracionSegundos: 90,
+    tonalidad: 'Am',
+    bpm: 120,
+    afinacion: 'E Standard',
+    albumDisco: 'Directo Casa México',
+    estadoTema: 'listo',
+    esVersionCovers: false,
+    notasInternas: 'Intro del directo en Casa México'
+  },
+  {
+    id: 'song-cm-2',
+    titulo: 'Tema1 (Live Casa México)',
+    duracion: '3:45',
+    duracionSegundos: 225,
+    tonalidad: 'Em',
+    bpm: 125,
+    afinacion: 'E Standard',
+    albumDisco: 'Directo Casa México',
+    estadoTema: 'listo',
+    esVersionCovers: false
+  },
+  {
+    id: 'song-cm-3',
+    titulo: 'Reggae Rock Style',
+    duracion: '4:10',
+    duracionSegundos: 250,
+    tonalidad: 'Dm',
+    bpm: 110,
+    afinacion: 'E Standard',
+    albumDisco: 'Directo Casa México',
+    estadoTema: 'listo',
+    esVersionCovers: false
+  },
+  {
+    id: 'song-cm-4',
+    titulo: 'Ska',
+    duracion: '3:20',
+    duracionSegundos: 200,
+    tonalidad: 'Am',
+    bpm: 145,
+    afinacion: 'E Standard',
+    albumDisco: 'Directo Casa México',
+    estadoTema: 'listo',
+    esVersionCovers: false
+  },
+  {
+    id: 'song-cm-5',
+    titulo: 'Llorona',
+    duracion: '4:30',
+    duracionSegundos: 270,
+    tonalidad: 'Am',
+    bpm: 100,
+    afinacion: 'E Standard',
+    albumDisco: 'Directo Casa México',
+    estadoTema: 'listo',
+    esVersionCovers: false
+  },
+  {
     id: 'song-1',
     titulo: 'Brisa y Cacharros',
     duracion: '3:30',
@@ -1235,5 +1296,61 @@ export const INITIAL_BANDS: any[] = [
     aforo_promedio: 1200,
     notas_colaboracion: '¡Concierto agendado! Bakandeya abre su fecha especial en Sala Razzmatazz 2 el 14 de Noviembre de 2026.',
     ciudad_origen_swap: 'Barcelona'
+  }
+];
+
+export const INITIAL_TOURS: Tour[] = [
+  {
+    id: 'tour-1',
+    nombre: 'Gira Primavera Peninsular 2026',
+    fechaInicio: '2026-05-15',
+    fechaFin: '2026-05-24',
+    vehiculo: 'Furgoneta 9 Plazas + Remolque',
+    consumoL100km: 9.5,
+    precioCarburanteEUR: 1.55,
+    tipoCombustible: 'diesel',
+    presupuestoLogistica: 850,
+    estado: 'confirmada',
+    stops: [
+      {
+        id: 'stop-1',
+        ciudad: 'Madrid',
+        sala: 'Sala Caracol',
+        fecha: '2026-05-15',
+        distanciaAnteriorKm: 0,
+        tiempoConduccionHoras: 0,
+        gastosAlojamiento: 120,
+        gastosGasolina: 40,
+        gastosDietas: 90,
+        ingresoCacheEstimated: 1200,
+        notasLogisticas: 'Carga de bártulos a las 15:00 en local.'
+      },
+      {
+        id: 'stop-2',
+        ciudad: 'Valencia',
+        sala: '16 Toneladas',
+        fecha: '2026-05-18',
+        distanciaAnteriorKm: 350,
+        tiempoConduccionHoras: 3.8,
+        gastosAlojamiento: 180,
+        gastosGasolina: 75,
+        gastosDietas: 110,
+        ingresoCacheEstimated: 1500,
+        notasLogisticas: 'Prueba de sonido 18:00.'
+      },
+      {
+        id: 'stop-3',
+        ciudad: 'Barcelona',
+        sala: 'Sala Apolo',
+        fecha: '2026-05-22',
+        distanciaAnteriorKm: 360,
+        tiempoConduccionHoras: 3.9,
+        gastosAlojamiento: 200,
+        gastosGasolina: 80,
+        gastosDietas: 120,
+        ingresoCacheEstimated: 2000,
+        notasLogisticas: 'Camerino disponible desde las 16:00.'
+      }
+    ]
   }
 ];

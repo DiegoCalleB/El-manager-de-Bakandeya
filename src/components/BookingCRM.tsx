@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Lead, LeadStatus, LeadType, ThemeColors } from '../types';
+import { Lead, LeadStatus, LeadType, ThemeColors, EPKConfig } from '../types';
+import DirectionsCard from './DirectionsCard';
 import { apiFetch } from '../utils/api';
+import { uploadFileToServer } from '../utils/audioStorage';
 import { 
  Search, ShieldCheck, Mail, Clock, Check, X, RefreshCw, 
  MapPin, Users, Bot, MessageSquare, Edit3, Settings, Sparkles, Send, LogOut, Loader2, Building, Radio, Building2, Tent, Landmark, Disc3, Briefcase,
- PlusCircle, Newspaper, Tv, Headphones, Globe, FileText, Plus, SlidersHorizontal, Map as MapIcon, List,
- Share2, Repeat, Truck, Handshake, Music, Zap
+ PlusCircle, Newspaper, Tv, Headphones, Globe, FileText, Plus, SlidersHorizontal, Map as MapIcon, List, LayoutGrid,
+ Share2, Repeat, Truck, Handshake, Music, Zap, Upload, Image as ImageIcon
 } from 'lucide-react';
 import { initAuth, googleSignIn, logout, fetchGmailThreadsForEmail } from '../utils/gmail';
 import { VenueMap } from './VenueMap';
+import { AddLeadModal } from './booking/AddLeadModal';
+import { TemplateConfigSection } from './booking/TemplateConfigSection';
+import { NegotiationSimulationModal } from './booking/NegotiationSimulationModal';
 
 export type TemplateCategory = 'salas' | 'festivales' | 'discotecas' | 'medios' | 'grupos' | 'managements';
 
@@ -20,75 +25,23 @@ interface BookingCRMProps {
  initialSection?: 'salas' | 'medios' | 'grupos';
  initialStatusFilter?: LeadStatus | 'todos';
  initialSelectedLeadId?: string;
+ epkConfig?: Partial<EPKConfig>;
+ onUpdateEpkConfig?: (newConfig: Partial<EPKConfig>) => void;
 }
 
-// Helper to normalize status strings from Excel or UI
-export const normalizeStatus = (s: any): LeadStatus => {
- if (!s) return 'nuevo';
- const str = String(s).trim().toLowerCase();
- if (str === 'nuevo' || str.includes('contactar') || str === 'new' || str === 'por_contactar') return 'nuevo';
- if (str === 'pendiente_aprobacion' || str.includes('aprobar') || str === 'pendiente' || str === 'por_aprobar') return 'pendiente_aprobacion';
- if (str === 'aprobado' || str.includes('listo') || str === 'aprobados') return 'aprobado';
- if (str === 'esperando_respuesta' || str.includes('enviado') || str.includes('esperando') || str === 'enviados') return 'esperando_respuesta';
- if (str.includes('interesado') && !str.includes('no')) return 'interesado';
- if (str.includes('negociando')) return 'negociando';
- if (str.includes('no') || str === 'no_interesado' || str.includes('rechazado')) return 'no_interesado';
- return 'nuevo';
-};
+import { 
+  normalizeStatus, 
+  normalizeType, 
+  autoDetectVenueAddress, 
+  VENUE_ADDRESS_DATABASE 
+} from '../utils/bookingUtils';
 
-// Helper to normalize lead types
-export const normalizeType = (t: any): LeadType => {
- if (!t) return 'sala';
- const s = String(t).trim().toLowerCase();
- if (s.includes('festiv') || s === 'festival') return 'festival';
- if (s.includes('ayunt') || s.includes('fiesta') || s.includes('municip') || s === 'ayuntamiento') return 'ayuntamiento';
- if (s.includes('disco') || s.includes('club') || s.includes('nightclub') || s === 'discoteca') return 'discoteca';
- if (s.includes('grup') || s.includes('artist') || s.includes('banda') || s === 'grupo') return 'grupo';
- if (s.includes('product') || s.includes('agencia') || s.includes('manag') || s === 'productora') return 'productora';
- if (s.includes('medio') || s.includes('radio') || s.includes('prensa') || s.includes('tv') || s.includes('podc') || s === 'medio') return 'medio';
- return 'sala';
+export { 
+  normalizeStatus, 
+  normalizeType, 
+  autoDetectVenueAddress, 
+  VENUE_ADDRESS_DATABASE 
 };
-
-// Known Spanish venues address database for intelligent address enrichment
-export const VENUE_ADDRESS_DATABASE: Record<string, string> = {
- 'sala trinchera': 'Calle Parauta, 25, 29006 Málaga',
- 'trinchera': 'Calle Parauta, 25, 29006 Málaga',
- 'sala apolo': 'Carrer de Nou de la Rambla, 113, 08004 Barcelona',
- 'apolo': 'Carrer de Nou de la Rambla, 113, 08004 Barcelona',
- 'ochoymedio club': 'Calle de Barceló, 11, 28004 Madrid',
- 'ochoymedio': 'Calle de Barceló, 11, 28004 Madrid',
- 'sala el tren': 'Carretera de Málaga, 136, 18015 Granada',
- 'el tren': 'Carretera de Málaga, 136, 18015 Granada',
- 'sala razzmatazz': 'Carrer dels Almogàvers, 122, 08018 Barcelona',
- 'razzmatazz': 'Carrer dels Almogàvers, 122, 08018 Barcelona',
- 'kafe antzokia': 'San Vicente Kalea, 2, 48001 Bilbo, Bizkaia',
- 'sala capitol': 'Rúa de Concepción Arenal, 5, 15702 Santiago de Compostela',
- 'sala rem': 'Calle Puerta Nueva, 33, 30001 Murcia',
- 'sala custom': 'Calle Metalurgia, 25, 41007 Sevilla',
- 'sala villanos': 'Calle Bernardino Obregón, 18, 28012 Madrid',
- 'sala hebe': 'Calle Tomás Esteban, 28, 28018 Madrid',
- 'sala caracol': 'Calle Bernardino Obregón, 18, 28012 Madrid',
- 'industrial copera': 'Calle Desmond Tutu, 18151 La Zulka, Granada',
- 'garaje beat club': 'Avenida Miguel de Cervantes, 45, 30009 Murcia',
- 'dabadaba': 'Mundaiz Kalea, 8, 20012 Donostia, Gipuzkoa',
- 'sala moon': 'Carrer de San Vicente Mártir, 200, 46007 València',
- 'paris 15': 'Calle Calle La Orotava, 27, 29006 Málaga',
- 'joy eslava': 'Calle Arenal, 11, 28013 Madrid',
- 'moby dick club': 'Avenida de Brasil, 5, 28020 Madrid',
- 'viña rock': 'Recinto Ferial, 02600 Villarrobledo, Albacete',
- 'cabo de plata': 'Playa de la Hierbabuena, 11160 Barbate, Cádiz'
-};
-
-export function autoDetectVenueAddress(nombreSala: string, ciudad: string): string {
- if (!nombreSala) return '';
- const cleanName = nombreSala.toLowerCase().trim();
- for (const [key, addr] of Object.entries(VENUE_ADDRESS_DATABASE)) {
- if (cleanName.includes(key) || key.includes(cleanName)) {
- return addr;
- }
- }
- return '';
-}
 
 export default function BookingCRM({ 
  leads, 
@@ -97,7 +50,9 @@ export default function BookingCRM({
  onAddLead, 
  initialSection = 'salas',
  initialStatusFilter = 'todos',
- initialSelectedLeadId
+ initialSelectedLeadId,
+ epkConfig,
+ onUpdateEpkConfig
 }: BookingCRMProps) {
  const [sectionTab, setSectionTab] = useState<'salas' | 'medios' | 'grupos'>(initialSection || 'salas');
  const [searchTerm, setSearchTerm] = useState('');
@@ -130,18 +85,27 @@ export default function BookingCRM({
  }, [initialSelectedLeadId, leads]);
 
  const [typeFilter, setTypeFilter] = useState<LeadType | 'todos'>('todos');
- const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+ const [viewMode, setViewMode] = useState<'grid' | 'table' | 'map'>('grid');
  const [selectedCityFilter, setSelectedCityFilter] = useState<string>('');
  
  // Custom City Chips state (persisted per band/user session)
  const [customCityChips, setCustomCityChips] = useState<string[]>(() => {
- try {
- const saved = localStorage.getItem('bakandeya_custom_cities');
- return saved ? JSON.parse(saved) : [];
- } catch {
- return [];
- }
+   if (epkConfig?.ciudadesConfig && Array.isArray(epkConfig.ciudadesConfig) && epkConfig.ciudadesConfig.length > 0) {
+     return epkConfig.ciudadesConfig;
+   }
+   try {
+     const saved = localStorage.getItem('bakandeya_custom_cities');
+     return saved ? JSON.parse(saved) : ['Madrid', 'Sevilla', 'Barcelona', 'Málaga', 'Valencia', 'Granada', 'Cádiz'];
+   } catch {
+     return ['Madrid', 'Sevilla', 'Barcelona', 'Málaga', 'Valencia', 'Granada', 'Cádiz'];
+   }
  });
+
+ useEffect(() => {
+   if (epkConfig?.ciudadesConfig && Array.isArray(epkConfig.ciudadesConfig) && epkConfig.ciudadesConfig.length > 0) {
+     setCustomCityChips(epkConfig.ciudadesConfig);
+   }
+ }, [epkConfig?.ciudadesConfig]);
  const [isAddingCityChip, setIsAddingCityChip] = useState(false);
  const [newCityInput, setNewCityInput] = useState('');
 
@@ -184,6 +148,9 @@ export default function BookingCRM({
  const updated = [...customCityChips, formatted];
  setCustomCityChips(updated);
  try { localStorage.setItem('bakandeya_custom_cities', JSON.stringify(updated)); } catch {}
+ if (onUpdateEpkConfig) {
+ onUpdateEpkConfig({ ciudadesConfig: updated });
+ }
  }
  setSelectedCityFilter(formatted);
  setNewCityInput('');
@@ -197,6 +164,9 @@ export default function BookingCRM({
  try { localStorage.setItem('bakandeya_custom_cities', JSON.stringify(updated)); } catch {}
  if (selectedCityFilter === cityToRemove) {
  setSelectedCityFilter('');
+ }
+ if (onUpdateEpkConfig) {
+ onUpdateEpkConfig({ ciudadesConfig: updated });
  }
  };
 
@@ -235,8 +205,31 @@ export default function BookingCRM({
  website: '',
  genero: 'Radio',
  notas: '',
- pitch_generado: ''
+ pitch_generado: '',
+ icono: '📻',
+ imagen_url: ''
  });
+
+ const [isUploadingLeadLogo, setIsUploadingLeadLogo] = useState(false);
+
+ const handleLeadLogoUpload = async (file: File, isEdit: boolean) => {
+ try {
+ setIsUploadingLeadLogo(true);
+ const url = await uploadFileToServer(file, { bandId: 'bakandeya', category: 'leads' });
+ if (url) {
+ if (isEdit) {
+ setEditedLeadInfo(prev => ({ ...prev, imagen_url: url }));
+ } else {
+ setNewLeadData(prev => ({ ...prev, imagen_url: url }));
+ }
+ }
+ } catch (err) {
+ console.error('Error uploading lead logo:', err);
+ alert('Error al subir la imagen del logo a Supabase');
+ } finally {
+ setIsUploadingLeadLogo(false);
+ }
+ };
 
  // Modal AI Scout Scraping state
  const [isModalScraping, setIsModalScraping] = useState(false);
@@ -856,6 +849,8 @@ Bakandeya Agent Manager IA`);
  const aforoVal = getVal(resData.data.aforo);
  const regionVal = getVal(resData.data.region);
  const generoVal = getVal(resData.data.genero);
+ const imgVal = getVal(resData.data.imagen_url);
+ const iconVal = getVal(resData.data.icono);
 
  setNewLeadData(prev => ({
  ...prev,
@@ -865,6 +860,8 @@ Bakandeya Agent Manager IA`);
  region: regionVal || prev.region,
  aforo: (aforoVal && !isNaN(Number(aforoVal))) ? Number(aforoVal) : prev.aforo,
  genero: generoVal || prev.genero,
+ imagen_url: imgVal || prev.imagen_url,
+ icono: iconVal || prev.icono,
  notas: prev.notas ? `${prev.notas} | Scout: ${resData.data.source_info || 'IA Grounding'}` : `Scout IA: ${resData.data.source_info || 'IA Grounding'}`
  }));
 
@@ -952,6 +949,8 @@ Bakandeya Agent Manager IA`);
  const aforoVal = getVal(scrapedDataForLead.aforo);
  const regionVal = getVal(scrapedDataForLead.region);
  const generoVal = getVal(scrapedDataForLead.genero);
+ const imgVal = getVal(scrapedDataForLead.imagen_url);
+ const iconVal = getVal(scrapedDataForLead.icono);
 
  const today = new Date().toISOString().split('T')[0];
  const sourceSummary = typeof scrapedDataForLead.source_info === 'string' ? scrapedDataForLead.source_info : 'Rastreo web Agente Scout';
@@ -966,6 +965,8 @@ Bakandeya Agent Manager IA`);
  aforo: (aforoVal && !isNaN(Number(aforoVal))) ? Number(aforoVal) : selectedLead.aforo,
  region: regionVal || selectedLead.region,
  genero: generoVal || selectedLead.genero,
+ imagen_url: imgVal || selectedLead.imagen_url,
+ icono: iconVal || selectedLead.icono,
  notas: updatedNotes
  };
 
@@ -993,6 +994,8 @@ Bakandeya Agent Manager IA`);
  telefono: newLeadData.telefono || '',
  instagram: newLeadData.website || '',
  website: newLeadData.website || '',
+ icono: newLeadData.icono || (sectionTab === 'medios' ? '📻' : '🏛️'),
+ imagen_url: newLeadData.imagen_url || '',
  fuente: 'Alta Manual CRM',
  estado: 'nuevo',
  pitch_generado: newLeadData.pitch_generado || (sectionTab === 'medios' 
@@ -1431,34 +1434,52 @@ Bakandeya Agent Manager IA`);
  </button>
 
  {/* View Mode Toggle Switcher */}
- <div className={`p-1 rounded-lg flex items-center gap-1 ${
- isStitchLight ? 'bg-slate-100' : 'bg-[#131313]'
+ <div className={`p-1 rounded-lg flex items-center gap-1.5 ${
+ isStitchLight ? 'bg-slate-100 border border-slate-200' : 'bg-[#131313] border border-white/5'
  }`}>
  <button
- id="crm-view-list"
+ id="crm-view-grid"
  type="button"
- onClick={() => setViewMode('list')}
- className={`px-2 py-1 rounded-md text-[10px] font-sans font-bold flex items-center gap-1 transition-all cursor-pointer ${
- viewMode === 'list'
- ? isStitchLight ? 'bg-slate-900 text-white shadow-sm' : 'bg-zinc-100 text-zinc-950 font-semibold shadow-sm'
- : isStitchLight ? 'text-slate-500 hover:text-slate-800' : 'text-neutral-400 hover:text-white'
+ onClick={() => setViewMode('grid')}
+ className={`px-2.5 py-1.5 rounded-md text-[11px] font-sans font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+ viewMode === 'grid'
+ ? isStitchLight ? 'bg-slate-900 text-white shadow-sm' : 'bg-[#f2ca50] text-[#3c2f00] font-bold shadow-sm'
+ : isStitchLight ? 'text-slate-600 hover:text-slate-900' : 'text-neutral-400 hover:text-white'
  }`}
+ title="Vista en Tarjetas"
+ >
+ <LayoutGrid className="w-3.5 h-3.5" />
+ <span>Tarjetas</span>
+ </button>
+ <button
+ id="crm-view-table"
+ type="button"
+ onClick={() => setViewMode('table')}
+ className={`px-2.5 py-1.5 rounded-md text-[11px] font-sans font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+ viewMode === 'table'
+ ? isStitchLight ? 'bg-slate-900 text-white shadow-sm' : 'bg-[#f2ca50] text-[#3c2f00] font-bold shadow-sm'
+ : isStitchLight ? 'text-slate-600 hover:text-slate-900' : 'text-neutral-400 hover:text-white'
+ }`}
+ title="Vista en Detalles / Tabla"
  >
  <List className="w-3.5 h-3.5" />
- <span>Lista</span>
+ <span>Detalles</span>
  </button>
  <button
  id="crm-view-map"
  type="button"
  onClick={() => setViewMode('map')}
- className={`px-2 py-1 rounded-md text-[10px] font-sans font-bold flex items-center gap-1 transition-all cursor-pointer ${
+ className={`px-3 py-1.5 rounded-md text-[11px] font-sans font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
  viewMode === 'map'
- ? isStitchLight ? 'bg-slate-900 text-white shadow-sm' : 'bg-zinc-100 text-zinc-950 font-semibold shadow-sm'
- : isStitchLight ? 'text-slate-500 hover:text-slate-800' : 'text-neutral-400 hover:text-white'
+ ? 'bg-sky-500 text-slate-950 font-bold shadow-md shadow-sky-500/20'
+ : isStitchLight
+ ? 'bg-sky-50 text-sky-700 border border-sky-300 hover:bg-sky-100 shadow-sm'
+ : 'bg-sky-500/15 text-sky-300 border border-sky-500/40 hover:bg-sky-500/25'
  }`}
+ title="Vista en Mapa GPS Interactivo"
  >
- <MapIcon className="w-3.5 h-3.5" />
- <span>Mapa GPS</span>
+ <MapIcon className={`w-3.5 h-3.5 ${viewMode === 'map' ? 'text-slate-950' : 'text-sky-400 animate-pulse'}`} />
+ <span>🗺️ Ver Mapa</span>
  </button>
  </div>
 
@@ -1650,24 +1671,28 @@ Bakandeya Agent Manager IA`);
  activeCityFilter={selectedCityFilter}
  activeRegionFilter=""
  />
- ) : (
- <div className="space-y-4 pb-10">
+ ) : viewMode === 'grid' ? (
+ <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 pb-10">
  {filteredLeads.map(lead => {
  const isSelected = selectedLead?.id === lead.id;
  return (
  <div 
  key={lead.id}
  onClick={() => handleOpenLead(lead)}
- className={`p-4 rounded-2xl transition-all cursor-pointer flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between ${ isSelected ? 'bg-[#1A1918]' : 'bg-[#121110] -transparent hover:bg-[#1A1918]' }`}
+ className={`p-4 rounded-2xl transition-all cursor-pointer flex flex-col justify-between gap-3 ${ isSelected ? 'bg-[#1A1918] border border-[#f2ca50]/50 shadow-md' : 'bg-[#121110] border border-zinc-800/70 hover:bg-[#1A1918] hover:border-zinc-700' }`}
  >
- <div className="flex items-center gap-4 min-w-0">
- <div className="w-10 h-10 rounded flex items-center justify-center shrink-0 bg-[#2A2928] text-[#9A9591] font-display font-bold text-lg">
- {lead.nombre_sala.charAt(0).toUpperCase()}
+ <div className="flex items-start gap-3 min-w-0 w-full">
+ {lead.imagen_url ? (
+ <img src={lead.imagen_url} alt={lead.nombre_sala} className="w-11 h-11 rounded-xl object-cover border border-[#f2ca50]/50 shrink-0 shadow-sm" />
+ ) : (
+ <div className="w-11 h-11 rounded-xl bg-[#2A2928] border border-zinc-700/60 flex items-center justify-center shrink-0 text-xl shadow-inner">
+ {lead.icono || (normalizeType(lead.tipo) === 'medio' ? '📻' : normalizeType(lead.tipo) === 'festival' ? '🎪' : normalizeType(lead.tipo) === 'discoteca' ? '🪩' : '🏛️')}
  </div>
- <div className="flex flex-col min-w-0">
- <div className="flex items-center gap-2">
- <span className="font-display font-bold text-sm tracking-wide text-zinc-100 truncate">{lead.nombre_sala}</span>
- <span className={`inline-flex items-center text-[10px] px-2 py-1 rounded-full font-sans font-medium ${getStatusBadgeClass(lead.estado)}`}>
+ )}
+ <div className="flex flex-col min-w-0 flex-1">
+ <div className="flex items-center justify-between gap-2">
+ <span className="font-display font-bold text-sm tracking-wide text-zinc-100 truncate flex-1 min-w-0">{lead.nombre_sala}</span>
+ <span className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-sans font-medium shrink-0 ${getStatusBadgeClass(lead.estado)}`}>
  {getStatusLabel(lead.estado)}
  </span>
  </div>
@@ -1681,16 +1706,16 @@ Bakandeya Agent Manager IA`);
  </div>
  </div>
  
- <div className="flex items-center gap-4 shrink-0 mt-3 sm:mt-0 self-end sm:self-auto">
- <div className="text-[10px] font-sans text-[#9a9591] hidden sm:block">
- ★ 4.2 (120)
+ <div className="flex items-center justify-between pt-2.5 border-t border-zinc-800/60 text-[11px] font-sans text-[#9a9591] w-full mt-1">
+ <div className="flex items-center gap-1">
+ <span className="text-[#f2ca50]">★</span> 4.2 <span className="text-zinc-600">(120)</span>
  </div>
  <button
  onClick={(e) => {
  e.stopPropagation();
  handleOpenLead(lead);
  }}
- className={`px-2 py-1 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${ isSelected ? 'bg-white text-[#121110] -transparent font-bold' : '-[#333130] text-zinc-300 hover:bg-[#22211F] hover:text-white' }`}
+ className={`px-3 py-1 rounded-lg text-xs font-sans font-medium transition-colors cursor-pointer ${ isSelected ? 'bg-[#f2ca50] text-[#3c2f00] font-bold' : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700' }`}
  >
  Intervenir
  </button>
@@ -1698,6 +1723,65 @@ Bakandeya Agent Manager IA`);
  </div>
  );
  })}
+ </div>
+ ) : (
+ <div className="overflow-x-auto rounded-2xl border border-zinc-800/80 bg-[#121110] shadow-lg pb-10">
+ <table className="w-full text-left border-collapse">
+ <thead>
+ <tr className="border-b border-zinc-800 text-[10px] font-mono uppercase tracking-wider text-zinc-400 bg-black/40">
+ <th className="py-3 px-4">Espacio / Sala</th>
+ <th className="py-3 px-4">Ciudad</th>
+ <th className="py-3 px-4">Aforo</th>
+ <th className="py-3 px-4">Género</th>
+ <th className="py-3 px-4">Estado</th>
+ <th className="py-3 px-4">Contacto / Email</th>
+ <th className="py-3 px-4 text-right">Acción</th>
+ </tr>
+ </thead>
+ <tbody className="divide-y divide-zinc-800/60 text-xs font-mono">
+ {filteredLeads.map(lead => {
+ const isSelected = selectedLead?.id === lead.id;
+ return (
+ <tr
+ key={lead.id}
+ onClick={() => handleOpenLead(lead)}
+ className={`transition-colors cursor-pointer ${isSelected ? 'bg-[#1A1918]' : 'hover:bg-zinc-900/60'}`}
+ >
+ <td className="py-3 px-4 font-bold text-zinc-100 flex items-center gap-2">
+ {lead.imagen_url ? (
+ <img src={lead.imagen_url} alt={lead.nombre_sala} className="w-6 h-6 rounded-md object-cover border border-[#f2ca50]/50 shrink-0" />
+ ) : (
+ <span className="w-6 h-6 rounded-md bg-zinc-800 border border-zinc-700/60 flex items-center justify-center text-xs shrink-0">
+ {lead.icono || (normalizeType(lead.tipo) === 'medio' ? '📻' : normalizeType(lead.tipo) === 'festival' ? '🎪' : normalizeType(lead.tipo) === 'discoteca' ? '🪩' : '🏛️')}
+ </span>
+ )}
+ <span className="truncate">{lead.nombre_sala}</span>
+ </td>
+ <td className="py-3 px-4 text-zinc-300">{lead.ciudad || '-'}</td>
+ <td className="py-3 px-4 text-zinc-300">{lead.aforo || '-'}</td>
+ <td className="py-3 px-4 text-zinc-300">{lead.genero || '-'}</td>
+ <td className="py-3 px-4">
+ <span className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-mono ${getStatusBadgeClass(lead.estado)}`}>
+ {getStatusLabel(lead.estado)}
+ </span>
+ </td>
+ <td className="py-3 px-4 text-zinc-400 truncate max-w-[180px]">{lead.email_contacto || '-'}</td>
+ <td className="py-3 px-4 text-right">
+ <button
+ type="button"
+ onClick={(e) => { e.stopPropagation(); handleOpenLead(lead); }}
+ className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+ isSelected ? 'bg-[#f2ca50] text-[#3c2f00]' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+ }`}
+ >
+ Ver
+ </button>
+ </td>
+ </tr>
+ );
+ })}
+ </tbody>
+ </table>
  </div>
  )}
  </div>
@@ -1710,10 +1794,18 @@ Bakandeya Agent Manager IA`);
  
  {/* Header */}
  <div className="flex justify-between items-start">
+ <div className="flex items-center gap-3">
+ {selectedLead.imagen_url ? (
+ <img src={selectedLead.imagen_url} alt={selectedLead.nombre_sala} className="w-14 h-14 rounded-2xl object-cover border-2 border-[#f2ca50] shrink-0 shadow-md" />
+ ) : (
+ <div className="w-14 h-14 rounded-2xl bg-[#2A2928] border border-zinc-700 flex items-center justify-center shrink-0 text-3xl shadow-inner">
+ {selectedLead.icono || (normalizeType(selectedLead.tipo) === 'medio' ? '📻' : normalizeType(selectedLead.tipo) === 'festival' ? '🎪' : normalizeType(selectedLead.tipo) === 'discoteca' ? '🪩' : '🏛️')}
+ </div>
+ )}
  <div>
- <h3 className="text-3xl font-bold font-display tracking-tight text-zinc-50">{selectedLead.nombre_sala}</h3>
- <p className="text-[13px] font-sans mt-2 text-[#9a9591]">{selectedLead.ciudad} • {selectedLead.genero || 'Variado'} • {selectedLead.aforo || '?'} pax</p>
- 
+ <h3 className="text-2xl font-bold font-display tracking-tight text-zinc-50">{selectedLead.nombre_sala}</h3>
+ <p className="text-[13px] font-sans mt-1 text-[#9a9591]">{selectedLead.ciudad} • {selectedLead.genero || 'Variado'} • {selectedLead.aforo || '?'} pax</p>
+ </div>
  </div>
  <div className="flex items-center gap-2">
  <button
@@ -1759,17 +1851,13 @@ Bakandeya Agent Manager IA`);
  Google rating: 3.8 <span className="text-[#9a9591]">(114 reseñas)</span>
  </div>
  
- <div className="pt-2">
- <a
- id="btn-lead-google-maps"
- href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedLead.direccion || `${selectedLead.nombre_sala}, ${selectedLead.ciudad}`)}`}
- target="_blank"
- rel="noopener noreferrer"
- className="inline-flex items-center gap-1.5 text-[10px] font-sans font-bold text-[#9a9591] hover:text-zinc-100 transition-colors"
- >
- <MapPin className="w-3.5 h-3.5" />
- Cómo llegar (Google Maps)
- </a>
+ <div className="pt-2 flex justify-center">
+ <DirectionsCard 
+ query={selectedLead.direccion || `${selectedLead.nombre_sala}, ${selectedLead.ciudad}`} 
+ locationName={selectedLead.nombre_sala} 
+ address={selectedLead.direccion || selectedLead.ciudad} 
+ isStitchLight={colors.name === 'stitch_light'} 
+ />
  </div>
  </div>
 
@@ -2008,7 +2096,7 @@ Bakandeya Agent Manager IA`);
  </div>
  </div>
 
- <div>
+  <div>
  <label className={`block text-[10px] uppercase font-sans tracking-wider ${textSub}`}>Notas de la Fila</label>
  <textarea
  rows={3}
@@ -2018,6 +2106,67 @@ Bakandeya Agent Manager IA`);
  isStitchLight ? 'bg-white text-slate-800' : 'bg-[#101010] text-neutral-100'
  }`}
  />
+ </div>
+
+ {/* Icono & Imagen / Logo Selector */}
+ <div className="p-3 rounded-xl border border-zinc-800 space-y-2.5 bg-black/40">
+ <div className="flex items-center justify-between">
+ <label className={`block text-[10px] uppercase font-sans tracking-wider ${textSub}`}>
+ Icono o Logo del Medio / Sala
+ </label>
+ <label className="cursor-pointer px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] rounded-lg flex items-center gap-1.5 font-bold transition-all border border-zinc-700">
+ <Upload className="w-3 h-3 text-[#f2ca50]" />
+ <span>{isUploadingLeadLogo ? 'Subiendo...' : 'Subir Logo Supabase'}</span>
+ <input 
+ type="file" 
+ accept="image/*" 
+ className="hidden" 
+ onChange={(e) => {
+ if (e.target.files && e.target.files[0]) {
+ handleLeadLogoUpload(e.target.files[0], true);
+ }
+ }}
+ disabled={isUploadingLeadLogo}
+ />
+ </label>
+ </div>
+
+ {editedLeadInfo.imagen_url ? (
+ <div className="flex items-center gap-3 p-2 bg-zinc-950 rounded-lg border border-zinc-800">
+ <img src={editedLeadInfo.imagen_url} alt="Logo" className="w-10 h-10 rounded-lg object-cover border border-[#f2ca50]/50 shrink-0" />
+ <div className="flex-1 min-w-0">
+ <p className="text-[10px] text-zinc-300 font-bold truncate">{editedLeadInfo.imagen_url}</p>
+ <p className="text-[9px] text-zinc-500">Logo subido a Supabase</p>
+ </div>
+ <button
+ type="button"
+ onClick={() => setEditedLeadInfo(prev => ({ ...prev, imagen_url: '' }))}
+ className="text-[10px] text-rose-400 hover:underline px-2 py-1 cursor-pointer"
+ >
+ Quitar
+ </button>
+ </div>
+ ) : (
+ <div className="space-y-1.5">
+ <p className="text-[9px] text-zinc-400">Selecciona un emoji característico:</p>
+ <div className="flex flex-wrap gap-1.5">
+ {['📻', '📰', '🌐', '🎙️', '📺', '🏛️', '🎪', '🪩', '🎸', '💼', '🎆', '⚡', '🔥'].map(emoji => (
+ <button
+ key={emoji}
+ type="button"
+ onClick={() => setEditedLeadInfo(prev => ({ ...prev, icono: emoji }))}
+ className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition-all cursor-pointer ${
+ editedLeadInfo.icono === emoji 
+ ? 'bg-[#f2ca50] text-[#3c2f00] font-bold scale-110 shadow-md border border-[#f2ca50]' 
+ : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700'
+ }`}
+ >
+ {emoji}
+ </button>
+ ))}
+ </div>
+ </div>
+ )}
  </div>
  </div>
  </div>
@@ -2789,12 +2938,12 @@ Bakandeya Agent Manager IA`);
  {testPromptResult}
  </div>
  ) : (
- <div className={` -dashed rounded-lg p-12 text-center text-[10px] font-sans ${
+ <div className={`border-2 border-dashed rounded-lg p-12 text-center text-[10px] font-sans ${
  isStitchLight
- ? '-slate-200 text-slate-400'
- : '-neutral-800 text-neutral-600'
+ ? 'border-slate-200 text-slate-400'
+ : 'border-neutral-800 text-neutral-600'
  }`}>
- Haz clic en"Probar Prompt" a la izquierda para simular el resultado de generación del Redactor AI basado en tus directrices actuales.
+ Haz clic en "Probar Prompt" a la izquierda para simular el resultado de generación del Redactor AI basado en tus directrices actuales.
  </div>
  )}
  </div>
@@ -2810,423 +2959,50 @@ Bakandeya Agent Manager IA`);
 
  </div>
 
- {/* ADVANCED NEGOTIATION SIMULATOR MODAL */}
- {isSimulatingAvanzado && selectedLead && (
- <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
- <div className={`w-full max-w-2xl rounded-xl shadow-2xl p-6 relative flex flex-col gap-4 animate-in zoom-in-95 duration-200 select-none ${
- isStitchLight ? 'bg-white text-slate-800' : 'bg-[#181818] text-neutral-200'
- }`}>
- {/* Header */}
- <div className="flex justify-between items-start dark:-neutral-800 pb-3">
- <div>
- <div className="flex items-center gap-2">
- <Sparkles className="w-5 h-5 text-[#d1b375]/80 animate-pulse" />
- <h3 className="text-sm font-bold font-display uppercase tracking-widest">
- Simulador de Negociación Personalizado
- </h3>
- </div>
- <p className={`text-[10px] font-sans mt-0.5 ${textMuted}`}>
- Trato actual con <strong className="text-[#d1b375]/80 dark:text-[#f2ca50]">{selectedLead.nombre_sala}</strong> ({selectedLead.ciudad}) — Estado: {selectedLead.estado}
- </p>
- </div>
- <button 
- type="button" 
- onClick={() => setIsSimulatingAvanzado(false)}
- className={`p-1 rounded-full transition-colors cursor-pointer hover:bg-neutral-800/10 dark:hover:bg-neutral-800 ${textSub}`}
- >
- <X className="w-5 h-5" />
- </button>
- </div>
+  {/* ADD NEW LEAD / MEDIO MODAL */}
+  <NegotiationSimulationModal
+    isOpen={isSimulatingAvanzado}
+    selectedLead={selectedLead}
+    isStitchLight={isStitchLight}
+    textSub={textSub}
+    textMuted={textMuted}
+    simulationRole={simulationRole}
+    simulationScenario={simulationScenario}
+    simulationSenderName={simulationSenderName}
+    simulationSubject={simulationSubject}
+    simulationCustomInstruction={simulationCustomInstruction}
+    simulationMessage={simulationMessage}
+    simulationGenerated={simulationGenerated}
+    isGeneratingSimulation={isGeneratingSimulation}
+    predefinedScenarios={PREDEFINED_SCENARIOS}
+    onClose={() => setIsSimulatingAvanzado(false)}
+    onRoleChange={handleRoleChange}
+    onScenarioChange={handleScenarioChange}
+    onSenderNameChange={setSimulationSenderName}
+    onSubjectChange={setSimulationSubject}
+    onCustomInstructionChange={setSimulationCustomInstruction}
+    onMessageChange={setSimulationMessage}
+    onGenerate={handleGenerateSimulationEmail}
+    onCommit={handleCommitSimulation}
+  />
 
- {/* Content Body */}
- <div className="space-y-4 select-text">
- {/* Role selector buttons */}
- <div className="space-y-1.5">
- <label className={`block text-[10px] uppercase font-sans tracking-wider ${textSub}`}>¿Quién emite la respuesta simulada?</label>
- <div className="grid grid-cols-2 gap-2">
- <button
- type="button"
- onClick={() => handleRoleChange('sala')}
- className={`py-2 px-3 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
- simulationRole === 'sala'
- ? isStitchLight
- ? 'bg-[#d1b375]/15 hover:bg-[#d1b375]/15 text-white shadow-sm'
- : 'bg-[#f2ca50] hover:bg-[#ffe28d] text-[#3c2f00]'
- : isStitchLight
- ? 'bg-slate-50 hover:bg-slate-100 text-slate-500'
- : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-400'
- }`}
- >
- <Building className="w-4 h-4" /> Sala o Festival (Entrante)
- </button>
- <button
- type="button"
- onClick={() => handleRoleChange('banda')}
- className={`py-2 px-3 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
- simulationRole === 'banda'
- ? isStitchLight
- ? 'bg-sky-500/15 hover:bg-sky-500/15 text-white shadow-sm'
- : 'bg-sky-500/15 hover:bg-sky-500/15 text-white'
- : isStitchLight
- ? 'bg-slate-50 hover:bg-slate-100 text-slate-500'
- : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-400'
- }`}
- >
- <Users className="w-4 h-4" /> Banda Bakandeya (Saliente)
- </button>
- </div>
- </div>
-
- {/* Scenario selector */}
- <div className="space-y-1.5">
- <label className={`block text-[10px] uppercase font-sans tracking-wider ${textSub}`}>Instrucciones de Situación / Pauta Inicial</label>
- <select
- value={simulationScenario}
- onChange={(e) => handleScenarioChange(e.target.value)}
- className={`w-full rounded-lg px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-white text-slate-800 focus:-indigo-500' : 'bg-[#1c1b1b] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- >
- {(simulationRole === 'sala' ? PREDEFINED_SCENARIOS.sala : PREDEFINED_SCENARIOS.banda).map((sc) => (
- <option key={sc.key} value={sc.key}>{sc.label}</option>
- ))}
- </select>
- </div>
-
- {/* Sender Name & Subject */}
- <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
- <div className="space-y-1.5">
- <label className={`block text-[10px] uppercase font-sans tracking-wider ${textSub}`}>Nombre del Emisor</label>
- <input
- type="text"
- value={simulationSenderName}
- onChange={(e) => setSimulationSenderName(e.target.value)}
- placeholder="Ej. Kike (Sala Hebe) o Bakandeya Agent Manager IA"
- className={`w-full rounded-lg px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-white text-slate-800 focus:-indigo-500' : 'bg-[#1c1b1b] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
- <div className="space-y-1.5">
- <label className={`block text-[10px] uppercase font-sans tracking-wider ${textSub}`}>Asunto del Correo</label>
- <input
- type="text"
- value={simulationSubject}
- onChange={(e) => setSimulationSubject(e.target.value)}
- placeholder="Ej. Re: Propuesta..."
- className={`w-full rounded-lg px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-white text-slate-800 focus:-indigo-500' : 'bg-[#1c1b1b] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
- </div>
-
- {/* Simulation Instructions Prompt Area */}
- <div className="space-y-1.5">
- <div className="flex justify-between items-center">
- <label className={`block text-[10px] uppercase font-sans tracking-wider ${textSub}`}>Instrucciones Detalladas de Negociación para la IA</label>
- <span className={`text-[10px] font-sans ${textMuted}`}>Cualquier cambio aquí personalizará el correo</span>
- </div>
- <textarea
- rows={3}
- value={simulationCustomInstruction}
- onChange={(e) => setSimulationCustomInstruction(e.target.value)}
- placeholder="Define pautas específicas (ej. propone taquilla 60/40, exige rider técnico especial, etc.)..."
- className={`w-full rounded-lg p-2.5 text-[10px] focus:outline-none font-sans leading-relaxed ${
- isStitchLight ? 'bg-white text-slate-800 focus:-indigo-500' : 'bg-[#1c1b1b] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
-
- {/* Generate Button */}
- <div className="flex justify-center pt-1">
- <button
- type="button"
- onClick={handleGenerateSimulationEmail}
- disabled={isGeneratingSimulation || !simulationCustomInstruction}
- className={`w-full py-2.5 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99] disabled:opacity-40 ${
- isStitchLight
- ? 'bg-sky-500/15 hover:bg-sky-500/15 text-white shadow-md'
- : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-extrabold shadow-lg'
- }`}
- >
- {isGeneratingSimulation ? (
- <>
- <Loader2 className="w-4 h-4 animate-spin" /> Generando Correo de Simulación...
- </>
- ) : (
- <>
- <Sparkles className="w-4 h-4" /> Generar Correo con Gemini AI
- </>
- )}
- </button>
- </div>
-
- {/* Output Preview Area */}
- {(simulationGenerated || simulationMessage) && (
- <div className="space-y-2 dark:-neutral-800 pt-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
- <div className="flex justify-between items-center">
- <label className={`block text-[10px] uppercase font-sans tracking-wider ${isStitchLight ? 'text-sky-400' : 'text-[#f2ca50]'}`}>
- ✨ Vista Previa del Correo Generado (Editable)
- </label>
- <span className={`text-[10px] font-sans uppercase bg-[#10b981]/15 text-[#10b981]/80 px-2 py-1 rounded/20`}>
- Listo para Ajustar
- </span>
- </div>
- <textarea
- rows={6}
- value={simulationMessage}
- onChange={(e) => setSimulationMessage(e.target.value)}
- className={`w-full rounded-lg p-3 text-[10px] focus:outline-none font-sans leading-relaxed ${
- isStitchLight ? 'bg-sky-500/15 text-slate-800' : 'bg-neutral-900 text-neutral-200'
- }`}
- />
- <p className={`text-[10px] font-sans ${textMuted} leading-tight`}>
- 💡 Tip: Puedes retocar el texto directamente para añadir detalles personalizados específicos antes de confirmarlo.
- </p>
- </div>
- )}
- </div>
-
- {/* Footer Buttons */}
- <div className="flex justify-end gap-3.5 dark:-neutral-800 pt-3 mt-1">
- <button
- type="button"
- onClick={() => setIsSimulatingAvanzado(false)}
- className={`px-2 py-1 rounded-lg font-sans text-[10px] uppercase tracking-wider transition-colors cursor-pointer ${
- isStitchLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-400'
- }`}
- >
- Cancelar
- </button>
- <button
- type="button"
- onClick={handleCommitSimulation}
- disabled={!simulationMessage || isGeneratingSimulation}
- className={`px-2 py-1 rounded-lg font-sans font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow active:scale-[0.98] disabled:opacity-40 transition-all ${
- isStitchLight
- ? 'bg-sky-500/15 hover:bg-sky-500/15 text-white'
- : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-extrabold'
- }`}
- >
- <Check className="w-4 h-4" /> Guardar y Sincronizar
- </button>
- </div>
- </div>
- </div>
- )}
-
- {/* ADD NEW LEAD / MEDIO MODAL */}
- {isAddingLeadModalOpen && (
- <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
- <div className={`w-full max-w-lg p-5 rounded-2xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto ${
- isStitchLight ? 'bg-white text-slate-800' : 'bg-[#18181b] text-[#e5e2e1]'
- }`}>
- <div className="flex items-center justify-between pb-3">
- <div className="flex items-center gap-2">
- {sectionTab === 'medios' ? (
- <Radio className="w-5 h-5 text-rose-400" />
- ) : (
- <Building2 className="w-5 h-5 text-[#d1b375]/80" />
- )}
- <h3 className={`text-sm font-bold font-display uppercase tracking-widest ${isStitchLight ? 'text-sky-400' : 'text-[#f2ca50]'}`}>
- {sectionTab === 'medios' ? 'Añadir Nuevo Medio de Comunicación' : 'Añadir Nueva Sala o Festival'}
- </h3>
- </div>
- <button
- onClick={() => setIsAddingLeadModalOpen(false)}
- className="text-neutral-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
- >
- <X className="w-5 h-5" />
- </button>
- </div>
-
- <form onSubmit={handleAddNewLeadSubmit} className="space-y-3.5">
- <div>
- <div className="flex justify-between items-center mb-1">
- <label className={`block text-[10px] uppercase font-sans tracking-wider ${textSub}`}>
- {sectionTab === 'medios' ? 'Nombre del Medio / Emisora / Revista *' : 'Nombre de la Sala / Festival *'}
- </label>
- <button
- type="button"
- onClick={handleModalScrape}
- disabled={isModalScraping || !newLeadData.nombre_sala}
- className={`px-2 py-1 text-[10px] font-sans rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
- isStitchLight
- ? 'bg-[#d1b375]/15 hover:bg-[#d1b375]/15 text-[#d1b375] disabled:opacity-50'
- : 'bg-[#f2ca50]/10 hover:bg-[#f2ca50]/20 text-[#f2ca50] disabled:opacity-50'
- }`}
- title="Buscar automáticamente email, teléfono y ubicación con el Agente Scout IA"
- >
- {isModalScraping ? (
- <Loader2 className="w-3 h-3 animate-spin text-[#d1b375]/80" />
- ) : (
- <Sparkles className="w-3 h-3 text-[#d1b375]/80 dark:text-[#f2ca50]" />
- )}
- <span>{isModalScraping ? 'Buscando datos...' : '✨ Autocompletar con IA Scout'}</span>
- </button>
- </div>
- <input
- type="text"
- required
- placeholder={sectionTab === 'medios' ? 'Ej. Radio 3, Mondosonoro, MariskalRock' : 'Ej. Sala El Sol, Festival Cabo de Plata'}
- value={newLeadData.nombre_sala}
- onChange={(e) => setNewLeadData(prev => ({ ...prev, nombre_sala: e.target.value }))}
- className={`w-full rounded-xl px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-slate-50 text-slate-800 focus:-indigo-500' : 'bg-[#121215] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
-
- {/* Modal Scraping Progress / Banner */}
- {isModalScraping && (
- <div className={`p-2.5 rounded-lg text-[10px] font-sans flex items-center gap-2 animate-pulse ${
- isStitchLight ? 'bg-[#d1b375]/15 text-[#d1b375]' : 'bg-[#1f1a10]/30 text-[#d1b375]'
- }`}>
- <Loader2 className="w-4 h-4 animate-spin text-[#d1b375]/80 shrink-0" />
- <span className="text-[10px] font-bold">{modalScrapeStatus}</span>
- </div>
- )}
-
- {modalScrapeError && (
- <div className="p-2.5 rounded-lg text-[10px] font-sans text-rose-400 bg-rose-500/15 dark:bg-rose-500/15 dark:-rose-800/50 dark:text-rose-400">
- ⚠️ {modalScrapeError}
- </div>
- )}
-
- {modalScrapeSuccessMsg && (
- <div className="p-2.5 rounded-lg text-[10px] font-sans text-[#10b981] bg-[#10b981]/15 dark:bg-[#10b981]/15 dark:-emerald-800/50 dark:text-[#10b981]">
- {modalScrapeSuccessMsg}
- </div>
- )}
-
- <div className="grid grid-cols-2 gap-3">
- <div>
- <label className={`block text-[10px] uppercase font-sans tracking-wider mb-1 ${textSub}`}>Ciudad</label>
- <input
- type="text"
- placeholder="Ej. Madrid, Barcelona"
- value={newLeadData.ciudad}
- onChange={(e) => setNewLeadData(prev => ({ ...prev, ciudad: e.target.value }))}
- className={`w-full rounded-xl px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-slate-50 text-slate-800 focus:-indigo-500' : 'bg-[#121215] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
- <div>
- <label className={`block text-[10px] uppercase font-sans tracking-wider mb-1 ${textSub}`}>Región / Alcance</label>
- <input
- type="text"
- placeholder="Ej. Nacional, Cataluña, Andalucía"
- value={newLeadData.region}
- onChange={(e) => setNewLeadData(prev => ({ ...prev, region: e.target.value }))}
- className={`w-full rounded-xl px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-slate-50 text-slate-800 focus:-indigo-500' : 'bg-[#121215] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
- </div>
-
- <div className="grid grid-cols-2 gap-3">
- <div>
- <label className={`block text-[10px] uppercase font-sans tracking-wider mb-1 ${textSub}`}>Correo de Contacto (Opcional)</label>
- <input
- type="email"
- placeholder="contacto@medio.com (o deja en blanco para IA)"
- value={newLeadData.email_contacto}
- onChange={(e) => setNewLeadData(prev => ({ ...prev, email_contacto: e.target.value }))}
- className={`w-full rounded-xl px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-slate-50 text-slate-800 focus:-indigo-500' : 'bg-[#121215] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
-
- <div>
- <label className={`block text-[10px] uppercase font-sans tracking-wider mb-1 ${textSub}`}>
- {sectionTab === 'medios' ? 'Tipo de Medio' : 'Tipo de Espacio'}
- </label>
- {sectionTab === 'medios' ? (
- <select
- value={newLeadData.genero}
- onChange={(e) => setNewLeadData(prev => ({ ...prev, genero: e.target.value }))}
- className={`w-full rounded-xl px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-slate-50 text-slate-800 focus:-indigo-500' : 'bg-[#121215] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- >
- <option value="Radio">Radio / Programa</option>
- <option value="Prensa Escrita">Prensa Escrita / Revista</option>
- <option value="Web / Blog">Portal Web / Blog Musical</option>
- <option value="Podcast">Podcast / Entrevistas</option>
- <option value="TV / Vídeo">Televisión / Vídeo</option>
- </select>
- ) : (
- <select
- value={newLeadData.tipo}
- onChange={(e) => setNewLeadData(prev => ({ ...prev, tipo: e.target.value as LeadType }))}
- className={`w-full rounded-xl px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-slate-50 text-slate-800 focus:-indigo-500' : 'bg-[#121215] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- >
- <option value="sala">Sala de Conciertos</option>
- <option value="festival">Festival</option>
- <option value="ayuntamiento">Ayuntamiento / Fiestas</option>
- <option value="productora">Productora / Booking</option>
- </select>
- )}
- </div>
- </div>
-
- <div>
- <label className={`block text-[10px] uppercase font-sans tracking-wider mb-1 ${textSub}`}>
- {sectionTab === 'medios' ? 'Nota de Prensa / Propuesta de Presentación' : 'Propuesta de Concierto'}
- </label>
- <textarea
- rows={3}
- placeholder={sectionTab === 'medios' 
- ? 'Escribe o personaliza el texto de presentación para la redacción...'
- : 'Propuesta de fecha, condiciones de taquilla, etc.'}
- value={newLeadData.pitch_generado}
- onChange={(e) => setNewLeadData(prev => ({ ...prev, pitch_generado: e.target.value }))}
- className={`w-full rounded-xl p-3 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-slate-50 text-slate-800 focus:-indigo-500' : 'bg-[#121215] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
-
- <div>
- <label className={`block text-[10px] uppercase font-sans tracking-wider mb-1 ${textSub}`}>Notas Internas</label>
- <input
- type="text"
- placeholder="Ej. Redactor jefe Bruno, programa nocturno, etc."
- value={newLeadData.notas}
- onChange={(e) => setNewLeadData(prev => ({ ...prev, notas: e.target.value }))}
- className={`w-full rounded-xl px-2 py-1 text-[10px] focus:outline-none font-sans ${
- isStitchLight ? 'bg-slate-50 text-slate-800 focus:-indigo-500' : 'bg-[#121215] text-[#e5e2e1] focus:-[#f2ca50]'
- }`}
- />
- </div>
-
- <div className="flex justify-end gap-3 pt-3">
- <button
- type="button"
- onClick={() => setIsAddingLeadModalOpen(false)}
- className={`px-2 py-1 rounded-xl font-sans text-[10px] uppercase tracking-wider transition-colors cursor-pointer ${
- isStitchLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-400'
- }`}
- >
- Cancelar
- </button>
- <button
- type="submit"
- className="px-2 py-1 rounded-xl font-sans font-bold text-[10px] uppercase tracking-wider bg-[#10b981]/15 hover:bg-[#10b981]/15 text-white cursor-pointer shadow-md transition-all active:scale-95"
- >
- {sectionTab === 'medios' ? 'Guardar Medio' : 'Guardar Sala'}
- </button>
- </div>
- </form>
- </div>
- </div>
- )}
+  <AddLeadModal
+    isOpen={isAddingLeadModalOpen}
+    sectionTab={sectionTab}
+    isStitchLight={isStitchLight}
+    textSub={textSub}
+    newLeadData={newLeadData}
+    setNewLeadData={setNewLeadData}
+    isModalScraping={isModalScraping}
+    modalScrapeStatus={modalScrapeStatus}
+    modalScrapeError={modalScrapeError}
+    modalScrapeSuccessMsg={modalScrapeSuccessMsg}
+    isUploadingLeadLogo={isUploadingLeadLogo}
+    onClose={() => setIsAddingLeadModalOpen(false)}
+    onSubmit={handleAddNewLeadSubmit}
+    onModalScrape={handleModalScrape}
+    onLeadLogoUpload={(file) => handleLeadLogoUpload(file, false)}
+  />
 
  </div>
  );

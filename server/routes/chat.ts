@@ -185,16 +185,40 @@ router.post("/chat", async (req, res) => {
         region: l.region,
         aforo: l.aforo,
         genero: l.genero,
+        tipo: l.tipo,
         email_contacto: l.email_contacto,
         telefono: l.telefono,
         instagram: l.instagram,
         fuente: l.fuente,
         estado: l.estado,
+        icono: l.icono,
+        imagen_url: l.imagen_url,
         notas: l.notas,
         fecha_envio: l.fecha_envio,
         fecha_ultima_respuesta: l.fecha_ultima_respuesta,
         hasPitch: !!l.pitch_generado
       })),
+      bands: (state.bands || []).map((b: any) => ({
+        id: b.id,
+        nombre_banda: b.nombre_banda,
+        estilo_musical: b.estilo_musical,
+        localizacion: b.localizacion,
+        icono: b.icono,
+        imagen_url: b.imagen_url
+      })),
+      tours: (state.tours || []).map((t: any) => ({
+        id: t.id,
+        nombre: t.nombre,
+        vehiculo: t.vehiculo,
+        estado: t.estado,
+        fechaInicio: t.fechaInicio,
+        fechaFin: t.fechaFin,
+        presupuestoLogistica: t.presupuestoLogistica,
+        stops: t.stops
+      })),
+      songs: (state.songs || []).map((s: any) => ({ id: s.id, titulo: s.titulo, estado: s.estado, duracion: s.duracion })),
+      setlists: (state.setlists || []).map((st: any) => ({ id: st.id, titulo: st.titulo, fecha: st.fecha, duracionTotal: st.duracionTotal })),
+      fansCount: (state.fans || []).length,
       rehearsals: state.rehearsals,
       concerts: state.concerts.map((c: Concert) => ({
         id: c.id,
@@ -267,7 +291,11 @@ Puedes proponer acciones como:
 3. 'propose_concert' para agendar/añadir un concierto o bolo en la agenda de la banda y Google Sheets (incluye 'description', opcional 'leadId', y un objeto 'concert' con { fecha: 'YYYY-MM-DD', ciudad: '...', sala: '...', cache: 0, aforo_total: 200, contrato_firmado: true, estado_pago: 'pendiente', notas: '...', tipo: 'sala' }).
 4. 'propose_rehearsal' para proponer/agendar un ensayo (incluye 'description' y un objeto 'rehearsal' con { fecha: 'YYYY-MM-DD', hora: '19:00', lugar: '...', asistentes: ['Banda'], notas: '...', estado: 'programado' }).
 5. 'propose_band' para añadir una nueva banda al CRM (incluye 'description' y un objeto 'band' con { nombre_banda: '...', estilo_musical: '...', localizacion: '...', estado_relacion: 'nuevo', contacto_nombre: '', email: '', telefono: '', instagram: '', notas_colaboracion: '' }).
-${agentsEnabled ? `5. 'propose_agent_trigger' con 'agentName' (debe ser obligatoriamente 'Scout', 'Scout Descubridor', 'Redactor', 'Enviador' o 'Lector') y un objeto 'params' opcional. Usar SOLO cuando el usuario solicite explícitamente ejecutar/lanzar un agente de GitHub Actions.` : `5. [MODO AGENTES GITHUB ACTIONS DESACTIVADO]: El modo de ejecuciones externas de Python está DESACTIVADO por el usuario. NUNCA propongas 'propose_agent_trigger' bajo ningún concepto.`}
+6. 'propose_tour' para planificar o guardar una gira en el gestor de giras y Google Sheets (incluye 'description' y un objeto 'tour' con { id: 'tour-...', nombre: 'Gira ...', vehiculo: 'Furgoneta 9 Plazas', estado: 'planificacion', fechaInicio: 'YYYY-MM-DD', fechaFin: 'YYYY-MM-DD', presupuestoLogistica: 500, stops: [] }).
+7. 'propose_update_logo' para buscar, asignar o actualizar el logo de una sala, medio, festival o banda. Incluye 'targetType' ('lead' o 'band'), 'leadId' o 'bandId', 'targetName', 'imagen_url', 'icono' y 'description'.
+${agentsEnabled ? `8. 'propose_agent_trigger' con 'agentName' (debe ser obligatoriamente 'Scout', 'Scout Descubridor', 'Redactor', 'Enviador' o 'Lector') y un objeto 'params' opcional. Usar SOLO cuando el usuario solicite explícitamente ejecutar/lanzar un agente de GitHub Actions.` : `8. [MODO AGENTES GITHUB ACTIONS DESACTIVADO]: El modo de ejecuciones externas de Python está DESACTIVADO por el usuario. NUNCA propongas 'propose_agent_trigger' bajo ningún concepto.`}
+
+REGLA DE LOGOS E IMÁGENES: Si el usuario te pide buscar, asignar o completar los logos o imágenes de salas, medios o bandas, o si detectas que falta un logo, puedes proponer acciones 'propose_update_logo' para asignar la URL del logo (imagen_url) o un icono emoji (icono). Se guardará automáticamente en Google Sheets.
 
 REGLA DE AGENTES Y GEMINI: ${agentsEnabled ? `Si el usuario indica que NO quiere usar o lanzar agentes de Python ("no quiero agentes", "sin agentes", "hazlo tú"), NUNCA propongas 'propose_agent_trigger'.` : `El modo Agentes Python está desactivado en la interfaz. NUNCA menciones lanzar agentes de Python ni propongas 'propose_agent_trigger'. Tú como Gemini gestionas directamente la redacción de pitches, búsquedas, filtrados y consultas.`}
 

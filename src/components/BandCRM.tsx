@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BandContact, BandRelationshipStatus, ThemeColors, Lead } from '../types';
+import BandMap from './BandMap';
+import { BandPitchModal } from './bandCRM/BandPitchModal';
+import { uploadFileToServer } from '../utils/audioStorage';
 import { 
  Users, Music, MapPin, Clock, Sparkles, Plus, Search, Filter, Edit3, Trash2, 
  Copy, Check, ExternalLink, Send, MessageCircle, RefreshCw, LayoutGrid, List, 
- Handshake, Repeat, Zap, Share2, X, Star, Radio, Phone, Mail, Globe, AlertCircle, Building2
+ Handshake, Repeat, Zap, Share2, X, Star, Radio, Phone, Mail, Globe, AlertCircle, Building2, Map,
+ Loader2, Bot, Upload, Image as ImageIcon
 } from 'lucide-react';
 
 interface BandCRMProps {
@@ -221,7 +225,7 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  const [statusFilter, setStatusFilter] = useState<BandRelationshipStatus | 'todos'>('todos');
  const [styleFilter, setStyleFilter] = useState<string>('todos');
  const [locationFilter, setLocationFilter] = useState<string>('todos');
- const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+ const [viewMode, setViewMode] = useState<'grid' | 'table' | 'map'>('map');
 
  // Modal State
  const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
@@ -248,50 +252,136 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  const [formSpotifyYoutube, setFormSpotifyYoutube] = useState('');
  const [formAforo, setFormAforo] = useState<number>(300);
  const [formNotes, setFormNotes] = useState('');
+ const [formIcon, setFormIcon] = useState('🎸');
+ const [formImageUrl, setFormImageUrl] = useState('');
+ const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+ const handleLogoUpload = async (file: File) => {
+   try {
+     setIsUploadingLogo(true);
+     const url = await uploadFileToServer(file, { bandId: 'bakandeya', category: 'grupos' });
+     if (url) {
+       setFormImageUrl(url);
+     }
+   } catch (err) {
+     console.error('Error uploading band image:', err);
+     alert('Error al subir la imagen a Supabase');
+   } finally {
+     setIsUploadingLogo(false);
+   }
+ };
+
+ // AI Band Lookup state
+ const [isAiSearching, setIsAiSearching] = useState(false);
+ const [aiProposal, setAiProposal] = useState<any | null>(null);
+ const [aiError, setAiError] = useState<string | null>(null);
+
+ const handleAiLookup = async () => {
+ if (!formName.trim()) {
+ alert('Por favor introduce el nombre de la banda primero para buscar con IA.');
+ return;
+ }
+ setIsAiSearching(true);
+ setAiError(null);
+ setAiProposal(null);
+ try {
+ const res = await fetch('/api/bands/ai-lookup', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ nombre_banda: formName.trim(), localizacion: formLocation.trim() })
+ });
+ const data = await res.json();
+ if (data.success && data.data) {
+ setAiProposal(data.data);
+ } else {
+ setAiError(data.error || 'No se encontraron datos para esta banda.');
+ }
+ } catch (err: any) {
+ console.error('Error en búsqueda de IA:', err);
+ setAiError('Error al conectar con la IA para la búsqueda.');
+ } finally {
+ setIsAiSearching(false);
+ }
+ };
+
+ const handleApplyAllAiData = () => {
+ if (!aiProposal) return;
+ if (aiProposal.estilo_musical) setFormStyle(aiProposal.estilo_musical);
+ if (aiProposal.localizacion) setFormLocation(aiProposal.localizacion);
+ if (aiProposal.contacto_nombre) setFormContactName(aiProposal.contacto_nombre);
+ if (aiProposal.email) setFormEmail(aiProposal.email);
+ if (aiProposal.telefono) setFormPhone(aiProposal.telefono);
+ if (aiProposal.instagram) setFormInstagram(aiProposal.instagram);
+ if (aiProposal.spotify_url || aiProposal.youtube_url) {
+ setFormSpotifyYoutube(aiProposal.spotify_url || aiProposal.youtube_url);
+ }
+ if (aiProposal.icono) setFormIcon(aiProposal.icono);
+ if (aiProposal.imagen_url) setFormImageUrl(aiProposal.imagen_url);
+ if (aiProposal.biografia) {
+ setFormNotes(prev => prev ? `${prev}\n\n[Bio IA]: ${aiProposal.biografia}` : aiProposal.biografia);
+ }
+ setAiProposal(null);
+ };
 
  // Handle open modal for creation
  const handleOpenCreateModal = () => {
- setEditingBand(null);
- setFormName('');
- setFormStyle('Balkan Ska / Mestizaje');
- setFormLocation('Madrid');
- setFormStatus('sin_contactar');
- setFormLastContact(new Date().toISOString().split('T')[0]);
- setFormContactName('');
- setFormEmail('');
- setFormPhone('');
- setFormInstagram('');
- setFormSpotifyYoutube('');
- setFormAforo(300);
- setFormNotes('');
- setIsAddEditModalOpen(true);
+  setEditingBand(null);
+  setFormName('');
+  setFormStyle('Balkan Ska / Mestizaje');
+  setFormLocation('Madrid');
+  setFormStatus('sin_contactar');
+  setFormLastContact(new Date().toISOString().split('T')[0]);
+  setFormContactName('');
+  setFormEmail('');
+  setFormPhone('');
+  setFormInstagram('');
+  setFormSpotifyYoutube('');
+  setFormAforo(300);
+  setFormNotes('');
+  setFormIcon('🎸');
+  setFormImageUrl('');
+  setAiProposal(null);
+  setAiError(null);
+  setIsAiSearching(false);
+  setIsAddEditModalOpen(true);
  };
 
  // Handle open modal for editing
  const handleOpenEditModal = (band: BandContact) => {
- setEditingBand(band);
- setFormName(band.nombre_banda);
- setFormStyle(band.estilo_musical);
- setFormLocation(band.localizacion);
- setFormStatus(band.estado_relacion);
- setFormLastContact(band.ultimo_contacto);
- setFormContactName(band.contacto_nombre || '');
- setFormEmail(band.email || '');
- setFormPhone(band.telefono || '');
- setFormInstagram(band.instagram || '');
- setFormSpotifyYoutube(band.spotify_youtube || '');
- setFormAforo(band.aforo_promedio || 300);
- setFormNotes(band.notas_colaboracion || '');
- setIsAddEditModalOpen(true);
+  setEditingBand(band);
+  setFormName(band.nombre_banda);
+  setFormStyle(band.estilo_musical);
+  setFormLocation(band.localizacion);
+  setFormStatus(band.estado_relacion);
+  setFormLastContact(band.ultimo_contacto);
+  setFormContactName(band.contacto_nombre || '');
+  setFormEmail(band.email || '');
+  setFormPhone(band.telefono || '');
+  setFormInstagram(band.instagram || '');
+  setFormSpotifyYoutube(band.spotify_youtube || '');
+  setFormAforo(band.aforo_promedio || 300);
+  setFormNotes(band.notas_colaboracion || '');
+  setFormIcon(band.icono || '🎸');
+  setFormImageUrl(band.imagen_url || '');
+  setAiProposal(null);
+  setAiError(null);
+  setIsAiSearching(false);
+  setIsAddEditModalOpen(true);
  };
 
  // Handle Save (Create or Update)
- const handleSaveBand = (e: React.FormEvent) => {
+ const handleSaveBand = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!formName.trim()) {
  alert('Por favor introduce el nombre de la banda.');
  return;
  }
+
+ const token = localStorage.getItem('bakandeya_token');
+ const headers = {
+ 'Content-Type': 'application/json',
+ ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+ };
 
  if (editingBand) {
  // Update existing
@@ -309,10 +399,22 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  spotify_youtube: formSpotifyYoutube.trim(),
  aforo_promedio: Number(formAforo) || 0,
  notas_colaboracion: formNotes.trim(),
- ciudad_origen_swap: formLocation.trim()
+ ciudad_origen_swap: formLocation.trim(),
+ icono: formIcon,
+ imagen_url: formImageUrl
  };
 
  setBands(prev => prev.map(b => b.id === editingBand.id ? updated : b));
+
+ try {
+ await fetch(`/api/bands/${editingBand.id}`, {
+ method: 'PUT',
+ headers,
+ body: JSON.stringify(updated)
+ });
+ } catch (err) {
+ console.error("Error updating band on server:", err);
+ }
 
  // Also sync back to main leads list if onUpdateLead is provided
  if (onUpdateLead) {
@@ -324,7 +426,9 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  email_contacto: updated.email,
  telefono: updated.telefono,
  instagram: updated.instagram,
- notas: updated.notas_colaboracion
+ notas: updated.notas_colaboracion,
+ icono: updated.icono,
+ imagen_url: updated.imagen_url
  });
  }
  } else {
@@ -343,10 +447,22 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  spotify_youtube: formSpotifyYoutube.trim(),
  aforo_promedio: Number(formAforo) || 300,
  notas_colaboracion: formNotes.trim(),
- ciudad_origen_swap: formLocation.trim()
+ ciudad_origen_swap: formLocation.trim(),
+ icono: formIcon,
+ imagen_url: formImageUrl
  };
 
  setBands(prev => [newBand, ...prev]);
+
+ try {
+ await fetch('/api/bands', {
+ method: 'POST',
+ headers,
+ body: JSON.stringify(newBand)
+ });
+ } catch (err) {
+ console.error("Error creating band on server:", err);
+ }
 
  // Sync to main leads list if onAddLead is provided
  if (onAddLead) {
@@ -365,7 +481,9 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  fuente: 'Red de Co-Booking Bandas',
  estado: 'pendiente_aprobacion',
  pitch_generado: `Propuesta Date Swap: Bakandeya x ${newBand.nombre_banda}`,
- notas: newBand.notas_colaboracion || ''
+ notas: newBand.notas_colaboracion || '',
+ icono: newBand.icono,
+ imagen_url: newBand.imagen_url
  });
  }
  }
@@ -686,6 +804,17 @@ Bakandeya Agent Manager IA & Músicos`;
  >
  <List className="w-4 h-4" />
  </button>
+ <button
+ id="view-map-btn"
+ type="button"
+ onClick={() => setViewMode('map')}
+ className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+ viewMode === 'map' ? 'bg-[#f2ca50] text-[#3c2f00]' : 'text-neutral-400 hover:text-white'
+ }`}
+ title="Vista en Mapa Interactivo"
+ >
+ <Map className="w-4 h-4" />
+ </button>
  </div>
  </div>
  </div>
@@ -709,6 +838,12 @@ Bakandeya Agent Manager IA & Músicos`;
  <span>Añadir Primera Banda</span>
  </button>
  </div>
+ ) : viewMode === 'map' ? (
+ <BandMap
+ bands={filteredBands}
+ onSelectBand={(band) => handleOpenEditModal(band)}
+ isStitchLight={isStitchLight}
+ />
  ) : viewMode === 'grid' ? (
  /* GRID CARDS VIEW */
  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -722,7 +857,11 @@ Bakandeya Agent Manager IA & Músicos`;
  <div className="flex items-start justify-between gap-2">
  <div className="space-y-1 min-w-0">
  <h3 className="text-base font-bold font-display tracking-wider uppercase text-white flex items-center gap-2 group-hover:text-[#f2ca50] transition-colors truncate">
- <Music className="w-4 h-4 text-[#f2ca50] shrink-0" />
+ {band.imagen_url ? (
+ <img src={band.imagen_url} alt={band.nombre_banda} className="w-6 h-6 rounded-full object-cover border border-[#f2ca50]/50 shrink-0" />
+ ) : (
+ <span className="text-sm shrink-0">{band.icono || '🎸'}</span>
+ )}
  <span className="truncate">{band.nombre_banda}</span>
  </h3>
  
@@ -868,7 +1007,11 @@ Bakandeya Agent Manager IA & Músicos`;
  <tr key={band.id} className="hover:bg-neutral-900/50 transition-colors">
  <td className="p-3.5 font-bold text-white">
  <div className="flex items-center gap-2">
- <Music className="w-3.5 h-3.5 text-[#f2ca50] shrink-0" />
+ {band.imagen_url ? (
+ <img src={band.imagen_url} alt={band.nombre_banda} className="w-5 h-5 rounded-full object-cover border border-[#f2ca50]/50 shrink-0" />
+ ) : (
+ <span className="text-xs shrink-0">{band.icono || '🎸'}</span>
+ )}
  <span>{band.nombre_banda}</span>
  </div>
  </td>
@@ -950,16 +1093,213 @@ Bakandeya Agent Manager IA & Músicos`;
  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
  
  {/* Nombre de la Banda */}
- <div className="space-y-1">
+ <div className="space-y-1 md:col-span-2">
+ <div className="flex items-center justify-between">
  <label className="block text-[10px] font-mono uppercase text-neutral-400">Nombre de la Banda / Artista *</label>
+ <button
+ type="button"
+ onClick={handleAiLookup}
+ disabled={isAiSearching || !formName.trim()}
+ className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-2.5 py-1 rounded-xl bg-[#f2ca50]/10 hover:bg-[#f2ca50]/20 text-[#f2ca50] border border-[#f2ca50]/30 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+ >
+ {isAiSearching ? (
+ <>
+ <Loader2 className="w-3 h-3 animate-spin text-[#f2ca50]" />
+ <span>Buscando en la Web...</span>
+ </>
+ ) : (
+ <>
+ <Sparkles className="w-3 h-3 text-[#f2ca50]" />
+ <span>Buscar con IA (Autorellenar)</span>
+ </>
+ )}
+ </button>
+ </div>
  <input
  type="text"
  required
  value={formName}
  onChange={(e) => setFormName(e.target.value)}
- placeholder="Ej: La Señora Tomasa, Tarraco Ska..."
- className="w-full bg-neutral-900 text-white px-2 py-1 rounded-xl text-[10px] font-mono focus:outline-none focus:-[#f2ca50]/50"
+ placeholder="Ej: Pardiez, La Señora Tomasa, Tarraco Ska..."
+ className="w-full bg-neutral-900 text-white px-3 py-1.5 rounded-xl text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#f2ca50]/50"
  />
+ </div>
+
+ {/* AI Proposal Overlay / Card */}
+ {isAiSearching && (
+ <div className="md:col-span-2 p-3 bg-neutral-900/90 border border-[#f2ca50]/30 rounded-xl flex items-center gap-3 text-xs text-[#f2ca50] font-mono animate-pulse">
+ <Loader2 className="w-4 h-4 animate-spin text-[#f2ca50]" />
+ <span>Buscando datos de "{formName}" con IA en la web...</span>
+ </div>
+ )}
+
+ {aiError && (
+ <div className="md:col-span-2 p-3 bg-rose-950/40 border border-rose-800/50 rounded-xl flex items-center justify-between text-xs text-rose-300 font-mono">
+ <span>⚠️ {aiError}</span>
+ <button type="button" onClick={() => setAiError(null)} className="p-1 hover:bg-rose-900/50 rounded">
+ <X className="w-3.5 h-3.5" />
+ </button>
+ </div>
+ )}
+
+ {aiProposal && (
+ <div className="md:col-span-2 p-3.5 bg-zinc-900 border border-[#f2ca50]/40 rounded-xl space-y-3 text-xs font-mono shadow-xl">
+ <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+ <div className="flex items-center gap-1.5 text-[#f2ca50] font-bold">
+ <Sparkles className="w-4 h-4" />
+ <span>Propuesta de la IA (Revisa antes de confirmar):</span>
+ </div>
+ <div className="flex items-center gap-2">
+ <button
+ type="button"
+ onClick={handleApplyAllAiData}
+ className="px-3 py-1 bg-[#f2ca50] text-[#3c2f00] font-bold rounded-lg text-[10px] hover:bg-[#e0b83e] transition-all cursor-pointer flex items-center gap-1 shadow"
+ >
+ <Check className="w-3.5 h-3.5" />
+ <span>Aplicar Todo</span>
+ </button>
+ <button
+ type="button"
+ onClick={() => setAiProposal(null)}
+ className="p-1 hover:bg-zinc-800 text-zinc-400 rounded-lg transition-colors cursor-pointer"
+ title="Descartar propuesta"
+ >
+ <X className="w-3.5 h-3.5" />
+ </button>
+ </div>
+ </div>
+
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-zinc-300">
+ {aiProposal.estilo_musical && (
+ <div className="flex items-center justify-between bg-zinc-950/70 p-2 rounded-lg border border-zinc-800">
+ <div className="truncate pr-2"><span className="text-zinc-500 font-bold">Estilo:</span> {aiProposal.estilo_musical}</div>
+ <button type="button" onClick={() => setFormStyle(aiProposal.estilo_musical)} className="text-[10px] font-bold text-[#f2ca50] hover:underline cursor-pointer shrink-0">Usar</button>
+ </div>
+ )}
+
+ {aiProposal.localizacion && (
+ <div className="flex items-center justify-between bg-zinc-950/70 p-2 rounded-lg border border-zinc-800">
+ <div className="truncate pr-2"><span className="text-zinc-500 font-bold">Origen:</span> {aiProposal.localizacion}</div>
+ <button type="button" onClick={() => setFormLocation(aiProposal.localizacion)} className="text-[10px] font-bold text-[#f2ca50] hover:underline cursor-pointer shrink-0">Usar</button>
+ </div>
+ )}
+
+ {aiProposal.contacto_nombre && (
+ <div className="flex items-center justify-between bg-zinc-950/70 p-2 rounded-lg border border-zinc-800">
+ <div className="truncate pr-2"><span className="text-zinc-500 font-bold">Contacto:</span> {aiProposal.contacto_nombre}</div>
+ <button type="button" onClick={() => setFormContactName(aiProposal.contacto_nombre)} className="text-[10px] font-bold text-[#f2ca50] hover:underline cursor-pointer shrink-0">Usar</button>
+ </div>
+ )}
+
+ {aiProposal.email && (
+ <div className="flex items-center justify-between bg-zinc-950/70 p-2 rounded-lg border border-zinc-800">
+ <div className="truncate pr-2"><span className="text-zinc-500 font-bold">Email:</span> {aiProposal.email}</div>
+ <button type="button" onClick={() => setFormEmail(aiProposal.email)} className="text-[10px] font-bold text-[#f2ca50] hover:underline cursor-pointer shrink-0">Usar</button>
+ </div>
+ )}
+
+ {aiProposal.telefono && (
+ <div className="flex items-center justify-between bg-zinc-950/70 p-2 rounded-lg border border-zinc-800">
+ <div className="truncate pr-2"><span className="text-zinc-500 font-bold">Tel:</span> {aiProposal.telefono}</div>
+ <button type="button" onClick={() => setFormPhone(aiProposal.telefono)} className="text-[10px] font-bold text-[#f2ca50] hover:underline cursor-pointer shrink-0">Usar</button>
+ </div>
+ )}
+
+ {aiProposal.instagram && (
+ <div className="flex items-center justify-between bg-zinc-950/70 p-2 rounded-lg border border-zinc-800">
+ <div className="truncate pr-2"><span className="text-zinc-500 font-bold">Instagram:</span> {aiProposal.instagram}</div>
+ <button type="button" onClick={() => setFormInstagram(aiProposal.instagram)} className="text-[10px] font-bold text-[#f2ca50] hover:underline cursor-pointer shrink-0">Usar</button>
+ </div>
+ )}
+
+ {(aiProposal.spotify_url || aiProposal.youtube_url) && (
+ <div className="flex items-center justify-between bg-zinc-950/70 p-2 rounded-lg border border-zinc-800 sm:col-span-2">
+ <div className="truncate max-w-[80%]"><span className="text-zinc-500 font-bold">Música / Media:</span> {aiProposal.spotify_url || aiProposal.youtube_url}</div>
+ <button type="button" onClick={() => setFormSpotifyYoutube(aiProposal.spotify_url || aiProposal.youtube_url)} className="text-[10px] font-bold text-[#f2ca50] hover:underline cursor-pointer shrink-0">Usar</button>
+ </div>
+ )}
+
+ {aiProposal.biografia && (
+ <div className="bg-zinc-950/70 p-2 rounded-lg border border-zinc-800 sm:col-span-2 space-y-1">
+ <div className="flex items-center justify-between">
+ <span className="text-zinc-500 font-bold">Resumen / Bio:</span>
+ <button type="button" onClick={() => setFormNotes(prev => prev ? `${prev}\n\n[Bio IA]: ${aiProposal.biografia}` : aiProposal.biografia)} className="text-[10px] font-bold text-[#f2ca50] hover:underline cursor-pointer shrink-0">Añadir a Notas</button>
+ </div>
+ <p className="text-[10px] text-zinc-300 italic leading-relaxed">{aiProposal.biografia}</p>
+ </div>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* Icono o Imagen / Logo de la Banda */}
+ <div className="space-y-2 sm:col-span-2 p-3 bg-neutral-900/60 rounded-xl border border-neutral-800">
+ <label className="block text-[10px] font-mono uppercase text-[#f2ca50] font-bold">
+ Icono o Logo / Foto de la Banda
+ </label>
+
+ <div className="flex flex-wrap items-center gap-3">
+ {/* Preview current avatar */}
+ <div className="w-10 h-10 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden shrink-0">
+ {formImageUrl ? (
+ <img src={formImageUrl} alt="Logo Banda" className="w-full h-full object-cover" />
+ ) : (
+ <span className="text-xl">{formIcon || '🎸'}</span>
+ )}
+ </div>
+
+ {/* Emoji preset selection */}
+ <div className="flex-1 space-y-1">
+ <span className="text-[10px] text-neutral-400 block font-mono">Seleccionar icono emoji:</span>
+ <div className="flex flex-wrap gap-1">
+ {['🎸', '🎹', '🥁', '🎤', '🎷', '🎺', '🎧', '🪕', '🎻', '⚡', '🔥', '🌟', '🎶'].map(emoji => (
+ <button
+ key={emoji}
+ type="button"
+ onClick={() => { setFormIcon(emoji); }}
+ className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition-all cursor-pointer ${
+ formIcon === emoji && !formImageUrl
+ ? 'bg-[#f2ca50]/20 border border-[#f2ca50] text-white scale-110'
+ : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300'
+ }`}
+ >
+ {emoji}
+ </button>
+ ))}
+ </div>
+ </div>
+
+ {/* Upload file button */}
+ <div className="shrink-0 space-y-1">
+ <span className="text-[10px] text-neutral-400 block font-mono">O subir logo (Supabase):</span>
+ <label className="cursor-pointer px-2.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-xl text-[10px] font-mono text-zinc-200 flex items-center gap-1.5 transition-all active:scale-95">
+ {isUploadingLogo ? (
+ <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f2ca50]" />
+ ) : (
+ <Upload className="w-3.5 h-3.5 text-[#f2ca50]" />
+ )}
+ <span>{isUploadingLogo ? 'Subiendo...' : 'Subir Imagen'}</span>
+ <input
+ type="file"
+ accept="image/*"
+ className="hidden"
+ onChange={(e) => {
+ const file = e.target.files?.[0];
+ if (file) handleLogoUpload(file);
+ }}
+ />
+ </label>
+ {formImageUrl && (
+ <button
+ type="button"
+ onClick={() => setFormImageUrl('')}
+ className="text-[9px] text-rose-400 hover:underline block text-center"
+ >
+ Quitar imagen
+ </button>
+ )}
+ </div>
+ </div>
  </div>
 
  {/* Estilo Musical */}
@@ -1123,122 +1463,19 @@ Bakandeya Agent Manager IA & Músicos`;
  )}
 
  {/* 5. MODAL: DATE SWAP PITCH GENERATOR */}
- {isPitchModalOpen && selectedPitchBand && (
- <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
- <div className={`w-full max-w-2xl rounded-2xl p-6 space-y-5 shadow-2xl relative overflow-hidden max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200 ${
- isStitchLight ? 'bg-white text-slate-800' : 'bg-[#1c1b1b] text-neutral-100'
- }`}>
- <div className="flex items-center justify-between pb-3">
- <div className="flex items-center gap-2">
- <Repeat className="w-5 h-5 text-sky-400" />
- <h3 className="text-base font-bold font-display uppercase tracking-wider text-sky-400">
- Generador de Pitch Date Swap: Bakandeya x {selectedPitchBand.nombre_banda}
- </h3>
- </div>
- <button 
- onClick={() => setIsPitchModalOpen(false)}
- className="p-1 hover:bg-neutral-800 rounded-lg transition-colors"
- >
- <X className="w-5 h-5 text-neutral-400" />
- </button>
- </div>
-
- {/* Config Fields */}
- <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-xl bg-neutral-900 text-[10px] font-mono">
- <div>
- <label className="block text-[10px] text-neutral-400 uppercase mb-1">Ciudad de Bakandeya</label>
- <select
- value={proposedBakandeyaCity}
- onChange={(e) => setProposedBakandeyaCity(e.target.value as any)}
- className="w-full bg-neutral-800 text-white px-2 py-1 rounded-lg text-[10px]"
- >
- <option value="Madrid">Madrid</option>
- <option value="Sevilla">Sevilla</option>
- <option value="Ambas">Madrid & Sevilla</option>
- </select>
- </div>
-
- <div>
- <label className="block text-[10px] text-neutral-400 uppercase mb-1">Sala propuesta en Madrid/Sevilla</label>
- <input
- type="text"
- value={proposedVenueBakandeya}
- onChange={(e) => setProposedVenueBakandeya(e.target.value)}
- className="w-full bg-neutral-800 text-white px-2 py-1 rounded-lg text-[10px]"
+ <BandPitchModal
+ isOpen={isPitchModalOpen}
+ onClose={() => setIsPitchModalOpen(false)}
+ band={selectedPitchBand}
+ isStitchLight={isStitchLight}
+ proposedBakandeyaCity={proposedBakandeyaCity}
+ setProposedBakandeyaCity={setProposedBakandeyaCity}
+ proposedVenueBakandeya={proposedVenueBakandeya}
+ setProposedVenueBakandeya={setProposedVenueBakandeya}
+ proposedMonth={proposedMonth}
+ setProposedMonth={setProposedMonth}
+ generatePitchText={generatePitchText}
  />
- </div>
-
- <div>
- <label className="block text-[10px] text-neutral-400 uppercase mb-1">Periodo / Mes Estimado</label>
- <input
- type="text"
- value={proposedMonth}
- onChange={(e) => setProposedMonth(e.target.value)}
- className="w-full bg-neutral-800 text-white px-2 py-1 rounded-lg text-[10px]"
- />
- </div>
- </div>
-
- {/* Generated Pitch Preview Box */}
- <div className="space-y-1.5">
- <label className="block text-[10px] font-mono uppercase tracking-wider text-[#d1b375] flex items-center justify-between">
- <span>Mensaje de Propuesta Generado (Músico a Músico)</span>
- <span className="text-[10px] text-neutral-500 lowercase">editable & listo para enviar</span>
- </label>
-
- <div className="p-4 rounded-xl bg-neutral-950 text-[10px] font-mono text-neutral-200 whitespace-pre-wrap leading-relaxed select-text max-h-72 overflow-y-auto">
- {generatePitchText(selectedPitchBand)}
- </div>
- </div>
-
- {/* Actions Bar */}
- <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
- <div className="text-[10px] font-mono text-neutral-500">
- Destinatario: <strong className="text-white">{selectedPitchBand.contacto_nombre || selectedPitchBand.nombre_banda}</strong>
- </div>
-
- <div className="flex items-center gap-2">
- {/* Copy to Clipboard */}
- <button
- onClick={() => {
- navigator.clipboard.writeText(generatePitchText(selectedPitchBand));
- setCopiedPitch(true);
- setTimeout(() => setCopiedPitch(false), 2000);
- }}
- className="px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl font-mono text-[10px] transition-all cursor-pointer flex items-center gap-1.5"
- >
- {copiedPitch ? <Check className="w-4 h-4 text-[#10b981]" /> : <Copy className="w-4 h-4" />}
- <span>{copiedPitch ? '¡Copiado!' : 'Copiar Texto'}</span>
- </button>
-
- {/* WhatsApp Link if phone is present */}
- {selectedPitchBand.telefono && (
- <a
- href={`https://wa.me/${selectedPitchBand.telefono.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(generatePitchText(selectedPitchBand))}`}
- target="_blank"
- rel="noreferrer"
- className="px-2 py-1 bg-[#10b981]/15 hover:bg-[#10b981]/15 text-white font-mono text-[10px] font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
- >
- <MessageCircle className="w-4 h-4" />
- <span>Enviar WhatsApp</span>
- </a>
- )}
-
- {/* Mailto Link if email is present */}
- {selectedPitchBand.email && (
- <a
- href={`mailto:${selectedPitchBand.email}?subject=${encodeURIComponent(`Propuesta Date Swap: Bakandeya x ${selectedPitchBand.nombre_banda}`)}&body=${encodeURIComponent(generatePitchText(selectedPitchBand))}`}
- className="px-2 py-1 bg-sky-500/15 hover:bg-sky-500/15 text-white font-mono text-[10px] font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
- >
- <Send className="w-4 h-4" />
- <span>Enviar Email</span>
- </a>
- )}
- </div>
- </div>
- </div>
- </div>
- )}
 
  </div>
  );

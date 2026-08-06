@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Lead, LeadStatus, Rehearsal, Concert, SocialPost, Payment, Message, ThemeName, ThemeColors, SocialMetric, User } from './types';
+import { Lead, LeadStatus, Rehearsal, Concert, SocialPost, Payment, Message, ThemeName, ThemeColors, SocialMetric, User, Fan } from './types';
 import { THEMES } from './utils/theme';
+import { useAuth } from './hooks/useAuth';
+import { useAppData } from './hooks/useAppData';
+import { api } from './services/api';
 import Dashboard from './components/Dashboard';
 import BookingCRM from './components/BookingCRM';
 import BandCRM from './components/BandCRM';
@@ -9,472 +12,186 @@ import ReelsCenter from './components/ReelsCenter';
 import Finanzas from './components/Finanzas';
 import TourManager from './components/TourManager';
 import RepertorioSetlists from './components/RepertorioSetlists';
+import Merchan from './components/Merchan';
 import Chatbot from './components/Chatbot';
 import GithubWorkflowTracker from './components/GithubWorkflowTracker';
+import EPKManager from './components/EPKManager';
+import ErrorBoundary from './components/ErrorBoundary';
+import FansPanel from './components/FansPanel';
+import FansLanding from './components/FansLanding';
 import { LoginModal } from './components/LoginModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FontSelectorModal } from './components/FontSelectorModal';
+import { MetronomeModal } from './components/MetronomeModal';
 import { FontPresetKey, applyFontPreset, getStoredFontPreset } from './utils/typography';
 import { 
- Menu, Music, Sparkles, LogOut, ShieldAlert, Users, Shield, UserCheck,
- Table, FileCheck, CheckSquare, MessageSquareCode, RefreshCw,
- Settings, Key, Github, X, CalendarRange, Bot, Flame, Video, FileSpreadsheet, Coins, Disc3, Radio, Building2, Type, Truck
+  Menu, Music, Sparkles, LogOut, ShieldAlert, Users, Shield, UserCheck,
+  Table, FileCheck, CheckSquare, MessageSquareCode, RefreshCw, Clock,
+  Settings, Key, Github, X, CalendarRange, Bot, Guitar, Flame, Video, FileSpreadsheet, Coins, Disc3, Radio, Building2, Type, Truck, BookOpen, Heart
 } from 'lucide-react';
 
 export default function App() {
- const [currentUser, setCurrentUser] = useState<User | null>(() => {
- const savedUser = localStorage.getItem('bakandeya_user');
- return savedUser ? JSON.parse(savedUser) : null;
- });
- const [authToken, setAuthToken] = useState<string | null>(() => {
- return localStorage.getItem('bakandeya_token') || null;
- });
- const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
- return !!localStorage.getItem('bakandeya_token') || localStorage.getItem('bakandeya_logged_in') === 'true';
- });
- const [bandUsers, setBandUsers] = useState<User[]>([]);
- const [showUserManagementModal, setShowUserManagementModal] = useState(false);
- const [showUserProfileModal, setShowUserProfileModal] = useState(false);
+  // Authentication Custom Hook
+  const {
+    currentUser,
+    authToken,
+    isLoggedIn,
+    isAdmin,
+    setCurrentUser,
+    handleLoginSuccess,
+    handleLogout
+  } = useAuth();
 
- // Active View State mapping directly to the Stitch Design doc
- const [currentView, setCurrentView] = useState<'resumen' | 'booking' | 'medios' | 'bandas' | 'calendario' | 'reels' | 'repertorio' | 'finanzas' | 'chat' | 'giras'>('resumen');
- const [bookingOptions, setBookingOptions] = useState<{
- sectionTab?: 'salas' | 'medios';
- statusFilter?: LeadStatus | 'todos';
- selectedLeadId?: string;
- selectedEventId?: string;
- selectedDate?: string;
- }>({});
+  // Application Data & Sync Custom Hook
+  const {
+    leads,
+    rehearsals,
+    tours,
+    concerts,
+    posts,
+    payments,
+    messages,
+    metrics,
+    bandUsers,
+    fans,
+    epkConfig,
+    isLoading,
+    syncStatus,
+    fetchState,
+    handleUpdateEpkConfig,
+    handleUpdateLead,
+    handleUpdateRehearsal,
+    handleUpdateConcert,
+    handleAddLead,
+    handleAddRehearsal,
+    handleAddConcert,
+    handleAddPost,
+    handleUpdatePost,
+    handleAddMetric,
+    handleUpdateMetric,
+    handleDeleteMetric,
+    handleAddPayment,
+    handleUpdatePayment,
+    handleSaveTour,
+    handleDeleteTour,
+    handleAddFan,
+    handleDeleteFan,
+    handleUpdateIncentive
+  } = useAppData(isLoggedIn);
 
- const handleNavigate = (
- view: 'resumen' | 'booking' | 'medios' | 'bandas' | 'calendario' | 'reels' | 'repertorio' | 'finanzas' | 'chat',
- options?: {
- sectionTab?: 'salas' | 'medios';
- statusFilter?: LeadStatus | 'todos';
- selectedLeadId?: string;
- selectedEventId?: string;
- selectedDate?: string;
- }
- ) => {
- setCurrentView(view);
- if (options) {
- setBookingOptions(options);
- } else if (view === 'medios') {
- setBookingOptions({ sectionTab: 'medios', statusFilter: 'todos' });
- } else if (view === 'booking') {
- setBookingOptions({ sectionTab: 'salas', statusFilter: 'todos' });
- } else {
- setBookingOptions({});
- }
- };
+  const [showUserManagementModal, setShowUserManagementModal] = useState(false);
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false);
 
- // Application Data States
- const [leads, setLeads] = useState<Lead[]>([]);
- const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
- const [tours, setTours] = useState<any[]>([]);
- const [concerts, setConcerts] = useState<Concert[]>([]);
- const [posts, setPosts] = useState<SocialPost[]>([]);
- const [payments, setPayments] = useState<Payment[]>([]);
- const [messages, setMessages] = useState<Message[]>([]);
- const [metrics, setMetrics] = useState<SocialMetric[]>([]);
+  // Active View State mapping directly to the Stitch Design doc
+  const [currentView, setCurrentView] = useState<'resumen' | 'booking' | 'medios' | 'bandas' | 'calendario' | 'reels' | 'repertorio' | 'finanzas' | 'chat' | 'giras' | 'merchan' | 'epk' | 'fans'>('resumen');
+  const [bookingOptions, setBookingOptions] = useState<{
+    sectionTab?: 'salas' | 'medios';
+    statusFilter?: LeadStatus | 'todos';
+    selectedLeadId?: string;
+    selectedEventId?: string;
+    selectedDate?: string;
+  }>({});
 
- const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
- const [isLoading, setIsLoading] = useState(true);
- const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('syncing');
+  const handleNavigate = (
+    view: 'resumen' | 'booking' | 'medios' | 'bandas' | 'calendario' | 'reels' | 'repertorio' | 'finanzas' | 'chat' | 'giras' | 'merchan' | 'epk' | 'fans',
+    options?: {
+      sectionTab?: 'salas' | 'medios';
+      statusFilter?: LeadStatus | 'todos';
+      selectedLeadId?: string;
+      selectedEventId?: string;
+      selectedDate?: string;
+    }
+  ) => {
+    setCurrentView(view);
+    if (options) {
+      setBookingOptions(options);
+    } else if (view === 'medios') {
+      setBookingOptions({ sectionTab: 'medios', statusFilter: 'todos' });
+    } else if (view === 'booking') {
+      setBookingOptions({ sectionTab: 'salas', statusFilter: 'todos' });
+    } else {
+      setBookingOptions({});
+    }
+  };
 
- // Admin check: Any user with role 'leader' is an Admin
- const isAdmin = Boolean(
- currentUser &&
- currentUser.role === 'leader'
- );
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isFloatingChatOpen, setIsFloatingChatOpen] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [showMetronomeModal, setShowMetronomeModal] = useState(false);
 
- // Redirect non-admins away from finanzas if they end up there
- useEffect(() => {
- if (!isAdmin && (currentView as string) === 'finanzas') {
- setCurrentView('resumen');
- }
- }, [isAdmin, currentView]);
+  // Redirect non-admins away from finanzas if they end up there
+  useEffect(() => {
+    if (!isAdmin && (currentView as string) === 'finanzas') {
+      setCurrentView('resumen');
+    }
+  }, [isAdmin, currentView]);
 
- // Verify token on mount if present
- useEffect(() => {
- if (authToken) {
- fetch('/api/auth/me', {
- headers: { Authorization: `Bearer ${authToken}` }
- })
- .then(res => {
- if (!res.ok) throw new Error('Sesión no válida');
- return res.json();
- })
- .then(data => {
- setCurrentUser(data.user);
- localStorage.setItem('bakandeya_user', JSON.stringify(data.user));
- setIsLoggedIn(true);
- })
- .catch(() => {
- setCurrentUser(null);
- setAuthToken(null);
- setIsLoggedIn(false);
- localStorage.removeItem('bakandeya_token');
- localStorage.removeItem('bakandeya_user');
- });
- }
- }, [authToken]);
+  // Active Theme State
+  const [currentTheme, setCurrentTheme] = useState<ThemeName>(() => {
+    return (localStorage.getItem('bakandeya_theme') as ThemeName) || 'indie_velvet';
+  });
 
- // Active Theme State
- const [currentTheme, setCurrentTheme] = useState<ThemeName>(() => {
- return (localStorage.getItem('bakandeya_theme') as ThemeName) || 'indie_velvet';
- });
+  // Active Font State
+  const [currentFont, setCurrentFont] = useState<FontPresetKey>(getStoredFontPreset);
+  const [showFontModal, setShowFontModal] = useState(false);
 
- // Active Font State
- const [currentFont, setCurrentFont] = useState<FontPresetKey>(getStoredFontPreset);
- const [showFontModal, setShowFontModal] = useState(false);
+  useEffect(() => {
+    applyFontPreset(currentFont);
+  }, [currentFont]);
 
- useEffect(() => {
- applyFontPreset(currentFont);
- }, [currentFont]);
+  const handleFontChange = (newFont: FontPresetKey) => {
+    setCurrentFont(newFont);
+    applyFontPreset(newFont);
+  };
 
- const handleFontChange = (newFont: FontPresetKey) => {
- setCurrentFont(newFont);
- applyFontPreset(newFont);
- };
+  // GitHub Settings State
+  const [showGithubSettings, setShowGithubSettings] = useState(false);
+  const [githubPat, setGithubPat] = useState(() => localStorage.getItem('bakandeya_github_pat') || '');
+  const [githubOwner, setGithubOwner] = useState(() => localStorage.getItem('bakandeya_github_owner') || 'DiegoCalleB');
+  const [githubRepo, setGithubRepo] = useState(() => localStorage.getItem('bakandeya_github_repo') || 'bakandeya-agent-manager');
+  const [githubRef, setGithubRef] = useState(() => localStorage.getItem('bakandeya_github_ref') || 'main');
 
- // GitHub Settings State
- const [showGithubSettings, setShowGithubSettings] = useState(false);
- const [githubPat, setGithubPat] = useState(() => localStorage.getItem('bakandeya_github_pat') || '');
- const [githubOwner, setGithubOwner] = useState(() => localStorage.getItem('bakandeya_github_owner') || 'DiegoCalleB');
- const [githubRepo, setGithubRepo] = useState(() => localStorage.getItem('bakandeya_github_repo') || 'bakandeya-agent-manager');
- const [githubRef, setGithubRef] = useState(() => localStorage.getItem('bakandeya_github_ref') || 'main');
+  // Google Sheets check state
+  const [showSheetsModal, setShowSheetsModal] = useState(false);
+  const [sheetsLoading, setSheetsLoading] = useState(false);
+  const [sheetsStatus, setSheetsStatus] = useState<any>(null);
 
- // Google Sheets check state
- const [showSheetsModal, setShowSheetsModal] = useState(false);
- const [sheetsLoading, setSheetsLoading] = useState(false);
- const [sheetsStatus, setSheetsStatus] = useState<any>(null);
+  const checkGoogleSheets = async () => {
+    setSheetsLoading(true);
+    setShowSheetsModal(true);
+    setSheetsStatus(null);
+    try {
+      const data = await api.checkSheets();
+      setSheetsStatus(data);
+    } catch (error) {
+      console.error("Error verifying Google Sheets:", error);
+      setSheetsStatus({
+        configured: false,
+        error: "No se pudo comunicar con el servidor para verificar las hojas de cálculo."
+      });
+    } finally {
+      setSheetsLoading(false);
+    }
+  };
 
- const checkGoogleSheets = async () => {
- setSheetsLoading(true);
- setShowSheetsModal(true);
- setSheetsStatus(null);
- try {
- const res = await fetch('/api/check-sheets');
- const data = await res.json();
- setSheetsStatus(data);
- } catch (error) {
- console.error("Error verifying Google Sheets:", error);
- setSheetsStatus({
- configured: false,
- error:"No se pudo comunicar con el servidor para verificar las hojas de cálculo."
- });
- } finally {
- setSheetsLoading(false);
- }
- };
+  useEffect(() => {
+    const handleRefUpdate = () => {
+      setGithubRef(localStorage.getItem('bakandeya_github_ref') || 'main');
+    };
+    window.addEventListener('github-ref-updated', handleRefUpdate);
+    return () => {
+      window.removeEventListener('github-ref-updated', handleRefUpdate);
+    };
+  }, []);
 
- useEffect(() => {
- const handleRefUpdate = () => {
- setGithubRef(localStorage.getItem('bakandeya_github_ref') || 'main');
- };
- const handleAgentCompleted = () => {
- console.log("[App] Agente de GitHub completado. Refrescando datos de Google Sheets...");
- fetchState();
- };
- window.addEventListener('github-ref-updated', handleRefUpdate);
- window.addEventListener('github-agent-completed', handleAgentCompleted);
- return () => {
- window.removeEventListener('github-ref-updated', handleRefUpdate);
- window.removeEventListener('github-agent-completed', handleAgentCompleted);
- };
- }, []);
+  const colors: ThemeColors = THEMES[currentTheme];
 
- const colors: ThemeColors = THEMES[currentTheme];
-
- // Fetch full state from full-stack Express API with automatic retry
- const fetchState = async (retryCount = 0) => {
- setSyncStatus('syncing');
- try {
- const res = await fetch('/api/state');
- if (!res.ok) throw new Error(`API Error: ${res.status}`);
- const data = await res.json();
- 
- setLeads(data.leads || []);
- setRehearsals(data.rehearsals || []);
- setConcerts(data.concerts || []);
- setPosts(data.posts || []);
- setPayments(data.payments || []);
- setMessages(data.messages || []);
- setMetrics(data.metrics || []);
- setBandUsers(data.users || []);
- setSyncStatus('synced');
- } catch (e) {
- console.warn(`Error syncing state (attempt ${retryCount + 1}):`, e);
- if (retryCount < 2) {
- // Retry after delay to handle server wake-up
- setTimeout(() => {
- fetchState(retryCount + 1);
- }, 1500);
- } else {
- console.error('Error syncing state, offline or waking up:', e);
- setSyncStatus('error');
- }
- } finally {
- setIsLoading(false);
- }
- };
-
- useEffect(() => {
- if (isLoggedIn) {
- fetchState();
- }
- }, [isLoggedIn]);
-
- // Persist Theme Selection
- const handleThemeChange = (theme: ThemeName) => {
- setCurrentTheme(theme);
- localStorage.setItem('bakandeya_theme', theme);
- };
-
- const handleLoginSuccess = (user: User, token: string) => {
- setCurrentUser(user);
- setAuthToken(token);
- localStorage.setItem('bakandeya_token', token);
- localStorage.setItem('bakandeya_user', JSON.stringify(user));
- localStorage.setItem('bakandeya_logged_in', 'true');
- setIsLoggedIn(true);
- fetchState();
- };
-
- const handleLogout = async () => {
- if (authToken) {
- try {
- await fetch('/api/auth/logout', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ token: authToken })
- });
- } catch (e) {
- console.error(e);
- }
- }
- setCurrentUser(null);
- setAuthToken(null);
- setIsLoggedIn(false);
- localStorage.removeItem('bakandeya_token');
- localStorage.removeItem('bakandeya_user');
- localStorage.removeItem('bakandeya_logged_in');
- };
-
- const getAuthHeaders = () => {
- const token = localStorage.getItem('bakandeya_token') || authToken;
- return {
- 'Content-Type': 'application/json',
- ...(token ? { 'Authorization': `Bearer ${token}` } : {})
- };
- };
-
- // REST API UPDATE OPERATIONS
- const handleUpdateLead = async (id: string, updatedFields: Partial<Lead>, expectedStatus?: string) => {
- setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updatedFields } : l));
- try {
- const res = await fetch(`/api/leads/${id}`, {
- method: 'PUT',
- headers: getAuthHeaders(),
- body: JSON.stringify({ ...updatedFields, expectedStatus })
- });
- if (res.status === 409) {
- const data = await res.json();
- alert(data.error || 'Conflicto de sincronización con Google Sheets. Los datos han cambiado en paralelo.');
- fetchState();
- return;
- }
- if (!res.ok) {
- const data = await res.json().catch(() => ({}));
- throw new Error(data.error || `HTTP ${res.status}`);
- }
- } catch (e) {
- console.error('Error saving lead updates, reverting:', e);
- fetchState();
- }
- };
-
- const handleUpdateRehearsal = async (id: string, updatedFields: Partial<Rehearsal>) => {
- setRehearsals(prev => prev.map(r => r.id === id ? { ...r, ...updatedFields } : r));
- try {
- const res = await fetch(`/api/rehearsals/${id}`, {
- method: 'PUT',
- headers: getAuthHeaders(),
- body: JSON.stringify(updatedFields)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error saving rehearsal updates:', e);
- fetchState();
- }
- };
-
- const handleUpdateConcert = async (id: string, updatedFields: Partial<Concert>) => {
- setConcerts(prev => prev.map(c => c.id === id ? { ...c, ...updatedFields } : c));
- try {
- const res = await fetch(`/api/concerts/${id}`, {
- method: 'PUT',
- headers: getAuthHeaders(),
- body: JSON.stringify(updatedFields)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error saving concert updates:', e);
- fetchState();
- }
- };
-
- // REST API ADD CREATION OPERATIONS
- const handleAddLead = async (newLead: Lead) => {
- setLeads(prev => [...prev, newLead]);
- try {
- const res = await fetch('/api/leads', {
- method: 'POST',
- headers: getAuthHeaders(),
- body: JSON.stringify(newLead)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error adding lead:', e);
- fetchState();
- }
- };
-
- const handleAddRehearsal = async (reh: Rehearsal) => {
- setRehearsals(prev => [...prev, reh]);
- try {
- const res = await fetch('/api/rehearsals', {
- method: 'POST',
- headers: getAuthHeaders(),
- body: JSON.stringify(reh)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error adding rehearsal:', e);
- fetchState();
- }
- };
-
- const handleAddConcert = async (concert: Concert) => {
- setConcerts(prev => [...prev, concert]);
- try {
- const res = await fetch('/api/concerts', {
- method: 'POST',
- headers: getAuthHeaders(),
- body: JSON.stringify(concert)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error adding concert:', e);
- fetchState();
- }
- };
-
- const handleAddPost = async (post: SocialPost) => {
- setPosts(prev => [...prev, post]);
- try {
- const res = await fetch('/api/posts', {
- method: 'POST',
- headers: getAuthHeaders(),
- body: JSON.stringify(post)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error adding social post:', e);
- fetchState();
- }
- };
-
- const handleUpdatePost = async (id: string, updatedFields: Partial<SocialPost>) => {
- setPosts(prev => prev.map(p => p.id === id ? { ...p, ...updatedFields } : p));
- try {
- const res = await fetch(`/api/posts/${id}`, {
- method: 'PUT',
- headers: getAuthHeaders(),
- body: JSON.stringify(updatedFields)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error updating social post:', e);
- fetchState();
- }
- };
-
- const handleAddMetric = async (metric: SocialMetric) => {
- setMetrics(prev => [...prev, metric]);
- try {
- const res = await fetch('/api/metrics', {
- method: 'POST',
- headers: getAuthHeaders(),
- body: JSON.stringify(metric)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error adding metric:', e);
- fetchState();
- }
- };
-
- const handleUpdateMetric = async (id: string, updatedFields: Partial<SocialMetric>) => {
- setMetrics(prev => prev.map(m => m.id === id ? { ...m, ...updatedFields } : m));
- try {
- const res = await fetch(`/api/metrics/${id}`, {
- method: 'PUT',
- headers: getAuthHeaders(),
- body: JSON.stringify(updatedFields)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error updating metric:', e);
- fetchState();
- }
- };
-
- const handleDeleteMetric = async (id: string) => {
- setMetrics(prev => prev.filter(m => m.id !== id));
- try {
- const res = await fetch(`/api/metrics/${id}`, {
- method: 'DELETE',
- headers: getAuthHeaders()
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error deleting metric:', e);
- fetchState();
- }
- };
-
- const handleAddPayment = async (pay: Payment) => {
- setPayments(prev => [...prev, pay]);
- try {
- const res = await fetch('/api/payments', {
- method: 'POST',
- headers: getAuthHeaders(),
- body: JSON.stringify(pay)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error adding payment:', e);
- fetchState();
- }
- };
-
- const handleUpdatePayment = async (id: string, updatedFields: Partial<Payment>) => {
- setPayments(prev => prev.map(p => p.id === id ? { ...p, ...updatedFields } : p));
- try {
- const res = await fetch(`/api/payments/${id}`, {
- method: 'PUT',
- headers: getAuthHeaders(),
- body: JSON.stringify(updatedFields)
- });
- if (!res.ok) throw new Error();
- } catch (e) {
- console.error('Error updating payment:', e);
- fetchState();
- }
- };
+  // Persist Theme Selection
+  const handleThemeChange = (theme: ThemeName) => {
+    setCurrentTheme(theme);
+    localStorage.setItem('bakandeya_theme', theme);
+  };
 
  const handleSaveGithubSettings = (e: React.FormEvent) => {
  e.preventDefault();
@@ -485,6 +202,11 @@ export default function App() {
  setShowGithubSettings(false);
  alert('¡Configuración de GitHub guardada con éxito! Ahora el chatbot y los disparadores usarán estas credenciales de forma segura.');
  };
+
+ // Fans Landing Route
+ if (window.location.pathname !== '/' && window.location.pathname !== '') {
+ return <FansLanding />;
+ }
 
  // Auth Screen Render
  if (!isLoggedIn) {
@@ -498,18 +220,18 @@ export default function App() {
 
  return (
  <div 
- className={`min-h-screen ${colors.bg} flex flex-col md:flex-row transition-colors duration-500 font-sans w-full max-w-[100vw] overflow-x-hidden`}
+ className={`min-h-screen ${colors.bg} flex flex-col md:flex-row transition-colors duration-500 font-sans w-full max-w-[100vw] overflow-clip`}
  >
  {/* LEFT SIDEBAR */}
  {/* MOBILE TOP BAR */}
- <header className="md:hidden flex flex-col bg-[#121110] -[#22211F] sticky top-0 z-30 shrink-0">
+ <header className="md:hidden flex flex-col bg-[#121110] border-[#22211F] sticky top-0 z-30 shrink-0">
  {/* Top Brand & Menu Row */}
  <div className="flex items-center justify-between px-4 pt-3 pb-2">
  <div className="flex items-center gap-3">
  <img 
  src="/logo_bakandeya.jpg" 
  alt="Bakandeya Logo" 
- className="w-8 h-8 object-cover rounded-lg -neutral-700/80 shrink-0"
+ className="w-8 h-8 object-cover rounded-lg border-neutral-700/80 shrink-0"
  referrerPolicy="no-referrer"
  />
  <div className="flex flex-col">
@@ -524,7 +246,7 @@ export default function App() {
  </div>
  <button
  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
- className="p-2 text-neutral-300 hover:text-white rounded-lg bg-[#1A1918] -[#22211F] cursor-pointer active:scale-95 transition-all"
+ className="p-2 text-neutral-300 hover:text-white rounded-lg bg-[#1A1918] border-[#22211F] cursor-pointer active:scale-95 transition-all"
  aria-label="Menu"
  >
  {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -554,9 +276,12 @@ export default function App() {
  })() },
  { id: 'bandas', label: 'Bandas', icon: Users },
  { id: 'giras', label: 'Giras', icon: Truck },
+ { id: 'epk', label: 'Dossier (EPK)', icon: BookOpen },
+ { id: 'fans', label: 'Base de Fans', icon: Heart },
  { id: 'reels', label: 'Reels', icon: Video },
  { id: 'repertorio', label: 'Temas', icon: Disc3 },
- ...(isAdmin ? [{ id: 'finanzas', label: 'Finanzas', icon: Coins }] : []),
+ { id: 'chat', label: 'Agente AI', icon: Guitar },
+ ...(isAdmin ? [{ id: 'finanzas', label: 'Finanzas', icon: Coins }, { id: 'merchan', label: 'Merchan', icon: Sparkles }] : []),
  ];
  })().map((item) => {
  const isSelected = currentView === item.id;
@@ -567,14 +292,14 @@ export default function App() {
  onClick={() => handleNavigate(item.id as any)}
  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-sans whitespace-nowrap shrink-0 transition-all cursor-pointer active:scale-95 ${
  isSelected
- ? 'bg-zinc-800 text-zinc-100 -zinc-700 font-bold shadow-xs'
- : 'bg-[#1A1918] text-neutral-300 -[#22211F] hover:bg-[#22211F] hover:text-white'
+ ? 'bg-zinc-800 text-zinc-100 border-zinc-700 font-bold shadow-xs'
+ : 'bg-[#1A1918] text-neutral-300 border-[#22211F] hover:bg-[#22211F] hover:text-white'
  }`}
  >
  <IconComp className="w-3.5 h-3.5 shrink-0" />
  <span>{item.label}</span>
  {item.badge !== undefined && item.badge > 0 && (
- <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+ <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
  isSelected ? 'bg-zinc-700 text-zinc-300' : 'bg-[#2b2927] text-zinc-400'
  }`}>
  {item.badge}
@@ -595,14 +320,14 @@ export default function App() {
  onClick={() => setIsMobileMenuOpen(false)}
  />
  {/* Drawer panel */}
- <div className="relative w-[280px] max-w-[85vw] bg-[#121110] -[#22211F] flex flex-col h-full z-10 overflow-y-auto shadow-2xl">
+ <div className="relative w-[280px] max-w-[85vw] bg-[#121110] border-[#22211F] flex flex-col h-full z-10 overflow-y-auto shadow-2xl">
  {/* Drawer Header */}
- <div className="p-4 flex items-center justify-between -[#22211F]/50 bg-gradient-to-b from-[#1A1918] to-[#121110]">
+ <div className="p-4 flex items-center justify-between border-[#22211F]/50 bg-gradient-to-b from-[#1A1918] to-[#121110]">
  <div className="flex items-center gap-2.5">
  <img 
  src="/logo_bakandeya.jpg" 
  alt="Bakandeya Logo" 
- className="w-10 h-10 object-cover rounded-xl -neutral-700/80 shrink-0"
+ className="w-10 h-10 object-cover rounded-xl border-neutral-700/80 shrink-0"
  referrerPolicy="no-referrer"
  />
  <div className="flex flex-col">
@@ -646,9 +371,12 @@ export default function App() {
  return [...concerts, ...rehearsals].filter(e => (e as any).fecha >= today).length;
  })() },
  { id: 'giras', label: 'Tour Manager', icon: Truck },
+ { id: 'epk', label: 'Dossier (EPK)', icon: BookOpen },
+ { id: 'fans', label: 'Base de Fans', icon: Heart },
  { id: 'reels', label: 'Reels Center', icon: Video },
  { id: 'repertorio', label: 'Repertorio', icon: Disc3 },
- ...(isAdmin ? [{ id: 'finanzas', label: 'Finanzas', icon: Coins }] : []),
+ { id: 'chat', label: 'Agente Mánager', icon: Guitar },
+ ...(isAdmin ? [{ id: 'finanzas', label: 'Finanzas', icon: Coins }, { id: 'merchan', label: 'Merchan', icon: Sparkles }] : []),
  ];
  })().map((item) => {
  const isSelected = currentView === item.id;
@@ -659,7 +387,7 @@ export default function App() {
  onClick={() => handleNavigate(item.id as any)}
  className={`flex items-center justify-between py-3 px-3.5 rounded-xl text-sm font-sans transition-colors cursor-pointer ${
  isSelected 
- ? 'bg-zinc-800/80 text-zinc-100 font-bold -zinc-700'
+ ? 'bg-zinc-800/80 text-zinc-100 font-bold border-zinc-700'
  : 'text-neutral-300 hover:bg-[#22211f] hover:text-white'
  }`}
  >
@@ -680,11 +408,11 @@ export default function App() {
  </nav>
 
  {/* Drawer User Footer */}
- <div className="p-4 mt-auto -[#22211F]/50">
+ <div className="p-4 mt-auto border-[#22211F]/50">
  {currentUser && (
  <button 
  onClick={() => { setShowUserProfileModal(true); setIsMobileMenuOpen(false); }}
- className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-[#22211F] transition-colors cursor-pointer text-left -transparent hover:-[#333130] mb-4"
+ className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-[#22211F] transition-colors cursor-pointer text-left border-transparent hover:border-[#333130] mb-4"
  >
  <div 
  className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[#121110] text-xs font-sans shrink-0 uppercase"
@@ -729,25 +457,47 @@ export default function App() {
  </div>
  )}
 
- <aside className="hidden md:flex w-[240px] shrink-0 bg-[#121110] -[#22211F] flex-col h-screen sticky top-0 overflow-y-auto">
+ <aside className="hidden md:flex w-[240px] shrink-0 bg-[#121110] border-[#22211F] flex-col h-screen sticky top-0 overflow-y-auto">
  
  {/* Brand Header */}
- <div className="p-6 flex flex-col gap-4 items-center text-center -[#22211F]/50 bg-gradient-to-b from-[#1A1918] to-[#121110]">
+ <div className="p-6 flex flex-col gap-4 items-center text-center border-[#22211F]/50 bg-gradient-to-b from-[#1A1918] to-[#121110]">
  <img 
  src="/logo_bakandeya.jpg" 
  alt="Bakandeya Logo" 
- className="w-40 h-40 xl:w-48 xl:h-48 object-cover rounded-2xl shadow-xl shadow-black/50 -[#333130] shrink-0"
+ className="w-40 h-40 xl:w-48 xl:h-48 object-cover rounded-2xl shadow-xl shadow-black/50 border-[#333130] shrink-0"
  referrerPolicy="no-referrer"
  />
  <div className="flex flex-col items-center">
  <h1 className="text-[22px] font-black font-display tracking-widest uppercase text-zinc-100 leading-none">
  BAKANDEYA
  </h1>
- <div className="flex items-center justify-center gap-2 mt-3 bg-[#1A1918] px-3 py-1.5 rounded-full -[#333130] shadow-inner">
+ <div className="flex items-center justify-center gap-2 mt-3 bg-[#1A1918] px-3 py-1.5 rounded-full border-[#333130] shadow-inner">
  <span className={`w-2 h-2 rounded-full shrink-0 shadow-[0_0_8px_currentColor] ${syncStatus === 'synced' ? 'bg-emerald-400/20 text-[#73c991]/20' : syncStatus === 'error' ? 'bg-rose-500/15 text-rose-400' : 'bg-zinc-400 text-zinc-400 animate-pulse'}`} />
  <span className="text-[10px] font-sans text-[#9a9591] uppercase tracking-wider font-bold">Banda activa</span>
  </div>
  </div>
+ </div>
+
+ {/* Metronome Pro Quick Launcher */}
+ <div className="px-3 pt-2 pb-1">
+ <button
+ onClick={() => setShowMetronomeModal(true)}
+ className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/30 text-amber-300 transition-all cursor-pointer group active:scale-95 shadow-xs"
+ title="Abrir Metrónomo WebAudio Pro"
+ >
+ <div className="flex items-center gap-2.5">
+ <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
+ <Clock className="w-4 h-4" />
+ </div>
+ <div className="flex flex-col text-left">
+ <span className="text-xs font-bold font-sans">Metrónomo Pro</span>
+ <span className="text-[10px] text-amber-400/80 font-mono">Click & Tap Tempo</span>
+ </div>
+ </div>
+ <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+ BPM
+ </span>
+ </button>
  </div>
 
  {/* Navigation */}
@@ -774,9 +524,12 @@ export default function App() {
  return [...concerts, ...rehearsals].filter(e => (e as any).fecha >= today).length;
  })() },
  { id: 'giras', label: 'Tour Manager', icon: Truck },
+ { id: 'epk', label: 'Dossier (EPK)', icon: BookOpen },
+ { id: 'fans', label: 'Base de Fans', icon: Heart },
  { id: 'reels', label: 'Reels Center', icon: Video },
  { id: 'repertorio', label: 'Repertorio', icon: Disc3 },
- ...(isAdmin ? [{ id: 'finanzas', label: 'Finanzas', icon: Coins }] : []),
+ { id: 'chat', label: 'Agente Mánager', icon: Guitar },
+ ...(isAdmin ? [{ id: 'finanzas', label: 'Finanzas', icon: Coins }, { id: 'merchan', label: 'Merchan', icon: Sparkles }] : []),
  ];
  })().map((item) => {
  const isSelected = currentView === item.id;
@@ -789,7 +542,7 @@ export default function App() {
  onClick={() => handleNavigate(item.id as any)}
  className={`flex items-center justify-between py-2.5 px-3 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
  isSelected 
- ? 'bg-zinc-800/80 text-zinc-100 font-bold -zinc-700'
+ ? 'bg-zinc-800/80 text-zinc-100 font-bold border-zinc-700'
  : 'text-neutral-300 hover:bg-[#22211f] hover:text-white'
  }`}
  >
@@ -810,11 +563,11 @@ export default function App() {
  </nav>
 
  {/* Bottom User Profile */}
- <div className="p-4 mt-auto -[#22211F]/50">
+ <div className="p-4 mt-auto border-[#22211F]/50">
  {currentUser && (
  <button 
  onClick={() => setShowUserProfileModal(true)}
- className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-[#22211F] transition-colors cursor-pointer text-left -transparent hover:-[#333130] mb-4"
+ className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-[#22211F] transition-colors cursor-pointer text-left border-transparent hover:border-[#333130] mb-4"
  >
  <div 
  className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[#121110] text-xs font-sans shrink-0 uppercase"
@@ -862,7 +615,7 @@ export default function App() {
  <main className="flex-1 flex flex-col min-w-0 bg-[#0A0A0A] p-3 sm:p-5 md:p-8">
  {/* Sync warning if backend fails */}
  {syncStatus === 'error' && (
- <div className="mb-4 p-3 bg-rose-500/10 -rose-500/20 rounded-lg text-rose-300 text-xs flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+ <div className="mb-4 p-3 bg-rose-500/10 border-rose-500/20 rounded-lg text-rose-300 text-xs flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
  <div className="flex gap-2 items-center">
  <ShieldAlert className="w-5 h-5 text-rose-300 shrink-0" />
  <span>
@@ -871,7 +624,7 @@ export default function App() {
  </div>
  <button
  onClick={fetchState}
- className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 -rose-500/20 text-rose-300 font-mono text-[10px] rounded-md transition-all cursor-pointer whitespace-nowrap active:scale-95"
+ className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/20 text-rose-300 font-mono text-[10px] rounded-md transition-all cursor-pointer whitespace-nowrap active:scale-95"
  >
  Reintentar Conexión
  </button>
@@ -905,6 +658,8 @@ export default function App() {
  colors={colors}
  onUpdateLead={handleUpdateLead}
  onAddLead={handleAddLead}
+ epkConfig={epkConfig}
+ onUpdateEpkConfig={handleUpdateEpkConfig}
  initialSection={bookingOptions.sectionTab || (currentView === 'medios' ? 'medios' : 'salas')}
  initialStatusFilter={bookingOptions.statusFilter || 'todos'}
  initialSelectedLeadId={bookingOptions.selectedLeadId}
@@ -952,13 +707,52 @@ export default function App() {
  onUpdateRehearsal={handleUpdateRehearsal}
  />
  )}
+{currentView === 'merchan' && (
+ <Merchan colors={colors} currentTheme={currentTheme} />
+ )}
+        {currentView === 'epk' && (
+          <ErrorBoundary fallbackTitle="EPK / Dossier Promocional">
+            <EPKManager 
+              epkConfig={epkConfig} 
+              onSave={handleUpdateEpkConfig}
+              colors={colors} 
+              currentTheme={currentTheme} 
+            />
+          </ErrorBoundary>
+        )}
+        {currentView === 'fans' && (
+          <FansPanel 
+            fans={fans}
+            concerts={concerts}
+            epkConfig={epkConfig}
+            onAddFan={handleAddFan}
+            onDeleteFan={handleDeleteFan}
+            onUpdateIncentive={handleUpdateIncentive}
+            onUpdateEpkConfig={handleUpdateEpkConfig}
+          />
+        )}
+        {currentView === 'giras' && (
+          <ErrorBoundary fallbackTitle="Gestor de Giras">
+            <TourManager 
+              colors={colors}
+              tours={tours}
+              concerts={concerts}
+              leads={leads}
+              onAddLead={handleAddLead}
+              onSaveTour={handleSaveTour}
+              onDeleteTour={handleDeleteTour}
+            />
+          </ErrorBoundary>
+        )}
  {currentView === 'finanzas' && (
  isAdmin ? (
  <Finanzas 
  colors={colors}
  payments={payments}
+ concerts={concerts}
  onAddPayment={handleAddPayment}
  onUpdatePayment={handleUpdatePayment}
+ onUpdateConcert={handleUpdateConcert}
  />
  ) : (
  <div className={`p-8 rounded-2xl text-center space-y-3 ${colors.card} `}>
@@ -970,38 +764,28 @@ export default function App() {
  </div>
  )
  )}
- {currentView === 'chat' && (
- <Chatbot
- colors={colors}
- leads={leads}
- rehearsals={rehearsals}
- concerts={concerts}
- onUpdateLead={handleUpdateLead}
- onAddRehearsal={handleAddRehearsal}
- onAddConcert={handleAddConcert}
- 
- />
- )}
- {currentView === 'giras' && (
- <TourManager
- colors={colors}
- tours={tours}
- concerts={concerts}
- onSaveTour={(tour) => {
- const existingIndex = tours.findIndex(t => t.id === tour.id);
- if (existingIndex >= 0) {
- const newTours = [...tours];
- newTours[existingIndex] = tour;
- setTours(newTours);
- } else {
- setTours([tour, ...tours]);
- }
- }}
- onDeleteTour={(id) => {
- setTours(tours.filter(t => t.id !== id));
- }}
- />
- )}
+  {/* Persistent Single Chatbot Instance */}
+  <div className={
+    currentView === 'chat'
+      ? 'w-full h-[calc(100vh-140px)] min-h-[600px] block'
+      : isFloatingChatOpen
+        ? 'fixed bottom-20 right-4 sm:right-6 w-[92vw] sm:w-[420px] max-w-[440px] z-50 shadow-2xl animate-in slide-in-from-bottom-5 duration-200 block'
+        : 'hidden'
+  }>
+    <Chatbot
+      colors={colors}
+      leads={leads}
+      rehearsals={rehearsals}
+      concerts={concerts}
+      onUpdateLead={handleUpdateLead}
+      onAddRehearsal={handleAddRehearsal}
+      onAddConcert={handleAddConcert}
+      isFloating={currentView !== 'chat'}
+      onClose={() => setIsFloatingChatOpen(false)}
+      userRole={currentUser?.role}
+      onLoadingChange={setIsChatLoading}
+    />
+  </div>
  </>
  )}
  </div>
@@ -1012,8 +796,8 @@ export default function App() {
  <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
  <div className={`w-full max-w-xl rounded-2xl p-6 md:p-8 space-y-6 shadow-2xl relative overflow-hidden max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-200 ${
  currentTheme === 'stitch_light' 
- ? 'bg-white -slate-200 text-slate-800' 
- : 'bg-[#1c1b1b] -[#f2ca50]/30 text-neutral-100'
+ ? 'bg-white border-slate-200 text-slate-800' 
+ : 'bg-[#1c1b1b] border-[#f2ca50]/30 text-neutral-100'
  }`}>
  <div className={`absolute top-0 right-0 w-40 h-40 xl:w-48 xl:h-48 rounded-full blur-3xl pointer-events-none ${
  currentTheme === 'stitch_light' ? 'bg-indigo-500/5' : 'bg-[#f2ca50]/5'
@@ -1023,8 +807,8 @@ export default function App() {
  <div className="space-y-1">
  <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono tracking-wider uppercase font-bold ${
  currentTheme === 'stitch_light'
- ? 'bg-indigo-50 -indigo-100 text-indigo-600'
- : 'bg-[#f2ca50]/10 -[#f2ca50]/20 text-[#f2ca50]'
+ ? 'bg-indigo-50 border-indigo-100 text-indigo-600'
+ : 'bg-[#f2ca50]/10 border-[#f2ca50]/20 text-[#f2ca50]'
  }`}>
  <Github className="w-3 h-3" /> GitHub Actions Integración
  </div>
@@ -1070,8 +854,8 @@ export default function App() {
  placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
  className={`w-full rounded-lg pl-9 pr-3 py-2 text-xs font-mono focus:outline-none ${
  currentTheme === 'stitch_light'
- ? 'bg-slate-50 -slate-200 text-slate-800 focus:-indigo-500 placeholder:text-slate-300'
- : 'bg-neutral-950 -neutral-800 text-neutral-100 focus:-[#f2ca50] placeholder:text-neutral-800'
+ ? 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-500 placeholder:text-slate-300'
+ : 'bg-neutral-950 border-neutral-800 text-neutral-100 focus:border-[#f2ca50] placeholder:text-neutral-800'
  }`}
  />
  </div>
@@ -1092,8 +876,8 @@ export default function App() {
  placeholder="DiegoCalleB"
  className={`w-full rounded-lg px-2.5 py-2 text-xs font-mono focus:outline-none ${
  currentTheme === 'stitch_light'
- ? 'bg-slate-50 -slate-200 text-slate-800 focus:-indigo-500'
- : 'bg-neutral-950 -neutral-800 text-neutral-100 focus:-[#f2ca50]'
+ ? 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-500'
+ : 'bg-neutral-950 border-neutral-800 text-neutral-100 focus:border-[#f2ca50]'
  }`}
  />
  </div>
@@ -1111,8 +895,8 @@ export default function App() {
  placeholder="bakandeya-agent-manager"
  className={`w-full rounded-lg px-2.5 py-2 text-xs font-mono focus:outline-none ${
  currentTheme === 'stitch_light'
- ? 'bg-slate-50 -slate-200 text-slate-800 focus:-indigo-500'
- : 'bg-neutral-950 -neutral-800 text-neutral-100 focus:-[#f2ca50]'
+ ? 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-500'
+ : 'bg-neutral-950 border-neutral-800 text-neutral-100 focus:border-[#f2ca50]'
  }`}
  />
  </div>
@@ -1130,8 +914,8 @@ export default function App() {
  placeholder="main"
  className={`w-full rounded-lg px-2.5 py-2 text-xs font-mono focus:outline-none ${
  currentTheme === 'stitch_light'
- ? 'bg-slate-50 -slate-200 text-slate-800 focus:-indigo-500'
- : 'bg-neutral-950 -neutral-800 text-neutral-100 focus:-[#f2ca50]'
+ ? 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-500'
+ : 'bg-neutral-950 border-neutral-800 text-neutral-100 focus:border-[#f2ca50]'
  }`}
  />
  </div>
@@ -1139,8 +923,8 @@ export default function App() {
 
  <div className={`p-3 rounded-xl flex gap-2.5 items-start ${
  currentTheme === 'stitch_light'
- ? 'bg-slate-50 -slate-200'
- : 'bg-neutral-950 -neutral-800'
+ ? 'bg-slate-50 border-slate-200'
+ : 'bg-neutral-950 border-neutral-800'
  }`}>
  <ShieldAlert className={`w-4 h-4 mt-0.5 shrink-0 ${
  currentTheme === 'stitch_light' ? 'text-indigo-600' : 'text-[#f2ca50]'
@@ -1173,8 +957,8 @@ export default function App() {
  }}
  className={`px-4 py-2 font-mono text-xs rounded-lg transition-all cursor-pointer active:scale-95 ${
  currentTheme === 'stitch_light'
- ? 'bg-slate-50 hover:bg-slate-100 -slate-200 text-slate-500 hover:text-slate-700'
- : 'bg-neutral-950 hover:bg-neutral-800 -neutral-800 hover:-neutral-700 text-neutral-400 hover:text-neutral-200'
+ ? 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700'
+ : 'bg-neutral-950 hover:bg-neutral-800 border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-neutral-200'
  }`}
  >
  Limpiar Claves
@@ -1210,12 +994,12 @@ export default function App() {
  <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
  <div className={`w-full max-w-md rounded-2xl p-6 space-y-6 shadow-2xl relative overflow-hidden ${
  currentTheme === 'stitch_light' 
- ? 'bg-white -slate-200 text-slate-800' 
- : 'bg-[#121111] -neutral-800 text-neutral-100'
+ ? 'bg-white border-slate-200 text-slate-800' 
+ : 'bg-[#121111] border-neutral-800 text-neutral-100'
  }`}>
  <div className="flex items-start justify-between">
  <div className="space-y-1">
- <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono tracking-wider uppercase font-bold bg-emerald-400/20/10 -[#73c991]/20/20 text-[#73c991]/20">
+ <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono tracking-wider uppercase font-bold bg-emerald-400/20/10 border-[#73c991]/20/20 text-[#73c991]/20">
  <FileSpreadsheet className="w-3 h-3" /> Estado Google Sheets
  </div>
  <h3 className={`text-lg font-black tracking-wider uppercase font-display ${
@@ -1242,14 +1026,14 @@ export default function App() {
  ) : sheetsStatus ? (
  <div className="space-y-4">
  {!sheetsStatus.configured ? (
- <div className="p-3.5 bg-rose-500/10 -rose-500/20 rounded-xl space-y-2">
+ <div className="p-3.5 bg-rose-500/10 border-rose-500/20 rounded-xl space-y-2">
  <p className="text-xs font-bold text-rose-300 font-mono">⚠️ No Configurado</p>
  <p className="text-[11px] leading-relaxed text-rose-300 font-mono">
  {sheetsStatus.error ||"Las variables de credenciales de Google o SPREADSHEET_ID no están presentes en el entorno."}
  </p>
  </div>
  ) : sheetsStatus.error ? (
- <div className="p-3.5 bg-rose-500/10 -rose-500/20 rounded-xl space-y-2">
+ <div className="p-3.5 bg-rose-500/10 border-rose-500/20 rounded-xl space-y-2">
  <p className="text-xs font-bold text-rose-300 font-mono">⚠️ Error de Autenticación</p>
  <p className="text-[11px] leading-relaxed text-rose-300 font-mono">
  {sheetsStatus.error}
@@ -1261,7 +1045,7 @@ export default function App() {
  ) : (
  <div className="space-y-4 font-mono">
  <div className={`p-3 rounded-xl text-[10px] ${
- currentTheme === 'stitch_light' ? 'bg-slate-50 -slate-200' : 'bg-neutral-950 -neutral-800'
+ currentTheme === 'stitch_light' ? 'bg-slate-50 border-slate-200' : 'bg-neutral-950 border-neutral-800'
  }`}>
  <p className="text-neutral-500 uppercase tracking-widest text-[9px] mb-1">ID del Spreadsheet</p>
  <p className="font-mono text-neutral-400 truncate">{sheetsStatus.spreadsheetId}</p>
@@ -1284,15 +1068,15 @@ export default function App() {
  key={tab.key}
  className={`flex items-center justify-between p-2.5 rounded-xl ${
  exists 
- ? 'bg-emerald-400/20/5 -[#73c991]/20/10' 
- : 'bg-rose-500/5 -rose-500/10'
+ ? 'bg-emerald-400/20/5 border-[#73c991]/20/10' 
+ : 'bg-rose-500/5 border-rose-500/10'
  }`}
  >
  <div className="min-w-0">
  <p className="text-xs font-bold text-neutral-300 flex items-center gap-1.5">
  <span>{tab.name}</span>
  {wasCreated && (
- <span className="text-[8px] font-bold text-[#f2ca50] bg-[#f2ca50]/10 px-1.5 py-0.5 rounded -[#f2ca50]/20">
+ <span className="text-[8px] font-bold text-[#f2ca50] bg-[#f2ca50]/10 px-1.5 py-0.5 rounded border-[#f2ca50]/20">
  ¡CREADA!
  </span>
  )}
@@ -1302,8 +1086,8 @@ export default function App() {
 
  <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono ${
  exists 
- ? 'bg-emerald-400/20/10 text-[#73c991]/20 -[#73c991]/20/20' 
- : 'bg-rose-500/15 text-rose-400 -rose-500/20'
+ ? 'bg-emerald-400/20/10 text-[#73c991]/20 border-[#73c991]/20/20' 
+ : 'bg-rose-500/15 text-rose-400 border-rose-500/20'
  }`}>
  {exists ? 'Conectado' : 'Faltante'}
  </span>
@@ -1324,8 +1108,8 @@ export default function App() {
  onClick={checkGoogleSheets}
  className={`flex-1 py-2 font-mono text-xs font-bold rounded-lg transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] text-center ${
  currentTheme === 'stitch_light'
- ? 'bg-slate-50 -slate-200 text-slate-700 hover:bg-slate-100'
- : 'bg-neutral-900 -neutral-800 text-neutral-300 hover:bg-neutral-800'
+ ? 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+ : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'
  }`}
  >
  Volver a comprobar
@@ -1389,6 +1173,49 @@ export default function App() {
  }}
  />
  )}
+
+ {/* Floating Chatbot Trigger Button */}
+ {currentView !== 'chat' && (
+ <button
+ id="floating-chat-trigger-btn"
+ onClick={() => setIsFloatingChatOpen(!isFloatingChatOpen)}
+ className={`fixed bottom-5 right-5 z-40 p-3.5 rounded-full shadow-2xl flex items-center gap-2.5 transition-all duration-300 cursor-pointer active:scale-95 group ${
+ isFloatingChatOpen
+ ? 'bg-rose-600 text-white hover:bg-rose-700'
+ : isChatLoading
+ ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/30 ring-2 ring-cyan-400/50'
+ : 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 hover:scale-105 shadow-emerald-500/20'
+ }`}
+ title={isChatLoading ? "Agente AI ejecutando en segundo plano..." : "Abrir Agente Mánager AI"}
+ >
+ {isFloatingChatOpen ? (
+ <X className="w-5 h-5" />
+ ) : (
+ <>
+ <div className="relative">
+ {isChatLoading ? (
+ <RefreshCw className="w-5 h-5 animate-spin text-cyan-300" />
+ ) : (
+ <Guitar className="w-5 h-5" />
+ )}
+ <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${isChatLoading ? 'bg-cyan-400 animate-ping' : 'bg-emerald-300 animate-ping'}`} />
+ <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${isChatLoading ? 'bg-cyan-300' : 'bg-emerald-400'}`} />
+ </div>
+ <span className="text-xs font-mono font-bold uppercase tracking-wider hidden sm:inline-block pr-1">
+ {isChatLoading ? 'Ejecutando...' : 'Agente AI'}
+ </span>
+ </>
+ )}
+ </button>
+ )}
+
+ {/* Metronome Pro Modal */}
+ <MetronomeModal
+ isOpen={showMetronomeModal}
+ onClose={() => setShowMetronomeModal(false)}
+ songs={[]}
+ colors={colors}
+ />
 
  </div>
  );

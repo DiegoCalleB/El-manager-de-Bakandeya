@@ -369,7 +369,7 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  background-color: ${bgColor};
  color: ${textColor};
  border: 2px solid white;
- -radius: 50%;
+ border-radius: 50%;
  box-shadow: 0 0 0 5px ${ringColor}, 0 6px 16px rgba(0,0,0,0.3);
  font-weight: 800;
  font-family: ui-monospace, monospace;
@@ -394,12 +394,21 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  map.addLayer(clusterGroup);
  leafletMap.current = map;
  }
+
+ return () => {
+ if (leafletMap.current) {
+ leafletMap.current.remove();
+ leafletMap.current = null;
+ tileLayerRef.current = null;
+ markersGroup.current = null;
+ }
+ };
  }, []);
 
  // Handle Tile Style changes dynamically
  useEffect(() => {
  if (!leafletMap.current) return;
- if (tileLayerRef.current) {
+ if (tileLayerRef.current && leafletMap.current.hasLayer(tileLayerRef.current)) {
  leafletMap.current.removeLayer(tileLayerRef.current);
  }
  const currentPreset = MAP_STYLES[mapStyle];
@@ -512,6 +521,34 @@ export const VenueMap: React.FC<VenueMapProps> = ({
 
  const isSelected = selectedLead?.id === lead.id;
 
+ const venueIconHtml = lead.imagen_url ? `
+ <img src="${lead.imagen_url}" style="
+ width: 22px;
+ height: 22px;
+ border-radius: 50%;
+ object-fit: cover;
+ border: 1px solid white;
+ margin-right: 4px;
+ " />
+ ` : `
+ <div style="
+ width: 22px;
+ height: 22px;
+ border-radius: 50%;
+ background-color: ${pinColor};
+ color: white;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ font-size: 11px;
+ margin-right: 4px;
+ font-weight: bold;
+ box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
+ ">
+ ${lead.icono ? lead.icono : (lead.tipo === 'festival' ? '🎪' : lead.tipo === 'ayuntamiento' ? '🏛️' : lead.tipo === 'discoteca' ? '🎧' : lead.tipo === 'medio' ? '📻' : lead.tipo === 'grupo' ? '🎸' : (lead.estado === 'aprobado' ? '✓' : lead.estado === 'pendiente_aprobacion' ? '⚡' : '🏛️'))}
+ </div>
+ `;
+
  // Google Maps style pill badge + clean text label without background box
  const customIcon = L.divIcon({
  className: 'custom-venue-pin',
@@ -531,7 +568,7 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  display: inline-flex;
  align-items: center;
  background: #ffffff;
- -radius: 20px;
+ border-radius: 20px;
  padding: 2px 8px 2px 3px;
  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
  border: ${isSelected ? `2.5px solid ${pinColor}` : '1px solid rgba(0,0,0,0.15)'};
@@ -541,22 +578,7 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};
  transition: transform 0.15s ease;
  ">
- <div style="
- width: 22px;
- height: 22px;
- -radius: 50%;
- background-color: ${pinColor};
- color: white;
- display: flex;
- align-items: center;
- justify-content: center;
- font-size: 11px;
- margin-right: 4px;
- font-weight: bold;
- box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3);
- ">
- ${lead.estado === 'aprobado' ? '✓' : lead.estado === 'pendiente_aprobacion' ? '⚡' : '🎵'}
- </div>
+ ${venueIconHtml}
  <span style="
  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
  font-size: 11px;
@@ -623,7 +645,7 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  color: white;
  border: none;
  padding: 6px 8px;
- -radius: 6px;
+ border-radius: 6px;
  font-size: 11px;
  font-weight: bold;
  cursor: pointer;
@@ -636,7 +658,7 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  color: white;
  border: none;
  padding: 6px 8px;
- -radius: 6px;
+ border-radius: 6px;
  font-size: 11px;
  font-weight: bold;
  cursor: pointer;
@@ -678,7 +700,7 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  font-size: 9.5px;
  font-weight: 700;
  padding: 2px 7px;
- -radius: 12px;
+ border-radius: 12px;
  white-space: nowrap;
  ">
  ${statusBadge.text}
@@ -728,7 +750,20 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  }
  }, [geoPositions, leads, isStitchLight, mapStyle, activeCityFilter, activeRegionFilter]);
 
- // Focus on selected lead when user selects a venue
+ 
+  // Invalidate size on container resize (without resetting zoom/bounds on cluster expand)
+  useEffect(() => {
+    if (!leafletMap.current || !mapRef.current) return;
+    const observer = new ResizeObserver(() => {
+      if (leafletMap.current) {
+        leafletMap.current.invalidateSize();
+      }
+    });
+    observer.observe(mapRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Focus on selected lead when user selects a venue
  useEffect(() => {
  if (!leafletMap.current || !selectedLead) return;
  const pos = geoPositions[selectedLead.id];
@@ -736,10 +771,19 @@ export const VenueMap: React.FC<VenueMapProps> = ({
 
  const marker = markersMapRef.current[selectedLead.id];
  if (marker && markersGroup.current) {
- if (typeof markersGroup.current.zoomToShowLayer === 'function') {
+ if (typeof markersGroup.current.zoomToShowLayer === 'function' && typeof markersGroup.current.hasLayer === 'function' && markersGroup.current.hasLayer(marker)) {
+ try {
  markersGroup.current.zoomToShowLayer(marker, () => {
+ if (marker && typeof marker.openPopup === 'function') {
  marker.openPopup();
+ }
  });
+ } catch (e) {
+ leafletMap.current.setView(pos, Math.max(leafletMap.current.getZoom(), 15), { animate: true });
+ if (marker && typeof marker.openPopup === 'function') {
+ marker.openPopup();
+ }
+ }
  } else {
  leafletMap.current.setView(pos, Math.max(leafletMap.current.getZoom(), 15), { animate: true });
  marker.openPopup();
@@ -764,15 +808,15 @@ export const VenueMap: React.FC<VenueMapProps> = ({
  <style>{`
  .leaflet-tooltip.custom-venue-map-tooltip {
  background: #ffffff !important;
- : 1px solid rgba(0, 0, 0, 0.12) !important;
- -radius: 12px !important;
+ border: 1px solid rgba(0, 0, 0, 0.12) !important;
+ border-radius: 12px !important;
  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
  padding: 0 !important;
  color: #0f172a !important;
  pointer-events: none !important;
  }
  .leaflet-tooltip.custom-venue-map-tooltip::before {
- -top-color: #ffffff !important;
+ border-top-color: #ffffff !important;
  }
  `}</style>
  {/* Map DOM Element */}

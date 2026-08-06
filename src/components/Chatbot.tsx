@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message as MessageType, Lead, Rehearsal, Concert, ThemeColors } from '../types';
-import { Send, Bot, User, Sparkles, RefreshCw, AlertCircle, CheckCircle, HelpCircle, Calendar, ShieldAlert, X, Activity, ExternalLink, Terminal, Clock, Copy, Key } from 'lucide-react';
+import { Send, Bot, Guitar, User, Sparkles, RefreshCw, AlertCircle, CheckCircle, HelpCircle, Calendar, ShieldAlert, X, Activity, ExternalLink, Terminal, Clock, Copy, Key } from 'lucide-react';
 
 interface ProposedAction {
- type: 'propose_lead_approval' | 'propose_rehearsal' | 'propose_status_change' | 'propose_agent_trigger' | 'propose_concert' | 'propose_add_concert' | 'propose_band';
+ type: 'propose_lead_approval' | 'propose_rehearsal' | 'propose_status_change' | 'propose_agent_trigger' | 'propose_concert' | 'propose_add_concert' | 'propose_band' | 'propose_tour' | 'propose_update_logo';
  leadId?: string;
+ bandId?: string;
+ targetType?: 'lead' | 'band';
+ targetName?: string;
  leadName?: string;
  description: string;
  newStatus?: string;
@@ -13,6 +16,9 @@ interface ProposedAction {
  concert?: Partial<Concert>;
  rehearsal?: Partial<Rehearsal>;
  band?: any;
+ tour?: any;
+ imagen_url?: string;
+ icono?: string;
 }
 
 interface ChatMessage {
@@ -35,19 +41,48 @@ interface ChatbotProps {
  isFloating?: boolean;
  onClose?: () => void;
  userRole?: string;
+ onLoadingChange?: (isLoading: boolean) => void;
 }
 
-export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateLead, onAddRehearsal, onAddConcert, isFloating, onClose, userRole }: ChatbotProps) {
- const [messages, setMessages] = useState<ChatMessage[]>([
+export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateLead, onAddRehearsal, onAddConcert, isFloating, onClose, userRole, onLoadingChange }: ChatbotProps) {
+ const [messages, setMessages] = useState<ChatMessage[]>(() => {
+ const saved = localStorage.getItem('bakandeya_chat_messages');
+ if (saved) {
+ try {
+ const parsed = JSON.parse(saved);
+ if (Array.isArray(parsed) && parsed.length > 0) {
+ return parsed.map((m: any) => ({
+ ...m,
+ timestamp: m.timestamp ? new Date(m.timestamp) : new Date()
+ }));
+ }
+ } catch (e) {
+ console.error("Error al cargar historial del chat:", e);
+ }
+ }
+ return [
  {
  id: 'welcome-1',
  sender: 'bot',
  text: '👋 **¡Buenas, Jon/Filgue/R-violin/elyar!** Soy vuestro **Manager Virtual de Bakandeya**.\n\nEstoy conectado en tiempo real con vuestra hoja de datos de Google Sheets (salas), el calendario de ensayos de banda, la contabilidad y la logística de redes.\n\nPuedes preguntarme cosas como:\n- *¿Qué salas tengo pendientes de aprobación en Madrid o Granada?*\n- *Resúmeme el estado de la semana o hazme una lista de tareas para hoy.*\n- *¿Cuántas salas de Ska, Reggae o Fusión tenemos registradas?*\n\nSi necesitas, puedo **proponer cambios directos** en las salas (como aprobar un correo de contacto) o agendar ensayos, pidiéndote confirmación antes de actuar.',
  timestamp: new Date()
  }
- ]);
+ ];
+ });
+
+ useEffect(() => {
+ try {
+ localStorage.setItem('bakandeya_chat_messages', JSON.stringify(messages));
+ } catch (e) {
+ console.error("Error al guardar historial del chat:", e);
+ }
+ }, [messages]);
  const [inputText, setInputText] = useState('');
  const [isLoading, setIsLoading] = useState(false);
+
+ useEffect(() => {
+   onLoadingChange?.(isLoading);
+ }, [isLoading, onLoadingChange]);
  const messagesEndRef = useRef<HTMLDivElement>(null);
  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -242,18 +277,23 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
 
  const isStitchLight = colors.accent === 'text-indigo-600';
 
- // Auto-scroll chat
- const prevMessagesLength = useRef(messages.length);
+ // Auto-scroll chat to bottom on mount and on message/loading updates
  useEffect(() => {
- if (messages.length > prevMessagesLength.current || messages.length <= 1) {
- messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
- const timer = setTimeout(() => {
- messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
- }, 100);
- return () => clearTimeout(timer);
- }
- prevMessagesLength.current = messages.length;
- }, [messages.length]);
+ const scrollToBottom = () => {
+ messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+ };
+
+ // Scroll immediately
+ scrollToBottom();
+ // Re-scroll after layout paint
+ const timer1 = setTimeout(scrollToBottom, 80);
+ const timer2 = setTimeout(scrollToBottom, 250);
+
+ return () => {
+ clearTimeout(timer1);
+ clearTimeout(timer2);
+ };
+ }, [messages.length, isLoading]);
 
  const parseMarkdown = (text: string) => {
  const lines = text.split('\n');
@@ -557,6 +597,92 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  };
  setMessages(prev => [...prev, successMsg]);
 
+ } else if (action.type === 'propose_tour' || action.tour) {
+ const tourData = action.tour || {
+ id: `tour-${Date.now()}`,
+ nombre: action.description || 'Nueva Gira',
+ vehiculo: 'Furgoneta 9 Plazas',
+ estado: 'planificacion',
+ fechaInicio: new Date().toISOString().split('T')[0],
+ fechaFin: new Date().toISOString().split('T')[0],
+ presupuestoLogistica: 0,
+ stops: []
+ };
+
+ try {
+ const token = localStorage.getItem('bakandeya_token');
+ await fetch('/api/tours', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json',
+ ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+ },
+ body: JSON.stringify(tourData)
+ });
+ } catch (e) {
+ console.error("Error creating tour from chat:", e);
+ }
+
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) {
+ return { ...m, actionStatus: 'applied' };
+ }
+ return m;
+ }));
+
+ const successMsg: ChatMessage = {
+ id: `sys-${Date.now()}`,
+ sender: 'bot',
+ text: `🚚 **Gira Guardada con Éxito:**\n\nSe ha registrado la gira **"${tourData.nombre || 'Nueva Gira'}"** en la base de datos y sincronizado con Google Sheets.`,
+ timestamp: new Date()
+ };
+ setMessages(prev => [...prev, successMsg]);
+
+ } else if (action.type === 'propose_update_logo') {
+ const targetLeadId = action.leadId || (action.targetType === 'lead' ? action.leadId : undefined);
+ const targetBandId = action.bandId || (action.targetType === 'band' ? action.bandId : undefined);
+ const name = action.targetName || action.leadName || 'Item';
+
+ if (targetLeadId) {
+ onUpdateLead(targetLeadId, {
+ imagen_url: action.imagen_url,
+ icono: action.icono
+ });
+ } else if (targetBandId) {
+ try {
+ const token = localStorage.getItem('bakandeya_token');
+ fetch(`/api/bands/${targetBandId}`, {
+ method: 'PUT',
+ headers: {
+ 'Content-Type': 'application/json',
+ ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+ },
+ body: JSON.stringify({
+ id: targetBandId,
+ imagen_url: action.imagen_url,
+ icono: action.icono
+ })
+ });
+ } catch (e) {
+ console.error("Error updating band logo directly:", e);
+ }
+ }
+
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) {
+ return { ...m, actionStatus: 'applied' };
+ }
+ return m;
+ }));
+
+ const successMsg: ChatMessage = {
+ id: `sys-${Date.now()}`,
+ sender: 'bot',
+ text: `🖼️ **Logo/Icono Actualizado con Éxito:** Se ha guardado el logo/icono para **"${name}"** en la base de datos y sincronizado con Google Sheets.`,
+ timestamp: new Date()
+ };
+ setMessages(prev => [...prev, successMsg]);
+
  } else if (action.type === 'propose_agent_trigger' && action.agentName) {
  try {
  const token = localStorage.getItem('bakandeya_token');
@@ -700,7 +826,7 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  <div className={`px-5 py-4 flex items-center justify-between ${isStitchLight ? 'bg-slate-50 -slate-200/80' : 'bg-[#050507]/90 -neutral-900/60'}`}>
  <div className="flex items-center gap-3">
  <div className={`p-1.5 rounded-lg ${isStitchLight ? 'bg-indigo-50 -indigo-100 text-indigo-600' : 'bg-cyan-500/10 -cyan-500/20 text-cyan-400'}`}>
- <Bot className="w-4 h-4" />
+ <Guitar className="w-4 h-4" />
  </div>
  <div>
  <h4 className={`text-xs font-display font-medium tracking-widest flex items-center gap-1.5 uppercase ${isStitchLight ? 'text-slate-800' : 'text-neutral-100'}`}>
@@ -713,14 +839,22 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  <div className="flex items-center gap-3">
  <button
  id="clear-chat-btn"
- onClick={() => setMessages([
+ onClick={() => {
+ const resetMessages: ChatMessage[] = [
  {
  id: 'welcome-1',
  sender: 'bot',
  text: '👋 **¡Buenas, equipo de Bakandeya!** He limpiado el hilo del chat.\n\n¿En qué os puedo ayudar para organizar los conciertos de la banda, el calendario de redes o revisar los correos para las salas hoy?',
  timestamp: new Date()
  }
- ])}
+ ];
+ setMessages(resetMessages);
+ try {
+ localStorage.setItem('bakandeya_chat_messages', JSON.stringify(resetMessages));
+ } catch (e) {
+ console.error(e);
+ }
+ }}
  className={`text-[9px] font-mono tracking-wider uppercase transition-all flex items-center gap-1 hover:underline cursor-pointer active:scale-95 ${isStitchLight ? 'text-slate-400 hover:text-indigo-600' : 'text-neutral-500 hover:text-cyan-400'}`}
  >
  Limpiar Hilo
@@ -789,7 +923,7 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  ? (isStitchLight ? 'bg-indigo-50 -indigo-100 text-indigo-600' : 'bg-cyan-500/10 -cyan-500/20 text-cyan-400') 
  : (isStitchLight ? 'bg-slate-100 -slate-200 text-slate-500' : 'bg-neutral-900 -neutral-800 text-neutral-400')
  }`}>
- {isBot ? <Bot className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+ {isBot ? <Guitar className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
  </div>
 
  <div className="space-y-2">
@@ -805,7 +939,7 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  }`}>
  <div className="space-y-1">{parseMarkdown(msg.text)}</div>
  <span className="text-[8px] font-mono text-neutral-600 block mt-2 text-right">
- {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+ {msg.timestamp instanceof Date ? msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
  </span>
  </div>
 
@@ -865,7 +999,7 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  {isLoading && (
  <div className="flex gap-3 max-w-[80%] self-start">
  <div className={`w-7 h-7 rounded-lg flex items-center justify-center animate-pulse ${isStitchLight ? 'bg-indigo-50 -indigo-100 text-indigo-600' : 'bg-cyan-500/10 -cyan-500/20 text-cyan-400'}`}>
- <Bot className="w-3.5 h-3.5" />
+ <Guitar className="w-3.5 h-3.5" />
  </div>
  <div className={`p-3.5 rounded-xl rounded-tl-none text-[11px] font-mono flex items-center gap-2 ${isStitchLight ? 'bg-white -slate-200 text-slate-500 shadow-sm' : 'bg-neutral-900/50 -neutral-900 text-neutral-500'}`}>
  <RefreshCw className={`w-3.5 h-3.5 animate-spin ${isStitchLight ? 'text-indigo-600' : 'text-cyan-400'}`} /> Analizando base de datos Sheets...

@@ -1,6 +1,8 @@
 import express from "express";
 import { Song, Setlist } from "../../src/types.js";
 import { loadState, saveState, requireAuth } from "../state.js";
+import { getAiClient, generateContentWithFallback } from "../ai.js";
+import { safeParseJson } from "../utils.js";
 import {
   appendSongToSheet,
   updateSongInSheet,
@@ -200,6 +202,87 @@ router.delete("/setlists/:id", requireAuth, (req, res) => {
   } catch (err: any) {
     console.error("Error deleting setlist:", err);
     res.status(500).json({ error: "Error al eliminar el repertorio." });
+  }
+});
+
+// POST generate AI chord sheet and substitute guide
+router.post("/generate-song-chords", requireAuth, async (req, res) => {
+  try {
+    const { songId, titulo, tonalidad, bpm, afinacion, notasInternas, esVersionCovers, artista } = req.body;
+
+    if (!titulo) {
+      return res.status(400).json({ error: "El título de la canción es requerido." });
+    }
+
+    const aiClient = getAiClient();
+    if (!aiClient) {
+      return res.status(500).json({ error: "Gemini API key no configurada." });
+    }
+
+    const prompt = `Eres un músico profesional y arreglista. Genera el cifrado de acordes con letra completo al estilo LaCuerda.net / Ultimate Guitar para la siguiente canción:
+Título: "${titulo}"
+${artista ? `Artista/Banda: "${artista}"` : ''}
+${tonalidad ? `Tonalidad Base: "${tonalidad}"` : ''}
+${bpm ? `Tempo (BPM): ${bpm}` : ''}
+${afinacion ? `Afinación: "${afinacion}"` : ''}
+${notasInternas ? `Notas internas del grupo: "${notasInternas}"` : ''}
+${esVersionCovers ? `Tipo: Versión / Cover` : `Tipo: Canción Original`}
+
+Requisitos del formato cifradoTexto:
+1. Pon los acordes en la línea inmediatamente superior a las sílabas donde cambian, usando espacios, O bien utiliza la notación inline [Acorde] justo delante de las palabras/sílabas clave. Prefiere poner nombres de acordes estándar (ej. Do, Re, Mim, Sol, Lam, Fa#m o C, D, Em, G, Am, F#m).
+2. Incluye secciones claras: [Intro], [Verso 1], [Estribillo], [Verso 2], [Puente], [Solo], [Outro].
+3. Si la canción es un tema conocido (cover), usa sus acordes reales. Si es un tema original, inventa una progresión melódica y armónica profesional, emotiva y muy coherente en la tonalidad indicada (${tonalidad || 'Mim'}).
+
+Además, genera una Ficha de Sustitución Urgente (guiaSustituto) pensada para un músico nuevo o un sustituto de última hora que tiene que tocar el tema sin haberlo ensayado antes.
+
+Responde ÚNICAMENTE con un JSON válido con esta estructura exacta:
+{
+  "cifradoTexto": "texto completo del cifrado con letra y acordes...",
+  "guiaSustituto": {
+    "estructura": "Intro (4T) -> Verso 1 -> Estribillo -> Verso 2 -> Estribillo -> Solo -> Outro",
+    "progresionClave": "Verso: Mim - Do | Estribillo: Sol - Re - Mim - Do",
+    "cortesYClaves": "Atención al corte seco en el compás 8 del puente. Bajar dinámica en el verso 2.",
+    "capoTraste": "Sin Capo (o Capo 2º traste si aplica)",
+    "instrumentosClave": "Batería entra en compás 5, teclado hace pad arpegiado en estribillo"
+  }
+}`;
+
+    const aiRes = await generateContentWithFallback(aiClient, {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const responseText = aiRes?.text || aiRes?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const parsed = safeParseJson(responseText);
+
+    if (!parsed || !parsed.cifradoTexto) {
+      return res.status(500).json({ error: "No se pudo interpretar la respuesta de la IA." });
+    }
+
+    // Optionally persist if songId provided
+    if (songId) {
+      const state = loadState();
+      if (state.songs) {
+        const songIndex = state.songs.findIndex((s: Song) => s.id === songId);
+        if (songIndex !== -1) {
+          state.songs[songIndex].cifradoTexto = parsed.cifradoTexto;
+          state.songs[songIndex].guiaSustituto = parsed.guiaSustituto;
+          saveState(state);
+          updateSongInSheet(state.songs[songIndex]).catch(e => console.error(e));
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      cifradoTexto: parsed.cifradoTexto,
+      guiaSustituto: parsed.guiaSustituto
+    });
+  } catch (err: any) {
+    console.error("Error generating song chords with AI:", err);
+    res.status(500).json({ error: "Error al generar los acordes con IA." });
   }
 });
 

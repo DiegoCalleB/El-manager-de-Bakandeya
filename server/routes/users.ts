@@ -2,11 +2,12 @@ import express from "express";
 import crypto from "crypto";
 import { ACTIVE_SESSIONS, verifyPassword, hashPassword, getSafeUsers } from "../auth.js";
 import { loadState, saveState, requireAuth, requireLeader } from "../state.js";
+import { loginRateLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
 // Login
-router.post("/auth/login", (req, res) => {
+router.post("/auth/login", loginRateLimiter, (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: "Usuario y contraseña son requeridos" });
