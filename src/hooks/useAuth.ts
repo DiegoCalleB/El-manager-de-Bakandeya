@@ -20,6 +20,15 @@ export function useAuth() {
     return !!localStorage.getItem('bakandeya_token') || localStorage.getItem('bakandeya_logged_in') === 'true';
   });
 
+  const [availableBands, setAvailableBands] = useState<any[]>(() => {
+    try {
+      const savedBands = localStorage.getItem('bakandeya_available_bands');
+      return savedBands ? JSON.parse(savedBands) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
   const isAdmin = Boolean(currentUser && currentUser.role === 'leader');
 
   // Verify auth session on mount
@@ -29,7 +38,9 @@ export function useAuth() {
         .then(data => {
           if (data && data.user) {
             setCurrentUser(data.user);
+            setAvailableBands(data.availableBands || []);
             localStorage.setItem('bakandeya_user', JSON.stringify(data.user));
+            localStorage.setItem('bakandeya_available_bands', JSON.stringify(data.availableBands || []));
             setIsLoggedIn(true);
           }
         })
@@ -45,24 +56,62 @@ export function useAuth() {
               return;
             } catch (e) {}
           }
+          const savedBandsStr = localStorage.getItem('bakandeya_available_bands');
+          if (savedBandsStr) {
+            try {
+              const bands = JSON.parse(savedBandsStr);
+              setAvailableBands(bands);
+            } catch (e) {}
+          }
           setCurrentUser(null);
           setAuthToken(null);
           setIsLoggedIn(false);
           localStorage.removeItem('bakandeya_token');
           localStorage.removeItem('bakandeya_user');
           localStorage.removeItem('bakandeya_logged_in');
+          localStorage.removeItem('bakandeya_available_bands');
         });
     }
   }, [authToken]);
 
-  const handleLoginSuccess = useCallback((user: User, token: string) => {
+  const handleLoginSuccess = useCallback((user: User, token: string, bandsList?: any[]) => {
     setCurrentUser(user);
     setAuthToken(token);
+    if (bandsList) {
+      setAvailableBands(bandsList);
+      localStorage.setItem('bakandeya_available_bands', JSON.stringify(bandsList));
+    }
     localStorage.setItem('bakandeya_token', token);
     localStorage.setItem('bakandeya_user', JSON.stringify(user));
     localStorage.setItem('bakandeya_logged_in', 'true');
     setIsLoggedIn(true);
   }, []);
+
+  const handleSwitchBand = useCallback(async (band_id: string) => {
+    const response = await fetch('/api/auth/switch-band', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+      },
+      body: JSON.stringify({ band_id })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Error al cambiar de banda');
+    }
+
+    if (data.user) {
+      setCurrentUser(data.user);
+      localStorage.setItem('bakandeya_user', JSON.stringify(data.user));
+    }
+    if (data.availableBands) {
+      setAvailableBands(data.availableBands);
+      localStorage.setItem('bakandeya_available_bands', JSON.stringify(data.availableBands));
+    }
+    return data.user;
+  }, [authToken]);
 
   const handleLogout = useCallback(async () => {
     if (authToken) {
@@ -74,10 +123,12 @@ export function useAuth() {
     }
     setCurrentUser(null);
     setAuthToken(null);
+    setAvailableBands([]);
     setIsLoggedIn(false);
     localStorage.removeItem('bakandeya_token');
     localStorage.removeItem('bakandeya_user');
     localStorage.removeItem('bakandeya_logged_in');
+    localStorage.removeItem('bakandeya_available_bands');
   }, [authToken]);
 
   return {
@@ -85,8 +136,10 @@ export function useAuth() {
     authToken,
     isLoggedIn,
     isAdmin,
+    availableBands,
     setCurrentUser,
     handleLoginSuccess,
+    handleSwitchBand,
     handleLogout
   };
 }

@@ -24,6 +24,8 @@ interface DashboardProps {
  onAddLead: (lead: Lead) => void;
  metrics?: SocialMetric[];
  concerts?: Concert[];
+ currentUser?: any;
+ bandName?: string;
  rehearsals?: Rehearsal[];
  onNavigate?: (view: 'resumen' | 'booking' | 'medios' | 'calendario' | 'reels' | 'finanzas' | 'chat', options?: NavigationOptions) => void;
 }
@@ -54,6 +56,8 @@ export default function Dashboard({
  metrics = [], 
  concerts = [], 
  rehearsals = [], 
+ currentUser,
+ bandName,
  onNavigate 
 }: DashboardProps) {
  const [searchTerm, setSearchTerm] = useState('');
@@ -309,7 +313,7 @@ export default function Dashboard({
  upcomingEvents.push({
  id: r.id,
  type: 'ensayo',
- title: `Ensayo General Bakandeya`,
+ title: r.lugar ? `Ensayo General en ${r.lugar}` : `Ensayo General ${currentUser?.bandName || ''}`,
  dateStr: r.fecha,
  day,
  month,
@@ -322,7 +326,7 @@ export default function Dashboard({
  });
 
  // Fallback defaults if no rehearsals/concerts created yet
- if (upcomingEvents.length === 0) {
+ if (upcomingEvents.length === 0 && (!currentUser || currentUser.band_id === 'band-bakandeya')) {
  upcomingEvents.push(
  {
  id: 'def-1',
@@ -815,7 +819,7 @@ export default function Dashboard({
  <span className={`text-[10px] font-mono uppercase tracking-widest font-bold ${isStitchLight ? 'text-sky-400' : 'text-zinc-100'}`}>
  Acciones Rápidas del Día
  </span>
- <span className={`text-[10px] font-mono ${textMuted}`}>Bakandeya Virtual Manager</span>
+ <span className={`text-[10px] font-mono ${textMuted}`}>{currentUser?.bandName || 'Bakandeya'} Virtual Manager</span>
  </div>
 
  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[10px] font-mono">

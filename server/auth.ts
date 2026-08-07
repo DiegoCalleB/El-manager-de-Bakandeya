@@ -41,7 +41,7 @@ export function getSafeUsers(users: any[]) {
 }
 
 // Extract user & role from incoming request
-export function getUserFromRequest(req: express.Request, loadStateFn: () => any): { id: string; role: string; username: string } | null {
+export function getUserFromRequest(req: express.Request, loadStateFn: () => any): { id: string; role: string; username: string; email?: string; name?: string; bandName?: string; band_id?: string } | null {
   const authHeader = req.headers.authorization;
   let token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.headers["x-auth-token"] as string || req.query.token as string);
 
@@ -58,7 +58,10 @@ export function getUserFromRequest(req: express.Request, loadStateFn: () => any)
       ACTIVE_SESSIONS[token] = session;
       const user = state?.users?.find((u: any) => u.id === session.userId);
       if (user) {
-        return { id: user.id, role: user.role || 'member', username: user.username };
+        const band_id = user.band_id || 'band-bakandeya';
+        const userBand = state?.userBands?.find((ub: any) => ub.user_id === user.id && ub.band_id === band_id);
+        const role = userBand?.role || user.role || 'member';
+        return { id: user.id, role, username: user.username, email: user.email, name: user.name || user.bandName, band_id };
       }
     }
   }
@@ -66,7 +69,10 @@ export function getUserFromRequest(req: express.Request, loadStateFn: () => any)
   // Fallback: Default to leader user in single-tenant applet context so background actions succeed
   if (state?.users && state.users.length > 0) {
     const defaultUser = state.users.find((u: any) => u.role === 'leader') || state.users[0];
-    return { id: defaultUser.id, role: defaultUser.role || 'leader', username: defaultUser.username };
+    const band_id = defaultUser.band_id || 'band-bakandeya';
+    const userBand = state?.userBands?.find((ub: any) => ub.user_id === defaultUser.id && ub.band_id === band_id);
+    const role = userBand?.role || defaultUser.role || 'leader';
+    return { id: defaultUser.id, role, username: defaultUser.username, email: defaultUser.email, name: defaultUser.name || defaultUser.bandName, band_id };
   }
 
   return null;

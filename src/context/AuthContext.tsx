@@ -7,8 +7,15 @@ export interface AuthContextType {
   authToken: string | null;
   isLoggedIn: boolean;
   isAdmin: boolean;
+  availableBands: Array<{
+    band_id: string;
+    bandName: string;
+    role: string;
+    userId: string;
+  }>;
   setCurrentUser: React.Dispatch<React.SetStateAction<User | null>>;
-  handleLoginSuccess: (user: User, token: string) => void;
+  handleLoginSuccess: (user: User, token: string, bandsList?: any[]) => void;
+  handleSwitchBand: (band_id: string) => Promise<User>;
   handleLogout: () => Promise<void>;
 }
 

@@ -264,7 +264,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
   // Build clean target URL
   const rawDomain = useCustomDomain 
     ? (customDomain.trim().startsWith('http') ? customDomain.trim() : `https://${customDomain.trim().replace(/\/$/, '')}`)
-    : window.location.origin;
+    : 'https://bandmanagement-ai.vercel.app';
 
   const cleanPrefix = routePrefix.trim().replace(/^\/+|\/+$/g, '');
   const cleanSlugVal = customSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
@@ -276,7 +276,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
   const qrConcertUrl = `${rawDomain}${pathFormatted}`;
 
   const copyLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/unete`);
+    navigator.clipboard.writeText(qrConcertUrl);
     alert("Enlace copiado al portapapeles.");
   };
 
@@ -1025,7 +1025,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
               </div>
 
               <a
-                href={qrConcertUrl.startsWith('http') && useCustomDomain && !qrConcertUrl.includes(window.location.host) ? `${window.location.origin}${pathFormatted}` : qrConcertUrl}
+                href={qrConcertUrl.startsWith('http') && useCustomDomain && !qrConcertUrl.includes('bandmanagement-ai.vercel.app') ? `https://bandmanagement-ai.vercel.app${pathFormatted}` : qrConcertUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold font-mono text-xs uppercase tracking-widest rounded-xl border border-slate-700 flex items-center justify-center gap-2 transition"
@@ -1038,8 +1038,13 @@ export const FansPanel: React.FC<FansPanelProps> = ({
               <div id="qr-code-svg-container" className="p-4 bg-white rounded-2xl shadow-2xl border-4 border-amber-500 inline-block relative">
                 <QRCode value={qrConcertUrl} size={220} level="H" />
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center overflow-hidden border-2 border-white shadow-xl p-0.5">
-                    <img src="/logo_bakandeya.jpg" alt="Logo Bakandeya" className="w-full h-full object-cover rounded-lg" />
+                  <div className="w-16 h-16 bg-slate-950 rounded-xl flex items-center justify-center overflow-hidden border-2 border-amber-500 shadow-xl p-0.5">
+                    <img 
+                      src={epkConfig?.logoUrl || "/logo_bakandeya_bueno_sin_fondo.png"} 
+                      onError={(e) => { (e.target as HTMLImageElement).src = '/logo_bakandeya_bueno_sin_fondo.png'; }}
+                      alt="Logo Bakandeya" 
+                      className="w-full h-full object-contain rounded-lg" 
+                    />
                   </div>
                 </div>
               </div>

@@ -70,9 +70,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
  setLoading(true);
 
  try {
+ const token = localStorage.getItem('bakandeya_token');
  const response = await fetch(`/api/users/${currentUser.id}`, {
  method: 'PUT',
- headers: { 'Content-Type': 'application/json' },
+ headers: {
+  'Content-Type': 'application/json',
+  ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+ },
  body: JSON.stringify({
  name: name.trim(),
  instrument: instrument.trim(),

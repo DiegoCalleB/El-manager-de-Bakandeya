@@ -22,12 +22,16 @@ import {
   fetchBandsFromSheet,
   fetchToursFromSheet,
   fetchFansFromSheet,
+  fetchRegisteredBandsFromSheet,
   ensureTemasYSetlistsSheets,
   ensureFansSheet,
   ensureBandasSheet,
-  ensureToursSheet
+  ensureToursSheet,
+  ensureRegistroBandasSheet,
+  ensureUsuariosSheet,
+  syncAllTabsWithBakandeya
 } from "./server/sheets.js";
-import { loadState, saveState } from "./server/state.js";
+import { loadState, saveState, getEpkConfigForBand } from "./server/state.js";
 
 import usersRouter from "./server/routes/users.js";
 import postsRouter from "./server/routes/posts.js";
@@ -145,7 +149,7 @@ app.get("/api/check-sheets", async (req, res) => {
     const sheetsList = meta.data.sheets || [];
     const existingTabs = sheetsList.map((s: any) => s.properties.title);
     
-    const required = ["leads", "ensayos", "conciertos", "redes_sociales", "finanzas", "seguidores", "hilos_emails", "logistica_horarios", "logistica_equipo", "canciones", "repertorios", "fans", "bandas", "tours"];
+    const required = ["registro_bandas", "usuarios", "leads", "ensayos", "conciertos", "redes_sociales", "finanzas", "seguidores", "hilos_emails", "logistica_horarios", "logistica_equipo", "canciones", "repertorios", "fans", "bandas", "tours"];
     const status: Record<string, boolean> = {};
     const created: string[] = [];
 
@@ -153,6 +157,8 @@ app.get("/api/check-sheets", async (req, res) => {
     await ensureFansSheet(sheets, spreadsheetId);
     await ensureBandasSheet(sheets, spreadsheetId);
     await ensureToursSheet(sheets, spreadsheetId);
+    await ensureRegistroBandasSheet(sheets, spreadsheetId);
+    await ensureUsuariosSheet(sheets, spreadsheetId);
 
     for (const tab of required) {
       if (existingTabs.includes(tab)) {
@@ -182,6 +188,12 @@ app.get("/api/check-sheets", async (req, res) => {
       }
     }
 
+    // Synchronize all tabs in Google Sheets with band_id = band-bakandeya
+    const currentState = loadState();
+    syncAllTabsWithBakandeya(currentState).catch(err => {
+      console.warn("Async sync with Google Sheets failed or skipped:", err);
+    });
+
     res.json({
       configured: true,
       spreadsheetId,
@@ -195,6 +207,17 @@ app.get("/api/check-sheets", async (req, res) => {
       configured: true,
       error: error.message || "Fallo al conectar con la API de Google Sheets. Verifica que el Spreadsheet ID sea correcto y que hayas compartido la hoja con permisos de Editor al email de la Service Account."
     });
+  }
+});
+
+app.all("/api/sync-bakandeya", async (req, res) => {
+  try {
+    const currentState = loadState();
+    await syncAllTabsWithBakandeya(currentState);
+    res.json({ success: true, message: "Todas las hojas de Google Sheets han sido actualizadas con la banda Bakandeya y su band_id ('band-bakandeya')." });
+  } catch (err: any) {
+    console.error("Error syncing Bakandeya to Google Sheets:", err);
+    res.status(500).json({ success: false, error: err.message || "Error al sincronizar con Google Sheets" });
   }
 });
 
@@ -226,7 +249,8 @@ app.get("/api/download-excel", (req, res) => {
       "Contrato Firmado": c.contrato_firmado ? "SÍ" : "NO",
       "Estado Pago": c.estado_pago,
       Tipo: c.tipo,
-      Notas: c.notas || ""
+      Notas: c.notas || "",
+      band_id: (c as any).band_id || (c as any).bandId || "band-1"
     }));
     const wsConcerts = XLSX.utils.json_to_sheet(concertsData);
     XLSX.utils.book_append_sheet(wb, wsConcerts, "Conciertos");
@@ -244,7 +268,8 @@ app.get("/api/download-excel", (req, res) => {
       Instagram: l.instagram,
       Fuente: l.fuente,
       Estado: l.estado,
-      Notas: l.notas || ""
+      Notas: l.notas || "",
+      band_id: (l as any).band_id || (l as any).bandId || "band-1"
     }));
     const wsLeads = XLSX.utils.json_to_sheet(leadsData);
     XLSX.utils.book_append_sheet(wb, wsLeads, "Salas_Leads");
@@ -256,7 +281,8 @@ app.get("/api/download-excel", (req, res) => {
       Importe: p.importe,
       Tipo: p.tipo,
       Categoría: p.categoria,
-      Estado: p.estado
+      Estado: p.estado,
+      band_id: (p as any).band_id || (p as any).bandId || "band-1"
     }));
     const wsPayments = XLSX.utils.json_to_sheet(paymentsData);
     XLSX.utils.book_append_sheet(wb, wsPayments, "Finanzas_Pagos");
@@ -267,7 +293,8 @@ app.get("/api/download-excel", (req, res) => {
       Plataforma: p.plataforma,
       Contenido: p.contenido,
       Responsable: p.responsable,
-      Estado: p.estado
+      Estado: p.estado,
+      band_id: (p as any).band_id || (p as any).bandId || "band-1"
     }));
     const wsPosts = XLSX.utils.json_to_sheet(postsData);
     XLSX.utils.book_append_sheet(wb, wsPosts, "Redes_Sociales");
@@ -282,7 +309,8 @@ app.get("/api/download-excel", (req, res) => {
               ID: item.id,
               Hora: item.time,
               "Actividad / Horario": item.activity,
-              Completado: item.done ? "SÍ" : "NO"
+              Completado: item.done ? "SÍ" : "NO",
+              band_id: item.band_id || item.bandId || "band-1"
             });
           });
         }
@@ -300,7 +328,8 @@ app.get("/api/download-excel", (req, res) => {
               Fecha: dateKey,
               ID: item.id,
               "Material / Equipo a Llevar": item.label,
-              "Cargado / Listo": item.checked ? "SÍ" : "NO"
+              "Cargado / Listo": item.checked ? "SÍ" : "NO",
+              band_id: item.band_id || item.bandId || "band-1"
             });
           });
         }
@@ -320,7 +349,8 @@ app.get("/api/download-excel", (req, res) => {
       Estado: s.estadoTema || "listo",
       "Es Cover": s.esVersionCovers ? "SÍ" : "NO",
       Acordes: s.enlaceAcordes || "",
-      Notas: s.notasInternas || ""
+      Notas: s.notasInternas || "",
+      band_id: (s as any).band_id || (s as any).bandId || "band-1"
     }));
     const wsSongs = XLSX.utils.json_to_sheet(songsData);
     XLSX.utils.book_append_sheet(wb, wsSongs, "Canciones");
@@ -333,7 +363,8 @@ app.get("/api/download-excel", (req, res) => {
       "Duración (min)": st.duracionTotalEstimadaMinutos || 0,
       "Fecha Creación": st.fechaCreacion,
       "Última Edición": st.fechaUltimaEdicion,
-      "Número Temas": st.items?.length || 0
+      "Número Temas": st.items?.length || 0,
+      band_id: (st as any).band_id || (st as any).bandId || "band-1"
     }));
     const wsSetlists = XLSX.utils.json_to_sheet(setlistsData);
     XLSX.utils.book_append_sheet(wb, wsSetlists, "Repertorios");
@@ -346,7 +377,8 @@ app.get("/api/download-excel", (req, res) => {
       "Cómo conoció": f.comoConocio || "",
       Concierto: f.conciertoOrigenNombre || "",
       "Fecha Captura": f.fechaCaptura || "",
-      RGPD: f.consentimientoRGPD ? "SÍ" : "NO"
+      RGPD: f.consentimientoRGPD ? "SÍ" : "NO",
+      band_id: f.band_id || f.bandId || "band-1"
     }));
     const wsFans = XLSX.utils.json_to_sheet(fansData);
     XLSX.utils.book_append_sheet(wb, wsFans, "Fans_Tribu");
@@ -359,10 +391,43 @@ app.get("/api/download-excel", (req, res) => {
       "Fecha Inicio": t.fechaInicio,
       "Fecha Fin": t.fechaFin,
       "Presupuesto Logística": t.presupuestoLogistica || 0,
-      "Número Paradas": t.stops?.length || 0
+      "Número Paradas": t.stops?.length || 0,
+      band_id: t.band_id || t.bandId || "band-1"
     }));
     const wsTours = XLSX.utils.json_to_sheet(toursData);
     XLSX.utils.book_append_sheet(wb, wsTours, "Giras");
+
+    const registeredBandsData = (state.registeredBands || state.users || []).map((b: any) => ({
+      ID: b.id || b.band_id,
+      "Fecha Registro": b.fecha_registro || b.createdAt || "",
+      "Nombre Banda": b.nombre_banda || b.bandName || b.name || "",
+      Email: b.email || b.username || "",
+      Plan: b.plan || b.selectedPlan || "emergente",
+      Contacto: b.contacto_nombre || b.name || "",
+      "Estilo Musical": b.estilo_musical || b.style || "",
+      Localización: b.localizacion || b.city || "España",
+      Teléfono: b.telefono || "",
+      Instagram: b.instagram || "",
+      "Spotify/YouTube": b.spotify_youtube || "",
+      "Estado Cuenta": b.estado_cuenta || "activo",
+      Notas: b.notas || "",
+      band_id: b.band_id || b.bandId || b.id || "band-1"
+    }));
+    const wsRegisteredBands = XLSX.utils.json_to_sheet(registeredBandsData);
+    XLSX.utils.book_append_sheet(wb, wsRegisteredBands, "Registro_Bandas");
+
+    const usersData = (state.users || []).map((u: any) => ({
+      ID: u.id,
+      "Usuario/Email": u.username || u.email,
+      Nombre: u.name || u.bandName,
+      Rol: u.role,
+      Plan: u.plan || "emergente",
+      Instrumento: u.instrument || "Músico",
+      "Fecha Creación": u.createdAt || "",
+      band_id: u.band_id || u.bandId || u.id || "band-1"
+    }));
+    const wsUsers = XLSX.utils.json_to_sheet(usersData);
+    XLSX.utils.book_append_sheet(wb, wsUsers, "Usuarios");
 
     const excelBuffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
@@ -379,6 +444,8 @@ app.get("/api/download-excel", (req, res) => {
 app.get("/api/state", async (req, res) => {
   const user = getUserFromRequest(req, loadState);
   const isLeader = user?.role === "leader";
+  const userBandId = user?.band_id || 'band-bakandeya';
+  const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || user?.role === 'admin';
 
   const state = loadState();
   try {
@@ -398,17 +465,66 @@ app.get("/api/state", async (req, res) => {
     state.bands = await fetchBandsFromSheet(state.bands || []);
     state.tours = await fetchToursFromSheet(state.tours || []);
     state.fans = await fetchFansFromSheet(state.fans || []);
+    state.registeredBands = await fetchRegisteredBandsFromSheet(state.registeredBands || []);
     saveState(state);
   } catch (error: any) {
     console.error("Error fetching state from Google Sheets, falling back to local cached state:", error.message || error);
   }
-  
-  const responseState = {
-    ...state,
-    payments: isLeader ? (state.payments || []) : [],
-    users: getSafeUsers(state.users)
-  };
-  res.json(responseState);
+
+  const rawPayments = isLeader ? (state.payments || []) : [];
+  const rawUsers = getSafeUsers(state.users);
+
+  if (isBakandeyaOrAdmin) {
+    res.json({
+      ...state,
+      payments: rawPayments,
+      users: rawUsers
+    });
+  } else {
+    // Filter state for specific non-Bakandeya band
+    const matchBand = (item: any) => item && (item.band_id === userBandId || item.bandId === userBandId);
+
+    const filterObjectLists = (obj: any) => {
+      if (!obj || typeof obj !== 'object') return {};
+      const resObj: any = {};
+      for (const key of Object.keys(obj)) {
+        if (Array.isArray(obj[key])) {
+          const filtered = obj[key].filter(matchBand);
+          if (filtered.length > 0) resObj[key] = filtered;
+        }
+      }
+      return resObj;
+    };
+
+    const userBandName = user?.bandName || user?.name || 'Tu Banda';
+    const userEpkConfig = getEpkConfigForBand(state, userBandId, userBandName, user?.email);
+
+    res.json({
+      ...state,
+      epkConfig: userEpkConfig,
+      leads: (state.leads || []).filter(matchBand),
+      rehearsals: (state.rehearsals || []).filter(matchBand),
+      concerts: (state.concerts || []).filter(matchBand),
+      posts: (state.posts || []).filter(matchBand),
+      payments: rawPayments.filter(matchBand),
+      metrics: (state.metrics || []).filter(matchBand),
+      songs: (state.songs || []).filter(matchBand),
+      setlists: (state.setlists || []).filter(matchBand),
+      bands: (state.bands || []).filter((b: any) => b.band_id === userBandId || b.id === userBandId),
+      tours: (state.tours || []).filter(matchBand),
+      fans: (state.fans || []).filter(matchBand),
+      messages: (state.messages || []).filter(matchBand),
+      runOfShow: filterObjectLists(state.runOfShow),
+      gearChecklists: filterObjectLists(state.gearChecklists),
+      registeredBands: (state.registeredBands || []).filter((b: any) =>
+        b.band_id === userBandId ||
+        b.id === userBandId ||
+        b.id === `reg-${userBandId.replace('band-', '')}` ||
+        (user?.email && b.email?.toLowerCase() === user.email.toLowerCase())
+      ),
+      users: rawUsers.filter((u: any) => u.band_id === userBandId || u.id === user?.id)
+    });
+  }
 });
 
 // Static clip serving

@@ -55,14 +55,38 @@ export const googleSheetsService = {
   updateSetlist: sheetsRaw.updateSetlistInSheet,
   deleteSetlist: sheetsRaw.deleteSetlistInSheet,
 
-  // Bands
+  // Bands (Partner / Friendly Bands)
   fetchBands: sheetsRaw.fetchBandsFromSheet,
   appendBand: sheetsRaw.appendBandToSheet,
   updateBand: sheetsRaw.updateBandInSheet,
   deleteBand: sheetsRaw.deleteBandInSheet,
 
+  // Registered Client Bands
+  fetchRegisteredBands: sheetsRaw.fetchRegisteredBandsFromSheet,
+  appendRegisteredBand: sheetsRaw.appendRegisteredBandToSheet,
+  updateRegisteredBand: sheetsRaw.updateRegisteredBandInSheet,
+
+  // User Bands (many-to-many)
+  fetchUserBands: sheetsRaw.fetchUserBandsFromSheet,
+  appendUserBand: sheetsRaw.appendUserBandToSheet,
+  updateUserBand: sheetsRaw.updateUserBandInSheet,
+  deleteUserBand: sheetsRaw.deleteUserBandInSheet,
+
+  // Users / App Members (usuarios)
+  fetchUsers: sheetsRaw.fetchUsersFromSheet,
+  appendUser: sheetsRaw.appendUserToSheet,
+  updateUser: sheetsRaw.updateUserInSheet,
+  deleteUser: sheetsRaw.deleteUserInSheet,
+
   // Fans
   fetchFans: sheetsRaw.fetchFansFromSheet,
   appendFan: sheetsRaw.appendFanToSheet,
-  deleteFan: sheetsRaw.deleteFanInSheet
+  deleteFan: sheetsRaw.deleteFanInSheet,
+
+  // EPK / Dossier
+  fetchEpkConfigs: sheetsRaw.fetchEpkConfigsFromSheet,
+  updateEpk: sheetsRaw.updateEpkInSheet,
+
+  // Full Sync
+  syncAllTabsWithBakandeya: sheetsRaw.syncAllTabsWithBakandeya
 };

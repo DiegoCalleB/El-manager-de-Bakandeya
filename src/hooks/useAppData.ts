@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Lead, Rehearsal, Concert, SocialPost, Payment, Message, SocialMetric, User, Fan, Tour, EPKConfig } from '../types';
 import { api, ApiError } from '../services/api';
 
-export function useAppData(isLoggedIn: boolean) {
+export function useAppData(isLoggedIn: boolean, bandId?: string) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
   const [tours, setTours] = useState<Tour[]>([]);
@@ -53,7 +53,7 @@ export function useAppData(isLoggedIn: boolean) {
     if (isLoggedIn) {
       fetchState();
     }
-  }, [isLoggedIn, fetchState]);
+  }, [isLoggedIn, bandId, fetchState]);
 
   // Handle external agent completions
   useEffect(() => {

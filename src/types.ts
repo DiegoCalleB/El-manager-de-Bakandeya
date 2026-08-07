@@ -12,6 +12,7 @@ export type BandRelationshipStatus =
 
 export interface BandContact {
   id: string;
+  band_id?: string;
   nombre_banda: string;
   estilo_musical: string;
   localizacion: string;
@@ -27,6 +28,26 @@ export interface BandContact {
   ciudad_origen_swap?: string;
   icono?: string;
   imagen_url?: string;
+}
+
+export interface InteractionLog {
+  id: string;
+  fecha: string;
+  tipo: 'Llamada' | 'WhatsApp' | 'Email' | 'Reunión' | 'Otro';
+  autor?: string;
+  notas: string;
+  resultado?: 'Interesado' | 'Enviar propuesta' | 'Seguimiento pendiente' | 'Rechazado' | 'Info recibida' | 'Acuerdo cerrado';
+}
+
+export interface SavedFilter {
+  id: string;
+  nombre: string;
+  sectionTab?: 'salas' | 'medios' | 'grupos';
+  searchTerm?: string;
+  selectedCityFilter?: string;
+  statusFilter?: LeadStatus | 'todos';
+  typeFilter?: LeadType | 'todos';
+  minCapacityFilter?: number;
 }
 
 export interface EmailMessage {
@@ -60,12 +81,15 @@ export interface Lead {
   contexto_extra?: string;
   notas: string;
   hilo_emails?: EmailMessage[];
+  historial_contacto?: InteractionLog[];
   icono?: string;
   imagen_url?: string;
+  band_id?: string;
 }
 
 export interface Rehearsal {
   id: string;
+  band_id?: string;
   fecha: string;
   hora: string;
   lugar: string;
@@ -86,6 +110,7 @@ export interface ConcertExpenseBreakdown {
 
 export interface Concert {
   id: string;
+  band_id?: string;
   fecha: string;
   ciudad: string;
   sala: string;
@@ -105,8 +130,15 @@ export interface Concert {
 export interface EPKConfig {
   biografia: string;
   logoUrl: string;
+  dossierPdfUrl?: string;
+  dossierPdfName?: string;
+  dossierDocumentUrl?: string;
+  dossierDocumentName?: string;
+  dossierTextoExtra?: string;
   bandPhotos: string[];
   riderTecnico: string;
+  riderPdfUrl?: string;
+  riderPdfName?: string;
   enlacesRedes: {
     spotify?: string;
     youtube?: string;
@@ -130,6 +162,7 @@ export interface EPKConfig {
 
 export interface Fan {
   id: string;
+  band_id?: string;
   nombre: string;
   email: string;
   ciudad?: string;
@@ -142,6 +175,7 @@ export interface Fan {
 
 export interface SocialPost {
   id: string;
+  band_id?: string;
   fecha: string;
   plataforma: 'Instagram' | 'TikTok' | 'YouTube' | 'Facebook';
   contenido: string;
@@ -151,6 +185,7 @@ export interface SocialPost {
 
 export interface Payment {
   id: string;
+  band_id?: string;
   tipo: 'ingreso' | 'gasto';
   categoria: 'concierto' | 'merchandising' | 'subvencion' | 'transporte' | 'alojamiento' | 'comida' | 'promo' | 'otros';
   concepto: string;
@@ -169,6 +204,7 @@ export interface Message {
 
 export interface SocialMetric {
   id: string;
+  band_id?: string;
   fecha: string;
   instagram: number;
   tiktok: number;
@@ -183,6 +219,9 @@ export interface User {
   username: string;
   name: string;
   role: UserRole;
+  plan?: 'emergente' | 'profesional' | 'manager360';
+  bandName?: string;
+  email?: string;
   instrument?: string;
   avatarColor?: string;
   createdAt: string;
@@ -248,6 +287,7 @@ export interface SongSubstituteGuide {
 
 export interface Song {
   id: string;
+  band_id?: string;
   titulo: string;
   duracion: string; // e.g. "3:45"
   duracionSegundos: number; // e.g. 225
@@ -289,6 +329,7 @@ export interface SetlistItem {
 
 export interface Setlist {
   id: string;
+  band_id?: string;
   nombre: string;
   descripcion?: string;
   tipoFormato: 'festival' | 'sala_larga' | 'acustico' | 'ensayo' | 'otro';
@@ -335,6 +376,7 @@ export interface TourRouteStop {
 
 export interface Tour {
   id: string;
+  band_id?: string;
   nombre: string;
   fechaInicio: string;
   fechaFin: string;
@@ -346,3 +388,22 @@ export interface Tour {
   stops: TourRouteStop[];
   estado: 'planificacion' | 'confirmada' | 'completada' | 'cancelada';
 }
+
+export interface RegisteredBand {
+  id: string;
+  band_id: string;
+  fecha_registro: string;
+  nombre_banda: string;
+  email: string;
+  plan: 'emergente' | 'consolidada' | 'pro' | string;
+  contacto_nombre?: string;
+  estilo_musical?: string;
+  localizacion?: string;
+  telefono?: string;
+  instagram?: string;
+  spotify_youtube?: string;
+  aforo_promedio?: number;
+  estado_cuenta?: 'activo' | 'prueba' | 'cancelado' | string;
+  notas?: string;
+}
+

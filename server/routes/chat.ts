@@ -1,7 +1,7 @@
 import express from "express";
 import { KNOWN_LOCATIONS, CANONICAL_LOCATION_MAP, getRegionForCity } from "../../src/constants/regions.js";
 import { Lead, Rehearsal, Concert } from "../../src/types.js";
-import { loadState, getUserFromRequestLocal } from "../state.js";
+import { loadState, getUserFromRequestLocal, getEpkConfigForBand, BAKANDEYA_BAND_ID } from "../state.js";
 import { getAiClient, generateContentWithFallback } from "../ai.js";
 import { safeParseJson } from "../utils.js";
 
@@ -232,12 +232,25 @@ router.post("/chat", async (req, res) => {
       recentMessages: state.messages.slice(-5)
     };
 
+    const bandIdForEpk = userReq?.band_id || BAKANDEYA_BAND_ID;
+    const epkConfigData = getEpkConfigForBand(state, bandIdForEpk, userReq?.bandName || 'Bakandeya', userReq?.email);
+    stateSummary.epkConfig = epkConfigData;
+
     if (isLeader) {
       stateSummary.payments = state.payments;
     }
 
     const systemPrompt = `Eres el "Manager Virtual de Bakandeya", un asistente de Inteligencia Artificial para la banda de música española "Bakandeya".
 Tu labor es ayudar a los miembros de la banda a organizarse, consultar sus datos de Google Sheets de salas de conciertos, ver el calendario de ensayos, conciertos y resolver dudas en lenguaje natural.
+
+DOSSIER OFICIAL & KIT DE PRENSA ALMACENADO (stateSummary.epkConfig):
+- Logo oficial: ${epkConfigData?.logoUrl || '/logo_bakandeya.jpg'}
+- Dossier PDF/Documento: ${epkConfigData?.dossierPdfUrl ? `${epkConfigData.dossierPdfName || 'Dossier PDF'} (${epkConfigData.dossierPdfUrl})` : (epkConfigData?.dossierDocumentUrl ? `${epkConfigData.dossierDocumentName || 'Documento'} (${epkConfigData.dossierDocumentUrl})` : 'No subido aún')}
+- Biografía oficial: ${epkConfigData?.biografia || 'Sin biografía'}
+- Información adicional/Texto extra de dossier: ${epkConfigData?.dossierTextoExtra || 'Sin notas adicionales'}
+- Rider técnico: ${epkConfigData?.riderTecnico || 'Sin rider'} ${epkConfigData?.riderPdfUrl ? `[PDF Rider: ${epkConfigData.riderPdfName || 'Rider.pdf'} (${epkConfigData.riderPdfUrl})]` : ''}
+- Contacto booking: ${JSON.stringify(epkConfigData?.contactoBooking || {})}
+- Redes sociales: ${JSON.stringify(epkConfigData?.enlacesRedes || {})}
 
 DOSSIER COMPLETO E INFORMACIÓN INTERNA DE LA BANDA BAKANDEYA:
 1. ESTILO Y PROPUESTA MUSICAL:

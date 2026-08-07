@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Users, UserPlus, Key, Trash2, Shield, Music, X, Check, AlertCircle, Edit2, Sparkles, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Users, UserPlus, Key, Trash2, Shield, Music, X, Check, AlertCircle, Edit2, Sparkles, RefreshCw, Link2 } from 'lucide-react';
 import { User, UserRole } from '../types';
 
 interface UserManagementModalProps {
@@ -17,15 +17,30 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  onRefreshUsers,
  isStitchLight
 }) => {
- const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+ const [activeTab, setActiveTab] = useState<'list' | 'create' | 'associate'>('list');
  
  // New user form state
  const [newUsername, setNewUsername] = useState('');
+ const [newEmail, setNewEmail] = useState('');
  const [newName, setNewName] = useState('');
  const [newPassword, setNewPassword] = useState('');
  const [newRole, setNewRole] = useState<UserRole>('member');
  const [newInstrument, setNewInstrument] = useState('');
  const [newAvatarColor, setNewAvatarColor] = useState('#3b82f6');
+
+ // Associate existing user form state
+ const [assocEmail, setAssocEmail] = useState('');
+ const [assocRole, setAssocRole] = useState<UserRole>('member');
+ const [assocInstrument, setAssocInstrument] = useState('');
+
+ // Helper for Authorization Headers
+ const getHeaders = () => {
+  const token = localStorage.getItem('bakandeya_token');
+  return {
+   'Content-Type': 'application/json',
+   ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+ };
 
  // Change password state
  const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -49,8 +64,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
  const handleCreateUser = async (e: React.FormEvent) => {
  e.preventDefault();
- if (!newUsername.trim() || !newName.trim() || !newPassword) {
- setError('Por favor, completa usuario, nombre real y contraseña.');
+ if (!newUsername.trim() || !newEmail.trim() || !newName.trim() || !newPassword) {
+ setError('Por favor, completa usuario, email, nombre real y contraseña.');
  return;
  }
 
@@ -61,14 +76,16 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  try {
  const response = await fetch('/api/users', {
  method: 'POST',
- headers: { 'Content-Type': 'application/json' },
+ headers: getHeaders(),
  body: JSON.stringify({
  username: newUsername.trim(),
+ email: newEmail.trim(),
  name: newName.trim(),
  password: newPassword,
  role: newRole,
  instrument: newInstrument.trim(),
- avatarColor: newAvatarColor
+ avatarColor: newAvatarColor,
+		band_id: currentUser.band_id
  })
  });
 
@@ -80,6 +97,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
  setSuccessMsg(`¡Usuario @${data.username} creado con éxito!`);
  setNewUsername('');
+ setNewEmail('');
  setNewName('');
  setNewPassword('');
  setNewInstrument('');
@@ -92,6 +110,53 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  }
  };
 
+ const handleAssociateUser = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!assocEmail) {
+   setError('Por favor, ingresa el email del músico.');
+   return;
+  }
+
+  setLoading(true);
+  setError(null);
+  setSuccessMsg(null);
+
+  try {
+   const response = await fetch('/api/users/associate', {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+     email: assocEmail.trim(),
+     role: assocRole,
+     instrument: assocInstrument.trim()
+    })
+   });
+
+   let data: any = {};
+   const contentType = response.headers.get('content-type') || '';
+   if (contentType.includes('application/json')) {
+     data = await response.json();
+   } else {
+     const text = await response.text();
+     throw new Error(`Error en el servidor (${response.status}): ${text.slice(0, 100)}`);
+   }
+
+   if (!response.ok) {
+    throw new Error(data.error || 'Error al asociar músico');
+   }
+
+   setSuccessMsg(`¡Músico ${data.name} (@${data.username}) asociado con éxito!`);
+   setAssocEmail('');
+   setAssocInstrument('');
+   onRefreshUsers();
+   setActiveTab('list');
+  } catch (err: any) {
+   setError(err.message || 'Error en el servidor');
+  } finally {
+   setLoading(false);
+  }
+ };
+
  const handleChangeRole = async (userId: string, newRole: UserRole, username: string) => {
  setLoading(true);
  setError(null);
@@ -100,7 +165,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  try {
  const response = await fetch(`/api/users/${userId}`, {
  method: 'PUT',
- headers: { 'Content-Type': 'application/json' },
+ headers: getHeaders(),
  body: JSON.stringify({ role: newRole })
  });
 
@@ -132,7 +197,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  try {
  const response = await fetch(`/api/users/${userId}`, {
  method: 'PUT',
- headers: { 'Content-Type': 'application/json' },
+ headers: getHeaders(),
  body: JSON.stringify({ newPassword: changePasswordValue.trim() })
  });
 
@@ -164,7 +229,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
  try {
  const response = await fetch(`/api/users/${userId}`, {
- method: 'DELETE'
+ method: 'DELETE',
+ headers: getHeaders()
  });
 
  const data = await response.json();
@@ -244,6 +310,17 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  >
  <UserPlus className="w-3.5 h-3.5" />
  <span>+ Nuevo Músico</span>
+  </button>
+  <button
+    onClick={() => { setActiveTab('associate'); setError(null); setSuccessMsg(null); }}
+    className={`px-4 py-2 text-xs font-bold font-mono uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+      activeTab === 'associate'
+        ? 'text-indigo-400 border-b border-indigo-400'
+        : 'text-neutral-400 hover:text-neutral-200'
+    }`}
+  >
+    <Link2 className="w-3.5 h-3.5" />
+    <span>Asociar Músico Existente</span>
  </button>
  </div>
 
@@ -392,7 +469,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  );
  })}
  </div>
- ) : (
+ ) : activeTab === 'create' ? (
  /* Create User Form */
  <form onSubmit={handleCreateUser} className="space-y-4">
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -414,6 +491,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
  <div className="space-y-1">
  <label className="text-xs font-mono font-semibold text-neutral-400">
+ Email *
+ </label>
+ <input
+ type="email"
+ value={newEmail}
+ onChange={(e) => setNewEmail(e.target.value)}
+ placeholder="Ej: pablo@gmail.com"
+ className={`w-full px-3 py-2 rounded-xl text-xs outline-none ${
+ isStitchLight ? 'bg-slate-50 -slate-200' : 'bg-neutral-950 -neutral-800'
+ }`}
+ required
+ />
+ </div>
+ </div>
+
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+ <div className="space-y-1">
+ <label className="text-xs font-mono font-semibold text-neutral-400">
  Nombre Completo *
  </label>
  <input
@@ -427,9 +522,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  required
  />
  </div>
- </div>
 
- <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
  <div className="space-y-1">
  <label className="text-xs font-mono font-semibold text-neutral-400">
  Contraseña Inicial *
@@ -444,6 +537,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  }`}
  required
  />
+ </div>
  </div>
 
  <div className="space-y-1">
@@ -460,7 +554,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  <option value="member">Miembro de Banda (Músico)</option>
  <option value="leader">Admin / Dirección de Banda</option>
  </select>
- </div>
  </div>
 
  <div className="space-y-1">
@@ -512,6 +605,79 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
  )}
  </button>
  </form>
+ ) : (
+  /* Associate Existing User Form */
+  <form onSubmit={handleAssociateUser} className="space-y-4">
+    <div className="p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl text-xs text-neutral-300">
+      <p className="font-semibold text-indigo-400 mb-1 flex items-center gap-1.5">
+        <Sparkles className="w-3.5 h-3.5" />
+        <span>¿Músico ya registrado en la plataforma?</span>
+      </p>
+      <span>Aquí puedes agregar a tu banda un músico existente (como Wes Borland) que ya tiene cuenta en otra banda sin tener que recrear su usuario ni contraseña.</span>
+    </div>
+
+    <div className="space-y-1">
+      <label className="text-xs font-mono font-semibold text-neutral-400">
+        Email del Músico Registrado *
+      </label>
+      <input
+        type="email"
+        value={assocEmail}
+        onChange={(e) => setAssocEmail(e.target.value)}
+        placeholder="Introduce su email exacto..."
+        className={`w-full px-3 py-2 rounded-xl text-xs outline-none ${
+          isStitchLight ? 'bg-slate-50 border border-slate-200 text-slate-800' : 'bg-neutral-950 border border-neutral-800 text-neutral-100'
+        }`}
+        required
+      />
+    </div>
+
+    <div className="space-y-1">
+      <label className="text-xs font-mono font-semibold text-neutral-400">
+        Rol en esta Banda
+      </label>
+      <select
+        value={assocRole}
+        onChange={(e) => setAssocRole(e.target.value as UserRole)}
+        className={`w-full px-3 py-2 rounded-xl text-xs outline-none ${
+          isStitchLight ? 'bg-slate-50 border border-slate-200 text-slate-800' : 'bg-neutral-950 border border-neutral-800 text-neutral-100'
+        }`}
+      >
+        <option value="member">Miembro de Banda (Músico)</option>
+        <option value="leader">Admin / Dirección de Banda</option>
+      </select>
+    </div>
+
+    <div className="space-y-1">
+      <label className="text-xs font-mono font-semibold text-neutral-400">
+        Instrumento / Puesto (opcional)
+      </label>
+      <input
+        type="text"
+        value={assocInstrument}
+        onChange={(e) => setAssocInstrument(e.target.value)}
+        placeholder="Ej: Guitarra, Bajista, Manager, Coros"
+        className={`w-full px-3 py-2 rounded-xl text-xs outline-none ${
+          isStitchLight ? 'bg-slate-50 border border-slate-200 text-slate-800' : 'bg-neutral-950 border border-neutral-800 text-neutral-100'
+        }`}
+      />
+    </div>
+
+    <button
+      type="submit"
+      disabled={loading || !assocEmail.trim()}
+      className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 mt-4 shadow-md shadow-indigo-600/20 active:scale-98"
+    >
+      {loading ? (
+        <span>Asociando músico...</span>
+      ) : (
+        <>
+          <UserPlus className="w-4 h-4" />
+          <span>Asociar Músico a mi Banda</span>
+        </>
+      )}
+    </button>
+  </form>
  )}
  </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, Check, Download, Tag, Loader2, PartyPopper, Shield, X } from 'lucide-react';
+import { Heart, Check, Download, Tag, Loader2, PartyPopper, Shield, X, Flame, Music } from 'lucide-react';
 import QRCode from 'react-qr-code';
 
 export const FansLanding: React.FC = () => {
@@ -18,6 +18,23 @@ export const FansLanding: React.FC = () => {
   const [concertName, setConcertName] = useState('');
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [isConcertLink, setIsConcertLink] = useState(false);
+  
+  const [logoUrl, setLogoUrl] = useState('/logo_bakandeya_bueno_sin_fondo.png');
+  const [imgErrorCount, setImgErrorCount] = useState(0);
+
+  useEffect(() => {
+    // Fetch official band logo from public EPK endpoint
+    fetch('/api/public/epk')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.epkConfig?.logoUrl) {
+          setLogoUrl(data.epkConfig.logoUrl);
+        }
+      })
+      .catch(err => {
+        console.warn("Could not fetch EPK logo for fans landing:", err);
+      });
+  }, []);
 
   useEffect(() => {
     const pathParts = window.location.pathname.split('/').filter(Boolean);
@@ -156,7 +173,23 @@ export const FansLanding: React.FC = () => {
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-neutral-800 to-neutral-700" />
         
         <div className="text-center space-y-4 pt-2">
-          <img src="/logo_bakandeya.jpg" alt="Bakandeya" className="w-24 h-24 mx-auto object-cover rounded-2xl border-2 border-amber-500/40 shadow-xl drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]" />
+          {imgErrorCount < 2 ? (
+            <div className="relative inline-block mx-auto">
+              <img 
+                src={imgErrorCount === 0 ? logoUrl : '/logo_bakandeya.jpg'} 
+                alt="Bakandeya" 
+                onError={() => {
+                  setImgErrorCount(prev => prev + 1);
+                }}
+                className="w-24 h-24 mx-auto object-contain p-1 rounded-2xl border-2 border-amber-500/40 bg-neutral-950 shadow-xl drop-shadow-[0_0_15px_rgba(242,202,80,0.2)]" 
+              />
+            </div>
+          ) : (
+            <div className="w-24 h-24 mx-auto rounded-2xl border-2 border-amber-500/50 bg-gradient-to-br from-neutral-900 to-neutral-950 flex flex-col items-center justify-center p-2 shadow-2xl drop-shadow-[0_0_20px_rgba(242,202,80,0.25)]">
+              <Flame className="w-10 h-10 text-amber-400 mb-0.5 animate-pulse" />
+              <span className="text-[10px] font-black text-amber-300 font-display uppercase tracking-wider">Bakandeya</span>
+            </div>
+          )}
           <div className="space-y-1">
             <h1 className="text-3xl font-black text-white font-display uppercase tracking-widest drop-shadow-md">Únete a Bakandeya!</h1>
             <p className="text-amber-500/80 text-[10px] font-mono uppercase tracking-widest font-bold">Oficial Fan Club</p>

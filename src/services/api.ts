@@ -57,8 +57,8 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   // Authentication
-  async verifyMe(): Promise<{ user: User }> {
-    return request<{ user: User }>('/api/auth/me');
+  async verifyMe(): Promise<{ user: User; availableBands?: any[]; multipleBands?: boolean }> {
+    return request<{ user: User; availableBands?: any[]; multipleBands?: boolean }>('/api/auth/me');
   },
 
   async logout(token: string): Promise<void> {

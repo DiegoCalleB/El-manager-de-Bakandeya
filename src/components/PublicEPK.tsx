@@ -141,6 +141,11 @@ export const PublicEPK: React.FC<PublicEPKProps> = ({ initialData }) => {
                     <Instagram className="w-3.5 h-3.5" /> Instagram
                   </a>
                 )}
+                {config.dossierPdfUrl && (
+                  <a href={config.dossierPdfUrl} target="_blank" rel="noopener noreferrer" className="px-3.5 py-1.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-sm">
+                    <Download className="w-3.5 h-3.5" /> {config.dossierPdfName || 'Descargar Dossier PDF'}
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -248,19 +253,31 @@ export const PublicEPK: React.FC<PublicEPKProps> = ({ initialData }) => {
 
         {/* TECHNICAL RIDER */}
         <section className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 sm:p-8 mb-8 space-y-4 print:border-none print:p-0">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
             <h2 className="text-xl font-bold text-amber-400 flex items-center gap-2">
-              <FileText className="w-5 h-5" /> Rider Técnico Resumido
+              <FileText className="w-5 h-5" /> Rider Técnico
             </h2>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(config.riderTecnico);
-                alert("¡Rider técnico copiado al portapapeles!");
-              }}
-              className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 transition print:hidden"
-            >
-              <Copy className="w-3.5 h-3.5" /> Copiar Rider
-            </button>
+            <div className="flex items-center gap-2 print:hidden">
+              {config.riderPdfUrl && (
+                <a
+                  href={config.riderPdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow"
+                >
+                  <Download className="w-3.5 h-3.5" /> {config.riderPdfName || 'Descargar PDF Rider'}
+                </a>
+              )}
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(config.riderTecnico);
+                  alert("¡Rider técnico copiado al portapapeles!");
+                }}
+                className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1 transition"
+              >
+                <Copy className="w-3.5 h-3.5" /> Copiar Texto
+              </button>
+            </div>
           </div>
           <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 text-slate-300 text-sm font-mono whitespace-pre-line leading-relaxed">
             {config.riderTecnico}

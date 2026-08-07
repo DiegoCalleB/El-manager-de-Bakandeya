@@ -10,11 +10,24 @@ router.get("/bands", requireAuth, async (req, res) => {
   const state = loadState();
   state.bands = await fetchBandsFromSheet(state.bands || []);
   saveState(state);
-  res.json({ bands: state.bands });
+
+  const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+  const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+
+  const allBands = state.bands || [];
+  const filtered = isBakandeyaOrAdmin
+    ? allBands
+    : allBands.filter((b: any) => b.band_id === userBandId || b.id === userBandId);
+
+  res.json({ bands: filtered });
 });
 
 router.post("/bands", requireAuth, async (req, res) => {
+  const userBandId = (req as any).user?.band_id || 'band-bakandeya';
   const newBand = req.body;
+  if (!newBand.band_id) {
+    newBand.band_id = userBandId;
+  }
   const state = loadState();
   state.bands = state.bands || [];
   state.bands.push(newBand);

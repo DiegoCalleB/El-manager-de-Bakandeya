@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Lead, LeadStatus, LeadType, ThemeColors, EPKConfig } from '../types';
+import { Lead, LeadStatus, LeadType, ThemeColors, EPKConfig, InteractionLog, SavedFilter } from '../types';
 import DirectionsCard from './DirectionsCard';
 import { apiFetch } from '../utils/api';
 import { uploadFileToServer } from '../utils/audioStorage';
@@ -7,7 +7,7 @@ import {
  Search, ShieldCheck, Mail, Clock, Check, X, RefreshCw, 
  MapPin, Users, Bot, MessageSquare, Edit3, Settings, Sparkles, Send, LogOut, Loader2, Building, Radio, Building2, Tent, Landmark, Disc3, Briefcase,
  PlusCircle, Newspaper, Tv, Headphones, Globe, FileText, Plus, SlidersHorizontal, Map as MapIcon, List, LayoutGrid,
- Share2, Repeat, Truck, Handshake, Music, Zap, Upload, Image as ImageIcon
+ Share2, Repeat, Truck, Handshake, Music, Zap, Upload, Image as ImageIcon, Download, Phone, PhoneCall, MessageCircle, Bookmark, BookmarkCheck, Filter, Trash2, History, Calendar, ListFilter, CheckCircle2, Save
 } from 'lucide-react';
 import { initAuth, googleSignIn, logout, fetchGmailThreadsForEmail } from '../utils/gmail';
 import { VenueMap } from './VenueMap';
@@ -108,6 +108,168 @@ export default function BookingCRM({
  }, [epkConfig?.ciudadesConfig]);
  const [isAddingCityChip, setIsAddingCityChip] = useState(false);
  const [newCityInput, setNewCityInput] = useState('');
+
+  // --- SAVED FILTERS & QUICK SEARCH PRESETS STATE ---
+  const DEFAULT_PRESET_FILTERS: SavedFilter[] = [
+    {
+      id: 'preset-bcn-300',
+      nombre: 'Salas Cataluña / BCN (Aforo > 300) pendientes',
+      sectionTab: 'salas',
+      selectedCityFilter: 'Barcelona',
+      statusFilter: 'nuevo',
+      minCapacityFilter: 300
+    },
+    {
+      id: 'preset-festivales-pendientes',
+      nombre: 'Festivales pendientes de respuesta',
+      sectionTab: 'salas',
+      typeFilter: 'festival',
+      statusFilter: 'esperando_respuesta'
+    },
+    {
+      id: 'preset-prensa-madrid',
+      nombre: 'Medios y prensa en Madrid',
+      sectionTab: 'medios',
+      selectedCityFilter: 'Madrid',
+      typeFilter: 'medio'
+    },
+    {
+      id: 'preset-interesados-negociando',
+      nombre: 'Salas interesadas / Negociando',
+      sectionTab: 'salas',
+      statusFilter: 'interesado'
+    }
+  ];
+
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>(() => {
+    try {
+      const saved = localStorage.getItem('bakandeya_saved_crm_filters');
+      return saved ? JSON.parse(saved) : DEFAULT_PRESET_FILTERS;
+    } catch {
+      return DEFAULT_PRESET_FILTERS;
+    }
+  });
+
+  const [minCapacityFilter, setMinCapacityFilter] = useState<number>(0);
+  const [isSavingFilterOpen, setIsSavingFilterOpen] = useState<boolean>(false);
+  const [newFilterName, setNewFilterName] = useState<string>('');
+  const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
+
+  // --- BITÁCORA DE CONTACTO (LLAMADAS & WHATSAPP) STATE ---
+  const [interactionType, setInteractionType] = useState<'Llamada' | 'WhatsApp' | 'Email' | 'Reunión' | 'Otro'>('Llamada');
+  const [interactionNotes, setInteractionNotes] = useState<string>('');
+  const [interactionResultado, setInteractionResultado] = useState<'Interesado' | 'Enviar propuesta' | 'Seguimiento pendiente' | 'Rechazado' | 'Info recibida' | 'Acuerdo cerrado'>('Seguimiento pendiente');
+  const [interactionAutor, setInteractionAutor] = useState<string>('Diego / Filgue');
+
+  const handleApplySavedFilter = (sf: SavedFilter) => {
+    setActiveSavedFilterId(sf.id);
+    if (sf.sectionTab) setSectionTab(sf.sectionTab);
+    setSearchTerm(sf.searchTerm || '');
+    setSelectedCityFilter(sf.selectedCityFilter || '');
+    setStatusFilter(sf.statusFilter || 'todos');
+    setTypeFilter(sf.typeFilter || 'todos');
+    setMinCapacityFilter(sf.minCapacityFilter || 0);
+  };
+
+  const handleSaveCurrentFilter = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFilterName.trim()) return;
+
+    const newSf: SavedFilter = {
+      id: `filter-${Date.now()}`,
+      nombre: newFilterName.trim(),
+      sectionTab,
+      searchTerm,
+      selectedCityFilter,
+      statusFilter,
+      typeFilter,
+      minCapacityFilter
+    };
+
+    const updated = [newSf, ...savedFilters];
+    setSavedFilters(updated);
+    try {
+      localStorage.setItem('bakandeya_saved_crm_filters', JSON.stringify(updated));
+    } catch (err) {
+      console.error(err);
+    }
+
+    setActiveSavedFilterId(newSf.id);
+    setNewFilterName('');
+    setIsSavingFilterOpen(false);
+  };
+
+  const handleDeleteSavedFilter = (filterId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = savedFilters.filter(f => f.id !== filterId);
+    setSavedFilters(updated);
+    try {
+      localStorage.setItem('bakandeya_saved_crm_filters', JSON.stringify(updated));
+    } catch (err) {
+      console.error(err);
+    }
+    if (activeSavedFilterId === filterId) {
+      setActiveSavedFilterId(null);
+    }
+  };
+
+  const handleClearAllFilters = () => {
+    setSearchTerm('');
+    setSelectedCityFilter('');
+    setStatusFilter('todos');
+    setTypeFilter('todos');
+    setMinCapacityFilter(0);
+    setActiveSavedFilterId(null);
+  };
+
+  const handleAddInteractionLog = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLead || !interactionNotes.trim()) return;
+
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const newLog: InteractionLog = {
+      id: `log-${Date.now()}`,
+      fecha: nowStr,
+      tipo: interactionType,
+      autor: interactionAutor,
+      notas: interactionNotes.trim(),
+      resultado: interactionResultado
+    };
+
+    const existingLogs = selectedLead.historial_contacto || [];
+    const updatedLogs = [newLog, ...existingLogs];
+
+    let newStatus = selectedLead.estado;
+    if (interactionResultado === 'Interesado' && selectedLead.estado !== 'interesado') {
+      newStatus = 'interesado';
+    } else if (interactionResultado === 'Acuerdo cerrado' && selectedLead.estado !== 'negociando') {
+      newStatus = 'negociando';
+    } else if (interactionResultado === 'Rechazado' && selectedLead.estado !== 'no_interesado') {
+      newStatus = 'no_interesado';
+    }
+
+    onUpdateLead(selectedLead.id, {
+      historial_contacto: updatedLogs,
+      estado: newStatus,
+      fecha_ultima_respuesta: new Date().toISOString().slice(0, 10)
+    });
+
+    setSelectedLead(prev => prev ? {
+      ...prev,
+      historial_contacto: updatedLogs,
+      estado: newStatus,
+      fecha_ultima_respuesta: new Date().toISOString().slice(0, 10)
+    } : null);
+
+    setInteractionNotes('');
+  };
+
+  const handleDeleteInteractionLog = (logId: string) => {
+    if (!selectedLead || !selectedLead.historial_contacto) return;
+    const updated = selectedLead.historial_contacto.filter(l => l.id !== logId);
+    onUpdateLead(selectedLead.id, { historial_contacto: updated });
+    setSelectedLead(prev => prev ? { ...prev, historial_contacto: updated } : null);
+  };
 
  // Dynamically extract top cities present in active leads
  const activeLeadsForSection = useMemo(() => {
@@ -795,7 +957,8 @@ Bakandeya Agent Manager IA`);
  const matchesCity = !selectedCityFilter || 
  lead.ciudad.toLowerCase().includes(selectedCityFilter.toLowerCase()) || 
  lead.region.toLowerCase().includes(selectedCityFilter.toLowerCase());
- return matchesSearch && matchesStatus && matchesType && matchesCity;
+  const matchesCapacity = !minCapacityFilter || (lead.aforo >= minCapacityFilter);
+  return matchesSearch && matchesStatus && matchesType && matchesCity && matchesCapacity;
  });
 
  const handleModalScrape = async () => {
@@ -1412,6 +1575,51 @@ Bakandeya Agent Manager IA`);
  <PlusCircle className="w-4 h-4 opacity-80" />
  <span>{sectionTab === 'medios' ? 'Añadir medio' : 'Añadir sala'}</span>
  </button>
+ <button
+ id="export-approved-csv-btn"
+ type="button"
+ onClick={() => {
+ const approvedLeads = leads.filter(l => l.estado === 'aprobado');
+ if (approvedLeads.length === 0) {
+ alert("No hay ninguna sala o contacto en estado 'aprobado' todavía.");
+ return;
+ }
+ const headers = ["ID", "Nombre Sala / Contacto", "Ciudad", "Región", "Aforo", "Tipo", "Email Contacto", "Fuente", "Estado", "Pitch Generado", "Notas"];
+ const rows = approvedLeads.map(l => [
+ `"${(l.id || '').replace(/"/g, '""')}"`,
+ `"${(l.nombre_sala || '').replace(/"/g, '""')}"`,
+ `"${(l.ciudad || '').replace(/"/g, '""')}"`,
+ `"${(l.region || '').replace(/"/g, '""')}"`,
+ l.aforo || 0,
+ `"${(l.tipo || '').replace(/"/g, '""')}"`,
+ `"${(l.email_contacto || '').replace(/"/g, '""')}"`,
+ `"${(l.fuente || '').replace(/"/g, '""')}"`,
+ `"${(l.estado || '').replace(/"/g, '""')}"`,
+ `"${(l.pitch_generado || '').replace(/"/g, '""')}"`,
+ `"${(l.notas || '').replace(/"/g, '""')}"`
+ ]);
+
+ const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+ const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+ const url = URL.createObjectURL(blob);
+ const link = document.createElement("a");
+ link.setAttribute("href", url);
+ link.setAttribute("download", `Bakandeya_Aprobados_${new Date().toISOString().slice(0, 10)}.csv`);
+ document.body.appendChild(link);
+ link.click();
+ document.body.removeChild(link);
+ }}
+ className={`flex items-center justify-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-sans font-medium uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
+ isStitchLight 
+ ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300' 
+ : 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-800/60'
+ }`}
+ title="Exportar la lista de correos y salas aprobadas a CSV/Excel"
+ >
+ <Download className="w-3.5 h-3.5 text-emerald-400" />
+ <span>Exportar Aprobados CSV</span>
+ </button>
+
  {/* Bulk Address Enricher Button */}
  <button
  id="enrich-addresses-btn"
@@ -1535,7 +1743,130 @@ Bakandeya Agent Manager IA`);
  </div>
  )}
 
- {/* Dynamic & Configurable City Quick Filter Chips */}
+ {/* 📌 FILTROS GUARDADOS & BUSQUEDAS FRECUENTES BAR */}
+  <div className={`p-3 rounded-xl border space-y-2 transition-all ${
+    isStitchLight ? "bg-slate-50 border-slate-200" : "bg-[#181716] border-neutral-800"
+  }`}>
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-sans">
+      <div className="flex items-center gap-2">
+        <Bookmark className="w-4 h-4 text-[#eab308]" />
+        <span className="font-bold text-zinc-100 dark:text-zinc-200">Filtros Guardados:</span>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Min Capacity Filter Input */}
+        <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-lg border border-neutral-800 text-[11px]">
+          <span className="text-neutral-400">Aforo mín:</span>
+          <input
+            type="number"
+            placeholder="Ej: 300"
+            value={minCapacityFilter || ""}
+            onChange={(e) => setMinCapacityFilter(Number(e.target.value) || 0)}
+            className="w-16 bg-transparent text-[#eab308] font-bold focus:outline-none"
+          />
+          {minCapacityFilter > 0 && (
+            <button
+              type="button"
+              onClick={() => setMinCapacityFilter(0)}
+              className="text-neutral-500 hover:text-white"
+              title="Quitar filtro de aforo"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* Button to save current filter */}
+        {!isSavingFilterOpen ? (
+          <button
+            type="button"
+            onClick={() => setIsSavingFilterOpen(true)}
+            className="px-2.5 py-1 bg-[#eab308]/15 hover:bg-[#eab308]/25 text-[#eab308] rounded-lg font-bold text-[11px] flex items-center gap-1 transition-all border border-[#eab308]/30 cursor-pointer"
+            title="Guardar la combinación de filtros actual en 1 clic"
+          >
+            <BookmarkCheck className="w-3.5 h-3.5 text-[#eab308]" />
+            <span>💾 Guardar búsqueda actual</span>
+          </button>
+        ) : (
+          <form onSubmit={handleSaveCurrentFilter} className="flex items-center gap-1.5 animate-fadeIn">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Nombre del filtro (ej: Salas BCN > 300)..."
+              value={newFilterName}
+              onChange={(e) => setNewFilterName(e.target.value)}
+              className="px-2.5 py-1 text-xs rounded-lg bg-zinc-900 border border-[#eab308]/50 text-white focus:outline-none w-52 sm:w-64"
+            />
+            <button
+              type="submit"
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+            >
+              Guardar
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSavingFilterOpen(false)}
+              className="p-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        )}
+
+        {(searchTerm || selectedCityFilter || statusFilter !== "todos" || typeFilter !== "todos" || minCapacityFilter > 0 || activeSavedFilterId) && (
+          <button
+            type="button"
+            onClick={handleClearAllFilters}
+            className="px-2 py-1 text-[11px] text-zinc-400 hover:text-rose-400 transition-colors flex items-center gap-1 cursor-pointer"
+            title="Restablecer todos los filtros"
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>Limpiar</span>
+          </button>
+        )}
+      </div>
+    </div>
+
+    {/* Pills list of Saved Filters */}
+    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin text-xs">
+      {savedFilters.map((sf) => {
+        const isActive = activeSavedFilterId === sf.id;
+        return (
+          <div
+            key={sf.id}
+            className={`group relative shrink-0 flex items-center rounded-full border transition-all cursor-pointer ${
+              isActive
+                ? "bg-[#eab308]/20 border-[#eab308] text-[#eab308] font-bold shadow-xs"
+                : "bg-zinc-900/80 hover:bg-zinc-800 border-zinc-800 text-neutral-300"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => handleApplySavedFilter(sf)}
+              className="px-3 py-1 text-[11px] font-sans flex items-center gap-1.5"
+            >
+              <span>📌 {sf.nombre}</span>
+              {sf.minCapacityFilter ? (
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#eab308]/30 text-amber-200">
+                  &gt;{sf.minCapacityFilter}
+                </span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => handleDeleteSavedFilter(sf.id, e)}
+              className="pr-2 text-neutral-500 hover:text-rose-400 transition-colors p-0.5 rounded-full"
+              title="Eliminar filtro guardado"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+
+  {/* Dynamic & Configurable City Quick Filter Chips */}
  <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin text-[10px] font-sans">
  <span className={`text-[10px] uppercase tracking-wider font-bold shrink-0 flex items-center gap-1 ${isStitchLight ? 'text-slate-400' : 'text-neutral-500'}`}>
  <MapPin className="w-3 h-3 text-[#d1b375]/80" />
@@ -2321,6 +2652,27 @@ Bakandeya Agent Manager IA`);
  </div>
  </div>
  </div>
+  {/* Quick WhatsApp & Call Direct Actions Bar */}
+  {selectedLead.telefono && (
+    <div className="flex gap-2 pt-1.5">
+      <a
+        href={`https://wa.me/${selectedLead.telefono.replace(/\D/g, "")}`}
+        target="_blank"
+        rel="noreferrer"
+        className="flex-1 py-2 px-3 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+      >
+        <MessageCircle className="w-4 h-4 text-emerald-400" />
+        <span>WhatsApp Directo</span>
+      </a>
+      <a
+        href={`tel:${selectedLead.telefono}`}
+        className="flex-1 py-2 px-3 bg-sky-950/80 hover:bg-sky-900 border border-sky-700/60 text-sky-300 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+      >
+        <PhoneCall className="w-4 h-4 text-sky-400" />
+        <span>Llamar</span>
+      </a>
+    </div>
+  )}
 
  {/* Scraping Loading */}
  {isScrapingLead && (
@@ -2478,6 +2830,149 @@ Bakandeya Agent Manager IA`);
  {selectedLead.notas || 'Sin notas.'}
  </div>
  </div>
+  {/* 📋 BITÁCORA RÁPIDA DE CONTACTO (Llamadas, WhatsApp, Notas) */}
+  <div className="bg-[#1A1918] rounded-xl p-4 space-y-3.5 border border-[#eab308]/20 mt-4">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <History className="w-4 h-4 text-[#eab308]" />
+        <h4 className="text-xs font-bold text-zinc-100 uppercase tracking-wider font-sans">
+          Bitácora de Contacto y Llamadas
+        </h4>
+      </div>
+      <span className="text-[10px] text-[#eab308]/80 font-mono">
+        {(selectedLead.historial_contacto || []).length} registros
+      </span>
+    </div>
+
+    {/* Log Form */}
+    <form onSubmit={handleAddInteractionLog} className="space-y-3 bg-[#121110] p-3 rounded-lg border border-neutral-800">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* Interaction Type Selector */}
+        <div className="flex items-center gap-1 bg-black/60 p-1 rounded-lg border border-neutral-800">
+          {(["Llamada", "WhatsApp", "Email", "Reunión", "Otro"] as const).map(type => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setInteractionType(type)}
+              className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                interactionType === type
+                  ? "bg-[#eab308] text-black font-bold shadow-xs"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              {type === "Llamada" ? "📞" : type === "WhatsApp" ? "💬" : type === "Email" ? "✉️" : type === "Reunión" ? "🤝" : "📝"} {type}
+            </button>
+          ))}
+        </div>
+
+        {/* Author input */}
+        <input
+          type="text"
+          value={interactionAutor}
+          onChange={(e) => setInteractionAutor(e.target.value)}
+          placeholder="Tu nombre..."
+          className="px-2 py-1 text-[10px] bg-zinc-900 border border-neutral-800 rounded text-neutral-300 w-28 focus:outline-none"
+        />
+      </div>
+
+      {/* Result Outcome Pills */}
+      <div className="space-y-1">
+        <span className="text-[9px] uppercase tracking-wider text-neutral-500 font-sans">Resultado del contacto:</span>
+        <div className="flex flex-wrap gap-1">
+          {(["Interesado", "Enviar propuesta", "Seguimiento pendiente", "Acuerdo cerrado", "Rechazado", "Info recibida"] as const).map(res => (
+            <button
+              key={res}
+              type="button"
+              onClick={() => setInteractionResultado(res)}
+              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer ${
+                interactionResultado === res
+                  ? res === "Interesado" || res === "Acuerdo cerrado"
+                    ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/60 font-bold"
+                    : res === "Rechazado"
+                    ? "bg-rose-500/30 text-rose-300 border border-rose-500/60 font-bold"
+                    : "bg-sky-500/30 text-sky-300 border border-sky-500/60 font-bold"
+                  : "bg-zinc-900 text-neutral-400 hover:text-white border border-neutral-800"
+              }`}
+            >
+              {res}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Notes textarea */}
+      <textarea
+        rows={2}
+        required
+        value={interactionNotes}
+        onChange={(e) => setInteractionNotes(e.target.value)}
+        placeholder="Ej: Hablé con Carlos por WhatsApp. Pide propuesta de fechas para Noviembre y 70/30 en taquilla..."
+        className="w-full bg-black/50 rounded-lg p-2.5 text-xs text-zinc-100 placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-[#eab308]/50 resize-none font-sans"
+      />
+
+      <button
+        type="submit"
+        className="w-full py-2 bg-[#eab308] hover:bg-[#eab308]/90 text-black font-bold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+      >
+        <Save className="w-3.5 h-3.5" />
+        <span>Anotar en Bitácora</span>
+      </button>
+    </form>
+
+    {/* Timeline Feed */}
+    <div className="space-y-2 max-h-60 overflow-y-auto pr-1 scrollbar-thin">
+      {(selectedLead.historial_contacto || []).length === 0 ? (
+        <p className="text-[11px] text-neutral-500 italic text-center py-3">
+          No hay llamadas ni mensajes de WhatsApp registrados aún para esta sala.
+        </p>
+      ) : (
+        (selectedLead.historial_contacto || []).map((log) => (
+          <div
+            key={log.id}
+            className="p-2.5 rounded-lg bg-[#121110] border border-neutral-800 space-y-1.5 text-xs font-sans relative group"
+          >
+            <div className="flex items-center justify-between text-[10px]">
+              <div className="flex items-center gap-1.5 font-bold">
+                <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-amber-300">
+                  {log.tipo === "Llamada" ? "📞 Llamada" : log.tipo === "WhatsApp" ? "💬 WhatsApp" : log.tipo === "Email" ? "✉️ Email" : log.tipo === "Reunión" ? "🤝 Reunión" : "📝 Nota"}
+                </span>
+                <span className="text-neutral-400">{log.autor || "Agente"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-neutral-500 font-mono">{log.fecha}</span>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteInteractionLog(log.id)}
+                  className="text-neutral-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 cursor-pointer"
+                  title="Borrar entrada"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {log.resultado && (
+              <div>
+                <span className={`inline-block text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                  log.resultado === "Interesado" || log.resultado === "Acuerdo cerrado"
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : log.resultado === "Rechazado"
+                    ? "bg-rose-500/20 text-rose-400"
+                    : "bg-sky-500/20 text-sky-400"
+                }`}>
+                  {log.resultado}
+                </span>
+              </div>
+            )}
+
+            <p className="text-neutral-200 text-[11px] leading-snug whitespace-pre-wrap select-text">
+              {log.notas}
+            </p>
+          </div>
+        ))
+      )}
+    </div>
+  </div>
  </>
  ) : (
  // Emails Tab (Interaction & Thread history)

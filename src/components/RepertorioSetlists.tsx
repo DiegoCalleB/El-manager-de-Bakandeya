@@ -32,6 +32,7 @@ interface RepertorioSetlistsProps {
  colors: ThemeColors;
  concerts: Concert[];
  rehearsals: Rehearsal[];
+ bandName?: string;
  onUpdateConcert?: (id: string, fields: Partial<Concert>) => void;
  onUpdateRehearsal?: (id: string, fields: Partial<Rehearsal>) => void;
 }
@@ -282,10 +283,12 @@ export default function RepertorioSetlists({
  colors,
  concerts,
  rehearsals,
+ bandName,
  onUpdateConcert,
  onUpdateRehearsal
 }: RepertorioSetlistsProps) {
  const isStitchLight = colors.name === 'stitch_light';
+ const bName = bandName || 'Tu Banda';
 
  // Navigation tab inside module
   const [showPdfPreview, setShowPdfPreview] = useState(false);
@@ -293,21 +296,25 @@ export default function RepertorioSetlists({
 
  // Songs Repertoire State
  const [songs, setSongs] = useState<Song[]>(() => {
+ const token = localStorage.getItem('bakandeya_token');
  try {
  const saved = localStorage.getItem('bakandeya_songs_catalog');
- return saved ? JSON.parse(saved) : DEFAULT_SONGS;
+ if (saved) return JSON.parse(saved);
+ return token ? [] : DEFAULT_SONGS;
  } catch {
- return DEFAULT_SONGS;
+ return token ? [] : DEFAULT_SONGS;
  }
  });
 
  // Setlists State
  const [setlists, setSetlists] = useState<Setlist[]>(() => {
+ const token = localStorage.getItem('bakandeya_token');
  try {
  const saved = localStorage.getItem('bakandeya_setlists_data');
- return saved ? JSON.parse(saved) : DEFAULT_SETLISTS;
+ if (saved) return JSON.parse(saved);
+ return token ? [] : DEFAULT_SETLISTS;
  } catch {
- return DEFAULT_SETLISTS;
+ return token ? [] : DEFAULT_SETLISTS;
  }
  });
 
@@ -486,14 +493,14 @@ export default function RepertorioSetlists({
 
  if (resSongs.ok) {
  const dataS = await resSongs.json();
- if (dataS.songs && Array.isArray(dataS.songs) && dataS.songs.length > 0) {
+ if (dataS.songs && Array.isArray(dataS.songs)) {
  setSongs(dataS.songs);
  }
  }
 
  if (resSetlists.ok) {
  const dataSt = await resSetlists.json();
- if (dataSt.setlists && Array.isArray(dataSt.setlists) && dataSt.setlists.length > 0) {
+ if (dataSt.setlists && Array.isArray(dataSt.setlists)) {
  setSetlists(dataSt.setlists);
  }
  }
@@ -911,7 +918,7 @@ export default function RepertorioSetlists({
  }).catch(err => console.error('Error updating song on server:', err));
  } else {
  const newSong: Song = {
- id: `song-${Date.now()}`,
+ id: `song-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
  titulo,
  duracion,
  duracionSegundos,
@@ -1801,10 +1808,10 @@ export default function RepertorioSetlists({
  }`}
  >
  <option value="">+ Seleccionar Tema de Discografía...</option>
- {sortedSongsByAlbumAndOrder.map((s) => {
+ {sortedSongsByAlbumAndOrder.map((s, idx) => {
    const albumLabel = s.albumDisco || s.album || 'Single';
    return (
-     <option key={s.id} value={s.id}>
+     <option key={`${s.id}-${idx}`} value={s.id}>
        [{albumLabel}] {s.titulo} ({s.tonalidad ? `${s.tonalidad} • ` : ''}{s.duracion || '0:00'})
      </option>
    );
@@ -2122,8 +2129,8 @@ export default function RepertorioSetlists({
    <div className="relative z-10 flex flex-col md:flex-row items-center md:items-end gap-6">
      <div className="relative shrink-0 w-36 h-36 sm:w-44 sm:h-44 rounded-2xl bg-[#181818] shadow-2xl overflow-hidden border border-white/10 flex items-center justify-center group">
        <AlbumCover
-         title="Repertorio Bakandeya"
-         artist="Bakandeya"
+         title={`Repertorio ${bName}`}
+         artist={bName}
          coverUrl={filteredSongs[0]?.portadaUrl}
          size={176}
          onPlay={() => {
@@ -2145,13 +2152,13 @@ export default function RepertorioSetlists({
          <span>Lista de Reproducción • Catálogo Completo</span>
        </div>
        <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-         Repertorio & Directos Bakandeya
+         Repertorio & Directos {bName}
        </h1>
        <p className="text-xs sm:text-sm text-zinc-300 max-w-2xl font-mono leading-relaxed">
          Catálogo oficial de canciones para ensayos, giras y festivales. Gestiona audios, tonalidades, BPMs, partituras y estado de arreglos.
        </p>
        <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 text-xs font-mono text-zinc-400 pt-1">
-         <span className="text-white font-bold">Bakandeya</span>
+         <span className="text-white font-bold">{bName}</span>
          <span>•</span>
          <span className="text-[#1db954] font-bold">{songs.length} temas cargados</span>
          <span>•</span>
@@ -2308,7 +2315,7 @@ export default function RepertorioSetlists({
 
  return (
  <tr
- key={s.id}
+ key={`${s.id}-${idx}`}
  className={`group transition-all duration-150 cursor-pointer ${
    isPlayingCurrent 
      ? 'bg-[#1db954]/10 text-white' 

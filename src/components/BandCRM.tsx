@@ -6,7 +6,7 @@ import { uploadFileToServer } from '../utils/audioStorage';
 import { 
  Users, Music, MapPin, Clock, Sparkles, Plus, Search, Filter, Edit3, Trash2, 
  Copy, Check, ExternalLink, Send, MessageCircle, RefreshCw, LayoutGrid, List, 
- Handshake, Repeat, Zap, Share2, X, Star, Radio, Phone, Mail, Globe, AlertCircle, Building2, Map,
+ Handshake, Repeat, Zap, Share2, X, Star, Radio, Phone, Mail, Globe, AlertCircle, Building2, Map, FileSpreadsheet,
  Loader2, Bot, Upload, Image as ImageIcon
 } from 'lucide-react';
 
@@ -154,16 +154,33 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  const [bands, setBands] = useState<BandContact[]>([]);
  const [isLoading, setIsLoading] = useState(true);
 
+ const fetchBands = () => {
+   const token = localStorage.getItem('token');
+   fetch('/api/bands', {
+     headers: {
+       'Content-Type': 'application/json',
+       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+     }
+   })
+     .then(async res => {
+       if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+       const contentType = res.headers.get("content-type");
+       if (!contentType || !contentType.includes("application/json")) {
+         throw new Error("Respuesta no es JSON válido");
+       }
+       return res.json();
+     })
+     .then(data => {
+       if (data && data.bands) {
+         setBands(data.bands);
+       }
+     })
+     .catch(err => console.error("Error loading bands:", err))
+     .finally(() => setIsLoading(false));
+ };
+
  useEffect(() => {
- fetch('/api/bands')
- .then(res => res.json())
- .then(data => {
- if (data.bands) {
- setBands(data.bands);
- }
- })
- .catch(err => console.error("Error loading bands:", err))
- .finally(() => setIsLoading(false));
+   fetchBands();
  }, []);
 
  // Save changes to localStorage whenever bands state updates
@@ -221,6 +238,42 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  }
 
  // UI Filter & Search state
+ const [subTab, setSubTab] = useState<'co_booking' | 'registered_bands'>('co_booking');
+ const [registeredBands, setRegisteredBands] = useState<any[]>([]);
+ const [isLoadingRegBands, setIsLoadingRegBands] = useState(false);
+
+ const fetchRegisteredBands = () => {
+   setIsLoadingRegBands(true);
+   const token = localStorage.getItem('token');
+   fetch('/api/registered-bands', {
+     headers: {
+       'Content-Type': 'application/json',
+       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+     }
+   })
+     .then(async res => {
+       if (!res.ok) {
+         throw new Error(`HTTP error ${res.status}`);
+       }
+       const contentType = res.headers.get("content-type");
+       if (!contentType || !contentType.includes("application/json")) {
+         throw new Error("Respuesta no es JSON válido");
+       }
+       return res.json();
+     })
+     .then(data => {
+       if (data && data.registeredBands) {
+         setRegisteredBands(data.registeredBands);
+       }
+     })
+     .catch(err => console.error("Error fetching registered bands:", err))
+     .finally(() => setIsLoadingRegBands(false));
+ };
+
+ useEffect(() => {
+ fetchRegisteredBands();
+ }, []);
+
  const [searchTerm, setSearchTerm] = useState('');
  const [statusFilter, setStatusFilter] = useState<BandRelationshipStatus | 'todos'>('todos');
  const [styleFilter, setStyleFilter] = useState<string>('todos');
@@ -710,19 +763,153 @@ Bakandeya Agent Manager IA & Músicos`;
  </div>
  </div>
 
- {/* Conciertos Agendados */}
+ {/* Registered Bands Count */}
  <div className="p-3.5 rounded-xl bg-neutral-900/60 flex items-center justify-between">
  <div className="space-y-0.5">
- <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider block">Conciertos Conjuntos</span>
- <span className="text-2xl font-black font-mono text-[#d1b375]">{scheduledShowsCount}</span>
+ <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider block">Hoja: registro_bandas</span>
+ <span className="text-2xl font-black font-mono text-emerald-400">{registeredBands.length}</span>
  </div>
- <div className="p-2.5 rounded-xl bg-[#d1b375]/15 text-[#d1b375]">
- <Zap className="w-5 h-5" />
- </div>
+ <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-400">
+ <Building2 className="w-5 h-5" />
  </div>
  </div>
  </div>
 
+ {/* Sub-Tab Navigation Switcher */}
+ <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-neutral-800/80">
+ <button
+ onClick={() => setSubTab('co_booking')}
+ className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 ${
+ subTab === 'co_booking'
+ ? 'bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm'
+ : 'bg-neutral-900/60 text-neutral-400 hover:text-white hover:bg-neutral-800'
+ }`}
+ >
+ <Users className="w-4 h-4" />
+ <span>1. Red Co-Booking / Bandas Amigas (bandas)</span>
+ <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800 font-bold text-neutral-300">
+ {bands.length}
+ </span>
+ </button>
+
+ <button
+ onClick={() => { setSubTab('registered_bands'); fetchRegisteredBands(); }}
+ className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-2 ${
+ subTab === 'registered_bands'
+ ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm'
+ : 'bg-neutral-900/60 text-neutral-400 hover:text-white hover:bg-neutral-800'
+ }`}
+ >
+ <Building2 className="w-4 h-4 text-emerald-400" />
+ <span>2. Registro de Nuevas Bandas (registro_bandas)</span>
+ <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 font-bold text-emerald-300">
+ {registeredBands.length}
+ </span>
+ </button>
+
+ <a
+ href="/api/export-excel"
+ download="band_data.xlsx"
+ className="ml-auto px-3.5 py-2 rounded-xl text-xs font-mono font-bold bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 transition-all flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer"
+ >
+ <FileSpreadsheet className="w-4 h-4" />
+ <span>Exportar Excel Completo (.xlsx)</span>
+ </a>
+ </div>
+ </div>
+
+ {/* TAB 2: REGISTERED BANDS VIEW (registro_bandas) */}
+ {subTab === 'registered_bands' ? (
+ <div className={`p-5 rounded-2xl ${colors.card} space-y-4 shadow-lg border border-neutral-800`}>
+ <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+ <div>
+ <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+ <Building2 className="w-5 h-5 text-emerald-400" />
+ <span>Registro de Nuevas Bandas Clientes (registro_bandas)</span>
+ </h3>
+ <p className="text-xs text-neutral-400 font-mono mt-0.5">
+ Pestaña oficial de Google Sheets <span className="text-emerald-400 font-bold">registro_bandas</span> con la columna <span className="text-amber-300 font-bold">band_id</span> situándose en la extrema derecha.
+ </p>
+ </div>
+ <div className="flex items-center gap-2 shrink-0">
+ <button
+ onClick={fetchRegisteredBands}
+ className="p-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer border border-neutral-800"
+ >
+ <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRegBands ? 'animate-spin' : ''}`} />
+ <span>Actualizar</span>
+ </button>
+ <a
+ href="/api/export-excel"
+ download="band_data.xlsx"
+ className="p-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer border border-emerald-500/30"
+ >
+ <FileSpreadsheet className="w-3.5 h-3.5" />
+ <span>Excel (.xlsx)</span>
+ </a>
+ </div>
+ </div>
+
+ <div className="overflow-x-auto rounded-xl border border-neutral-800">
+ <table className="w-full text-left border-collapse text-xs font-mono">
+ <thead>
+ <tr className="bg-neutral-950 text-neutral-400 uppercase tracking-wider text-[10px] border-b border-neutral-800">
+ <th className="p-3">ID Reg.</th>
+ <th className="p-3">Nombre Banda</th>
+ <th className="p-3">Email Contacto</th>
+ <th className="p-3">Plan</th>
+ <th className="p-3">Fecha Registro</th>
+ <th className="p-3">Estado Cuenta</th>
+ <th className="p-3">Notas</th>
+ <th className="p-3 font-bold text-cyan-300 bg-cyan-500/10 border-l border-cyan-500/20">user_id</th>
+ <th className="p-3 text-right text-amber-300 bg-amber-500/10 border-l border-amber-500/20 font-bold">band_id</th>
+ </tr>
+ </thead>
+ <tbody className="divide-y divide-neutral-800/60 bg-neutral-900/40 text-neutral-200">
+ {registeredBands.length === 0 ? (
+ <tr>
+ <td colSpan={9} className="p-8 text-center text-neutral-500 italic">
+ {isLoadingRegBands ? 'Cargando bandas registradas de Google Sheets...' : 'No hay registros en la pestaña registro_bandas aún.'}
+ </td>
+ </tr>
+ ) : (
+ registeredBands.map((band: any, idx: number) => (
+ <tr key={band.id || `reg-${idx}`} className="hover:bg-neutral-800/40 transition-colors">
+ <td className="p-3 font-mono text-neutral-400">{band.id || `reg-${idx + 1}`}</td>
+ <td className="p-3 font-bold text-white flex items-center gap-2">
+ <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+ <span>{band.nombre_banda || band.nombreBanda || band.contacto_nombre}</span>
+ </td>
+ <td className="p-3 text-neutral-300">{band.email || '—'}</td>
+ <td className="p-3">
+ <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
+ {band.plan || 'emergente'}
+ </span>
+ </td>
+ <td className="p-3 text-neutral-400">
+ {band.fecha_registro ? new Date(band.fecha_registro).toLocaleDateString() : '—'}
+ </td>
+ <td className="p-3">
+ <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+ {band.estado_cuenta || 'activo'}
+ </span>
+ </td>
+ <td className="p-3 text-neutral-400 max-w-xs truncate">{band.notas || '—'}</td>
+ <td className="p-3 text-left font-bold text-cyan-300 bg-cyan-500/5 border-l border-cyan-500/20 font-mono">
+ {band.user_id || '—'}
+ </td>
+ <td className="p-3 text-right font-bold text-amber-300 bg-amber-500/5 border-l border-amber-500/20 font-mono">
+ {band.band_id || band.bandId || 'band-1'}
+ </td>
+ </tr>
+ ))
+ )}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ ) : (
+ <>
  {/* 2. FILTER & SEARCH CONTROL BAR */}
  <div className={`p-4 rounded-xl ${colors.card}  space-y-3 shadow-md`}>
  <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
@@ -1066,6 +1253,8 @@ Bakandeya Agent Manager IA & Músicos`;
  </tbody>
  </table>
  </div>
+ )}
+ </>
  )}
 
  {/* 4. MODAL: CREATE / EDIT BAND CONTACT */}

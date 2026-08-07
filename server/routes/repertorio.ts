@@ -18,7 +18,15 @@ const router = express.Router();
 router.get("/songs", requireAuth, (req, res) => {
   try {
     const state = loadState();
-    res.json({ success: true, songs: state.songs || [] });
+    const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+    const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+
+    const allSongs = state.songs || [];
+    const filtered = isBakandeyaOrAdmin
+      ? allSongs
+      : allSongs.filter((s: Song) => (s as any).band_id === userBandId || (s as any).bandId === userBandId);
+
+    res.json({ success: true, songs: filtered });
   } catch (err: any) {
     console.error("Error fetching songs:", err);
     res.status(500).json({ error: "Error al obtener canciones." });
@@ -32,12 +40,16 @@ router.post("/songs", requireAuth, (req, res) => {
     if (!newSong.titulo) {
       return res.status(400).json({ error: "El título del tema es obligatorio." });
     }
+    const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+    if (!(newSong as any).band_id) {
+      (newSong as any).band_id = userBandId;
+    }
     const state = loadState();
     if (!state.songs) state.songs = [];
     
     // Check if ID exists or generate
-    if (!newSong.id) {
-      newSong.id = `song-${Date.now()}`;
+    if (!newSong.id || state.songs.some((s: any) => s.id === newSong.id)) {
+      newSong.id = `song-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     }
     
     state.songs.push(newSong);
@@ -109,7 +121,15 @@ router.delete("/songs/:id", requireAuth, (req, res) => {
 router.get("/setlists", requireAuth, (req, res) => {
   try {
     const state = loadState();
-    res.json({ success: true, setlists: state.setlists || [] });
+    const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+    const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+
+    const allSetlists = state.setlists || [];
+    const filtered = isBakandeyaOrAdmin
+      ? allSetlists
+      : allSetlists.filter((sl: Setlist) => (sl as any).band_id === userBandId || (sl as any).bandId === userBandId);
+
+    res.json({ success: true, setlists: filtered });
   } catch (err: any) {
     console.error("Error fetching setlists:", err);
     res.status(500).json({ error: "Error al obtener repertorios." });
@@ -122,6 +142,10 @@ router.post("/setlists", requireAuth, (req, res) => {
     const newSetlist: Setlist = req.body;
     if (!newSetlist.nombre) {
       return res.status(400).json({ error: "El nombre del repertorio es obligatorio." });
+    }
+    const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+    if (!(newSetlist as any).band_id) {
+      (newSetlist as any).band_id = userBandId;
     }
     const state = loadState();
     if (!state.setlists) state.setlists = [];

@@ -6,7 +6,7 @@ export const DEFAULT_LEADS_HEADERS = [
   "id", "nombre_sala", "ciudad", "region", "direccion", "aforo", "genero", "tipo",
   "email_contacto", "telefono", "website", "instagram", "contacto_nombre",
   "fuente", "estado", "pitch_generado", "fecha_envio", "fecha_ultima_respuesta",
-  "contexto_extra", "notas", "hilo_emails", "icono", "imagen_url"
+  "contexto_extra", "notas", "hilo_emails", "icono", "imagen_url", "band_id"
 ];
 
 export function getColumnLetter(colIndex: number): string {
@@ -272,6 +272,10 @@ export function leadToRowDynamic(
       case "avatar":
         row[idx] = lead.imagen_url || "";
         break;
+      case "band_id":
+      case "bandid":
+        row[idx] = lead.band_id || (lead as any).bandId || "";
+        break;
       default:
         break;
     }
@@ -290,6 +294,7 @@ export function messageToRow(leadId: string, nombreSala: string, msg: any): any[
     msg.remitente_nombre || "",
     msg.asunto || "",
     msg.mensaje || "",
+    msg.band_id || msg.bandId || "",
   ];
 }
 
@@ -944,7 +949,7 @@ export async function bootstrapSheet(sheets: any, spreadsheetId: string, leads: 
 
 export async function bootstrapHilosEmailsSheet(sheets: any, spreadsheetId: string, leads: Lead[]) {
   try {
-    const headers = ["id", "lead_id", "nombre_sala", "fecha", "remitente", "remitente_nombre", "asunto", "mensaje"];
+    const headers = ["id", "lead_id", "nombre_sala", "fecha", "remitente", "remitente_nombre", "asunto", "mensaje", "band_id"];
     const rows: any[] = [];
     for (const lead of leads) {
       if (lead.hilo_emails && lead.hilo_emails.length > 0) {
@@ -972,12 +977,12 @@ export async function syncLeadMessagesInSheet(sheets: any, spreadsheetId: string
   try {
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "hilos_emails!A:H",
+      range: "hilos_emails!A:I",
     }, 5000);
     const rows = response.data?.values || [];
 
     if (rows.length === 0) {
-      const headers = ["id", "lead_id", "nombre_sala", "fecha", "remitente", "remitente_nombre", "asunto", "mensaje"];
+      const headers = ["id", "lead_id", "nombre_sala", "fecha", "remitente", "remitente_nombre", "asunto", "mensaje", "band_id"];
       await retrySheetsWrite(() => sheets.spreadsheets.values.update({
         spreadsheetId,
         range: "hilos_emails!A1",
@@ -999,7 +1004,7 @@ export async function syncLeadMessagesInSheet(sheets: any, spreadsheetId: string
       const newRows = newMessagesToAppend.map(msg => messageToRow(lead.id, lead.nombre_sala, msg));
       await retrySheetsWrite(() => sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: "hilos_emails!A:H",
+        range: "hilos_emails!A:I",
         valueInputOption: "USER_ENTERED",
         requestBody: { values: newRows }
       }));
@@ -1231,6 +1236,7 @@ export function socialPostToRow(post: any): any[] {
     post.contenido || "",
     post.estado || "borrador",
     post.responsable || "",
+    post.band_id || post.bandId || ""
   ];
 }
 
@@ -1251,7 +1257,7 @@ export async function updatePostInSheet(post: any) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `redes_sociales!A${sheetRowNumber}:F${sheetRowNumber}`,
+          range: `redes_sociales!A${sheetRowNumber}:G${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: { values: [socialPostToRow(post)] }
         });
@@ -1273,7 +1279,7 @@ export async function appendPostToSheet(post: any) {
     await ensureSheetTabExists(sheets, spreadsheetId, "redes_sociales");
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "redes_sociales!A:F",
+      range: "redes_sociales!A:G",
       valueInputOption: "RAW",
       requestBody: { values: [socialPostToRow(post)] }
     });
@@ -1291,6 +1297,7 @@ export function socialMetricToRow(metric: any): any[] {
     metric.tiktok || 0,
     metric.youtube || 0,
     metric.notas || "",
+    metric.band_id || metric.bandId || ""
   ];
 }
 
@@ -1311,7 +1318,7 @@ export async function updateMetricInSheet(metric: any) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `seguidores!A${sheetRowNumber}:F${sheetRowNumber}`,
+          range: `seguidores!A${sheetRowNumber}:G${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: { values: [socialMetricToRow(metric)] }
         });
@@ -1338,7 +1345,8 @@ export function concertToRow(c: Concert): any[] {
     c.contrato_firmado ? "SÍ" : "NO",
     c.estado_pago || "pendiente",
     c.notas || "",
-    c.tipo || "sala"
+    c.tipo || "sala",
+    c.band_id || (c as any).bandId || ""
   ];
 }
 
@@ -1350,7 +1358,8 @@ export function paymentToRow(p: Payment): any[] {
     p.concepto || "",
     p.importe || 0,
     p.fecha || "",
-    p.estado || "pendiente"
+    p.estado || "pendiente",
+    p.band_id || (p as any).bandId || ""
   ];
 }
 
@@ -1362,7 +1371,8 @@ export function rehearsalToRow(r: Rehearsal): any[] {
     r.lugar || "",
     Array.isArray(r.asistentes) ? r.asistentes.join(", ") : (r.asistentes || ""),
     r.estado || "programado",
-    r.notas || ""
+    r.notas || "",
+    r.band_id || (r as any).bandId || ""
   ];
 }
 
@@ -1373,7 +1383,7 @@ export async function fetchRehearsalsFromSheet(fallback: Rehearsal[]): Promise<R
   try {
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "ensayos!A2:G",
+      range: "ensayos!A2:H",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
@@ -1391,7 +1401,8 @@ export async function fetchRehearsalsFromSheet(fallback: Rehearsal[]): Promise<R
         lugar: r[3] || "",
         asistentes: r[4] ? r[4].split(",").map((s: string) => s.trim()) : [],
         estado: r[5] || "programado",
-        notas: r[6] || ""
+        notas: r[6] || "",
+        band_id: r[7] || ""
       };
     });
   } catch (e: any) {
@@ -1409,7 +1420,7 @@ export async function fetchConcertsFromSheet(fallback: Concert[]): Promise<Conce
   try {
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "conciertos!A2:L",
+      range: "conciertos!A2:M",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
@@ -1429,8 +1440,19 @@ export async function fetchConcertsFromSheet(fallback: Concert[]): Promise<Conce
       let estado_pago: 'pendiente' | 'pagado' | 'anticipo' = 'pendiente';
       let notas = "";
       let tipo: 'sala' | 'festival' | 'ayuntamiento' = "sala";
+      let band_id = "";
 
-      if (r.length >= 12) {
+      if (r.length >= 13) {
+        direccion = r[4] || "";
+        cache = r[5] || "";
+        aforo_vendido = Number(r[6]) || 0;
+        aforo_total = Number(r[7]) || 0;
+        contrato_firmado = String(r[8]).toUpperCase() === "SÍ" || String(r[8]).toUpperCase() === "SI" || r[8] === true;
+        estado_pago = (r[9] as any) || "pendiente";
+        notas = r[10] || "";
+        tipo = (r[11] as any) || "sala";
+        band_id = r[12] || "";
+      } else if (r.length >= 12) {
         direccion = r[4] || "";
         cache = r[5] || "";
         aforo_vendido = Number(r[6]) || 0;
@@ -1461,7 +1483,8 @@ export async function fetchConcertsFromSheet(fallback: Concert[]): Promise<Conce
         contrato_firmado,
         estado_pago,
         notas,
-        tipo
+        tipo,
+        band_id
       };
     });
   } catch (e: any) {
@@ -1479,7 +1502,7 @@ export async function fetchPostsFromSheet(fallback: SocialPost[]): Promise<Socia
   try {
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "redes_sociales!A2:F",
+      range: "redes_sociales!A2:G",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
@@ -1496,7 +1519,8 @@ export async function fetchPostsFromSheet(fallback: SocialPost[]): Promise<Socia
         plataforma: r[2] || "Instagram",
         contenido: r[3] || "",
         estado: r[4] || "borrador",
-        responsable: r[5] || ""
+        responsable: r[5] || "",
+        band_id: r[6] || ""
       };
     });
   } catch (e: any) {
@@ -1514,7 +1538,7 @@ export async function fetchPaymentsFromSheet(fallback: Payment[]): Promise<Payme
   try {
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "finanzas!A2:G",
+      range: "finanzas!A2:H",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
@@ -1532,7 +1556,8 @@ export async function fetchPaymentsFromSheet(fallback: Payment[]): Promise<Payme
         concepto: r[3] || "",
         importe: Number(r[4]) || 0,
         fecha: r[5] || "",
-        estado: r[6] || "pendiente"
+        estado: r[6] || "pendiente",
+        band_id: r[7] || ""
       };
     });
   } catch (e: any) {
@@ -1550,7 +1575,7 @@ export async function fetchMetricsFromSheet(fallback: SocialMetric[]): Promise<S
   try {
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "seguidores!A2:F",
+      range: "seguidores!A2:G",
     });
     const rows = response.data.values;
     if (!rows || rows.length === 0) return fallback;
@@ -1567,7 +1592,8 @@ export async function fetchMetricsFromSheet(fallback: SocialMetric[]): Promise<S
         instagram: Number(r[2]) || 0,
         tiktok: Number(r[3]) || 0,
         youtube: Number(r[4]) || 0,
-        notas: r[5] || ""
+        notas: r[5] || "",
+        band_id: r[6] || ""
       };
     });
   } catch (e: any) {
@@ -1661,7 +1687,7 @@ export async function updateRehearsalInSheet(rehearsal: Rehearsal) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `ensayos!A${sheetRowNumber}:G${sheetRowNumber}`,
+          range: `ensayos!A${sheetRowNumber}:H${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: { values: [rehearsalToRow(rehearsal)] }
         });
@@ -1683,7 +1709,7 @@ export async function appendRehearsalToSheet(rehearsal: Rehearsal) {
     await ensureSheetTabExists(sheets, spreadsheetId, "ensayos");
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "ensayos!A:G",
+      range: "ensayos!A:H",
       valueInputOption: "RAW",
       requestBody: { values: [rehearsalToRow(rehearsal)] }
     });
@@ -1710,7 +1736,7 @@ export async function updateConcertInSheet(concert: Concert) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `conciertos!A${sheetRowNumber}:L${sheetRowNumber}`,
+          range: `conciertos!A${sheetRowNumber}:M${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: { values: [concertToRow(concert)] }
         });
@@ -1732,7 +1758,7 @@ export async function appendConcertToSheet(concert: Concert) {
     await ensureSheetTabExists(sheets, spreadsheetId, "conciertos");
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "conciertos!A:L",
+      range: "conciertos!A:M",
       valueInputOption: "RAW",
       requestBody: { values: [concertToRow(concert)] }
     });
@@ -1750,13 +1776,13 @@ export async function syncLogisticsToSheet(runOfShow: Record<string, any[]>, gea
     await ensureSheetTabExists(sheets, spreadsheetId, "logistica_horarios");
     await ensureSheetTabExists(sheets, spreadsheetId, "logistica_equipo");
 
-    const rosHeaders = ["Fecha", "ID", "Hora", "Actividad", "Completado"];
+    const rosHeaders = ["Fecha", "ID", "Hora", "Actividad", "Completado", "band_id"];
     const rosRows: any[] = [rosHeaders];
     if (runOfShow) {
       Object.entries(runOfShow).forEach(([dateKey, items]) => {
         if (Array.isArray(items)) {
           items.forEach(item => {
-            rosRows.push([dateKey, item.id || "", item.time || "", item.activity || "", item.done ? "SÍ" : "NO"]);
+            rosRows.push([dateKey, item.id || "", item.time || "", item.activity || "", item.done ? "SÍ" : "NO", item.band_id || item.bandId || ""]);
           });
         }
       });
@@ -1769,13 +1795,13 @@ export async function syncLogisticsToSheet(runOfShow: Record<string, any[]>, gea
       requestBody: { values: rosRows }
     });
 
-    const gearHeaders = ["Fecha", "ID", "Material", "Cargado"];
+    const gearHeaders = ["Fecha", "ID", "Material", "Cargado", "band_id"];
     const gearRows: any[] = [gearHeaders];
     if (gearChecklists) {
       Object.entries(gearChecklists).forEach(([dateKey, items]) => {
         if (Array.isArray(items)) {
           items.forEach(item => {
-            gearRows.push([dateKey, item.id || "", item.label || "", item.checked ? "SÍ" : "NO"]);
+            gearRows.push([dateKey, item.id || "", item.label || "", item.checked ? "SÍ" : "NO", item.band_id || item.bandId || ""]);
           });
         }
       });
@@ -1801,7 +1827,7 @@ export async function appendPaymentToSheet(payment: Payment) {
     await ensureSheetTabExists(sheets, spreadsheetId, "finanzas");
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "finanzas!A:G",
+      range: "finanzas!A:H",
       valueInputOption: "RAW",
       requestBody: { values: [paymentToRow(payment)] }
     });
@@ -1828,7 +1854,7 @@ export async function updatePaymentInSheet(payment: Payment) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `finanzas!A${sheetRowNumber}:G${sheetRowNumber}`,
+          range: `finanzas!A${sheetRowNumber}:H${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: { values: [paymentToRow(payment)] }
         });
@@ -1850,7 +1876,7 @@ export async function appendMetricToSheet(metric: any) {
     await ensureSheetTabExists(sheets, spreadsheetId, "seguidores");
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "seguidores!A:F",
+      range: "seguidores!A:G",
       valueInputOption: "RAW",
       requestBody: { values: [socialMetricToRow(metric)] }
     });
@@ -1875,7 +1901,8 @@ export function songToRow(song: Song): any[] {
     song.notasInternas || "",
     song.audioPrincipalUrl || "",
     song.portadaUrl || "",
-    JSON.stringify(song.audioIdeas || [])
+    JSON.stringify(song.audioIdeas || []),
+    song.band_id || (song as any).bandId || ""
   ];
 }
 
@@ -1903,7 +1930,8 @@ export function rowToSong(r: any[]): Song {
     notasInternas: String(r[11] || ""),
     audioPrincipalUrl: String(r[12] || ""),
     portadaUrl: String(r[13] || ""),
-    audioIdeas: Array.isArray(audioIdeas) ? audioIdeas : []
+    audioIdeas: Array.isArray(audioIdeas) ? audioIdeas : [],
+    band_id: String(r[15] || "").trim()
   };
 }
 
@@ -1916,7 +1944,8 @@ export function setlistToRow(st: Setlist): any[] {
     st.duracionTotalEstimadaMinutos || 0,
     st.fechaCreacion || "",
     st.fechaUltimaEdicion || "",
-    JSON.stringify(st.items || [])
+    JSON.stringify(st.items || []),
+    st.band_id || (st as any).bandId || ""
   ];
 }
 
@@ -1937,7 +1966,8 @@ export function rowToSetlist(r: any[]): Setlist {
     duracionTotalEstimadaMinutos: Number(r[4]) || 0,
     fechaCreacion: String(r[5] || ""),
     fechaUltimaEdicion: String(r[6] || ""),
-    items: Array.isArray(items) ? items : []
+    items: Array.isArray(items) ? items : [],
+    band_id: String(r[8] || "").trim()
   };
 }
 
@@ -1950,12 +1980,12 @@ export async function ensureTemasYSetlistsSheets(sheets?: any, spreadsheetId?: s
 
     await ensureSheetTabExists(s, id, "canciones");
     try {
-      const resC = await getValuesCached(s, { spreadsheetId: id, range: "canciones!A1:O1" });
+      const resC = await getValuesCached(s, { spreadsheetId: id, range: "canciones!A1:P1" });
       if (!resC?.data?.values || resC.data.values.length === 0) {
-        const headers = ["id", "titulo", "duracion", "duracion_segundos", "tonalidad", "bpm", "afinacion", "album_disco", "estado_tema", "es_cover", "enlace_acordes", "notas_internas", "audio_principal_url", "portada_url", "audio_ideas_json"];
+        const headers = ["id", "titulo", "duracion", "duracion_segundos", "tonalidad", "bpm", "afinacion", "album_disco", "estado_tema", "es_cover", "enlace_acordes", "notas_internas", "audio_principal_url", "portada_url", "audio_ideas_json", "band_id"];
         await s.spreadsheets.values.update({
           spreadsheetId: id,
-          range: "canciones!A1:O1",
+          range: "canciones!A1:P1",
           valueInputOption: "RAW",
           requestBody: { values: [headers] }
         });
@@ -1964,12 +1994,12 @@ export async function ensureTemasYSetlistsSheets(sheets?: any, spreadsheetId?: s
 
     await ensureSheetTabExists(s, id, "repertorios");
     try {
-      const resR = await getValuesCached(s, { spreadsheetId: id, range: "repertorios!A1:H1" });
+      const resR = await getValuesCached(s, { spreadsheetId: id, range: "repertorios!A1:I1" });
       if (!resR?.data?.values || resR.data.values.length === 0) {
-        const headers = ["id", "nombre", "descripcion", "tipo_formato", "duracion_estimada_min", "fecha_creacion", "fecha_ultima_edicion", "items_json"];
+        const headers = ["id", "nombre", "descripcion", "tipo_formato", "duracion_estimada_min", "fecha_creacion", "fecha_ultima_edicion", "items_json", "band_id"];
         await s.spreadsheets.values.update({
           spreadsheetId: id,
-          range: "repertorios!A1:H1",
+          range: "repertorios!A1:I1",
           valueInputOption: "RAW",
           requestBody: { values: [headers] }
         });
@@ -1998,7 +2028,7 @@ export async function fetchSongsFromSheet(fallback: Song[]): Promise<Song[]> {
     await ensureTemasYSetlistsSheets(sheets, spreadsheetId);
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "canciones!A2:O",
+      range: "canciones!A2:P",
     });
     const rows = response.data?.values;
     if (!rows || rows.length === 0) {
@@ -2006,7 +2036,7 @@ export async function fetchSongsFromSheet(fallback: Song[]): Promise<Song[]> {
         console.log("Populating initial canciones to Google Sheet in batch...");
         await retrySheetsWrite(() => sheets.spreadsheets.values.append({
           spreadsheetId,
-          range: "canciones!A:O",
+          range: "canciones!A:P",
           valueInputOption: "RAW",
           requestBody: { values: fallback.map(s => songToRow(s)) }
         }));
@@ -2037,7 +2067,7 @@ export async function fetchSetlistsFromSheet(fallback: Setlist[]): Promise<Setli
     await ensureTemasYSetlistsSheets(sheets, spreadsheetId);
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "repertorios!A2:H",
+      range: "repertorios!A2:I",
     });
     const rows = response.data?.values;
     if (!rows || rows.length === 0) {
@@ -2045,7 +2075,7 @@ export async function fetchSetlistsFromSheet(fallback: Setlist[]): Promise<Setli
         console.log("Populating initial repertorios to Google Sheet in batch...");
         await retrySheetsWrite(() => sheets.spreadsheets.values.append({
           spreadsheetId,
-          range: "repertorios!A:H",
+          range: "repertorios!A:I",
           valueInputOption: "RAW",
           requestBody: { values: fallback.map(st => setlistToRow(st)) }
         }));
@@ -2085,7 +2115,7 @@ export async function updateSongInSheet(song: Song) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `canciones!A${sheetRowNumber}:O${sheetRowNumber}`,
+          range: `canciones!A${sheetRowNumber}:P${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: { values: [songToRow(song)] }
         });
@@ -2107,7 +2137,7 @@ export async function appendSongToSheet(song: Song) {
     await ensureSheetTabExists(sheets, spreadsheetId, "canciones");
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "canciones!A:O",
+      range: "canciones!A:P",
       valueInputOption: "RAW",
       requestBody: { values: [songToRow(song)] }
     });
@@ -2134,7 +2164,7 @@ export async function deleteSongInSheet(songId: string) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.clear({
           spreadsheetId,
-          range: `canciones!A${sheetRowNumber}:O${sheetRowNumber}`
+          range: `canciones!A${sheetRowNumber}:P${sheetRowNumber}`
         });
         invalidateValuesCache("canciones");
       }
@@ -2161,7 +2191,7 @@ export async function updateSetlistInSheet(st: Setlist) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `repertorios!A${sheetRowNumber}:H${sheetRowNumber}`,
+          range: `repertorios!A${sheetRowNumber}:I${sheetRowNumber}`,
           valueInputOption: "RAW",
           requestBody: { values: [setlistToRow(st)] }
         });
@@ -2183,7 +2213,7 @@ export async function appendSetlistToSheet(st: Setlist) {
     await ensureSheetTabExists(sheets, spreadsheetId, "repertorios");
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "repertorios!A:H",
+      range: "repertorios!A:I",
       valueInputOption: "RAW",
       requestBody: { values: [setlistToRow(st)] }
     });
@@ -2210,7 +2240,7 @@ export async function deleteSetlistInSheet(stId: string) {
         const sheetRowNumber = rowIndex + 1;
         await sheets.spreadsheets.values.clear({
           spreadsheetId,
-          range: `repertorios!A${sheetRowNumber}:H${sheetRowNumber}`
+          range: `repertorios!A${sheetRowNumber}:I${sheetRowNumber}`
         });
         invalidateValuesCache("repertorios");
       }
@@ -2237,7 +2267,8 @@ export function bandToRow(b: any): any[] {
     b.notas_colaboracion || "",
     b.ciudad_origen_swap || "",
     b.icono || "",
-    b.imagen_url || ""
+    b.imagen_url || "",
+    b.band_id || b.bandId || ""
   ];
 }
 
@@ -2258,7 +2289,8 @@ export function rowToBand(r: any[]): any {
     notas_colaboracion: String(r[12] || ""),
     ciudad_origen_swap: String(r[13] || ""),
     icono: String(r[14] || ""),
-    imagen_url: String(r[15] || "")
+    imagen_url: String(r[15] || ""),
+    band_id: String(r[16] || "")
   };
 }
 
@@ -2274,14 +2306,14 @@ export async function ensureBandasSheet(sheets?: any, spreadsheetId?: string): P
     const headers = [
       "id", "nombre_banda", "estilo_musical", "localizacion", "estado_relacion", "ultimo_contacto", 
       "contacto_nombre", "email", "telefono", "instagram", "spotify_youtube", "aforo_promedio", 
-      "notas_colaboracion", "ciudad_origen_swap", "icono", "imagen_url"
+      "notas_colaboracion", "ciudad_origen_swap", "icono", "imagen_url", "band_id"
     ];
     
-    const res = await getValuesCached(s, { spreadsheetId: id, range: "bandas!A1:P1" });
+    const res = await getValuesCached(s, { spreadsheetId: id, range: "bandas!A1:Q1" });
     if (!res?.data?.values || res.data.values.length === 0 || !res.data.values[0][0]) {
       await retrySheetsWrite(() => s.spreadsheets.values.update({
         spreadsheetId: id,
-        range: "bandas!A1:P1",
+        range: "bandas!A1:Q1",
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [headers] }
       }));
@@ -2310,14 +2342,14 @@ export async function fetchBandsFromSheet(fallback: any[]): Promise<any[]> {
     await ensureBandasSheet(sheets, spreadsheetId);
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "bandas!A2:P",
+      range: "bandas!A2:Q",
     });
     const rows = response?.data?.values;
     if (!rows || rows.length === 0) {
       if (fallback && fallback.length > 0) {
         await retrySheetsWrite(() => sheets.spreadsheets.values.append({
           spreadsheetId,
-          range: "bandas!A:P",
+          range: "bandas!A:Q",
           valueInputOption: "USER_ENTERED",
           requestBody: { values: fallback.map(b => bandToRow(b)) },
         }));
@@ -2343,13 +2375,13 @@ export async function updateBandInSheet(band: any) {
     await ensureBandasSheet(sheets, spreadsheetId);
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "bandas!A2:P",
+      range: "bandas!A2:Q",
     });
     const rows = response.data.values || [];
     const rowIndex = rows.findIndex((row: any) => row[0] === band.id);
 
     if (rowIndex !== -1) {
-      const range = `bandas!A${rowIndex + 2}:P${rowIndex + 2}`;
+      const range = `bandas!A${rowIndex + 2}:Q${rowIndex + 2}`;
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range,
@@ -2374,7 +2406,7 @@ export async function appendBandToSheet(band: any) {
     await ensureBandasSheet(sheets, spreadsheetId);
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "bandas!A:P",
+      range: "bandas!A:Q",
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [bandToRow(band)] },
     });
@@ -2392,13 +2424,13 @@ export async function deleteBandInSheet(bandId: string) {
   try {
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "bandas!A2:P",
+      range: "bandas!A2:Q",
     });
     const rows = response.data.values || [];
     const rowIndex = rows.findIndex((row: any) => row[0] === bandId);
 
     if (rowIndex !== -1) {
-      const range = `bandas!A${rowIndex + 2}:P${rowIndex + 2}`;
+      const range = `bandas!A${rowIndex + 2}:Q${rowIndex + 2}`;
       await sheets.spreadsheets.values.clear({
         spreadsheetId,
         range,
@@ -2425,16 +2457,16 @@ export async function ensureToursSheet(sheets?: any, spreadsheetId?: string): Pr
     // Check headers
     const check = await getValuesCached(s, {
       spreadsheetId: id,
-      range: "tours!A1:H1",
+      range: "tours!A1:I1",
     });
     
     if (!check.data?.values || check.data.values.length === 0) {
       await retrySheetsWrite(() => s.spreadsheets.values.update({
         spreadsheetId: id,
-        range: "tours!A1:H1",
+        range: "tours!A1:I1",
         valueInputOption: "RAW",
         requestBody: {
-          values: [["ID", "Nombre", "Vehículo", "Estado", "FechaInicio", "FechaFin", "Presupuesto", "Stops (JSON)"]]
+          values: [["ID", "Nombre", "Vehículo", "Estado", "FechaInicio", "FechaFin", "Presupuesto", "Stops (JSON)", "band_id"]]
         }
       }));
       invalidateValuesCache("tours");
@@ -2462,7 +2494,8 @@ export function tourToRow(tour: any): any[] {
     tour.fechaInicio || "",
     tour.fechaFin || "",
     tour.presupuestoLogistica || 0,
-    JSON.stringify(tour.stops || [])
+    JSON.stringify(tour.stops || []),
+    tour.band_id || tour.bandId || ""
   ];
 }
 
@@ -2483,7 +2516,8 @@ export function rowToTour(r: any[]): any {
     fechaInicio: String(r[4] || "").trim(),
     fechaFin: String(r[5] || "").trim(),
     presupuestoLogistica: Number(r[6]) || 0,
-    stops
+    stops,
+    band_id: String(r[8] || "").trim()
   };
 }
 
@@ -2497,7 +2531,7 @@ export async function fetchToursFromSheet(fallback: any[]): Promise<any[]> {
     
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "tours!A2:H",
+      range: "tours!A2:I",
     });
     
     const rows = response.data?.values;
@@ -2505,7 +2539,7 @@ export async function fetchToursFromSheet(fallback: any[]): Promise<any[]> {
       if (fallback && fallback.length > 0) {
         await retrySheetsWrite(() => sheets.spreadsheets.values.append({
           spreadsheetId,
-          range: "tours!A:H",
+          range: "tours!A:I",
           valueInputOption: "RAW",
           requestBody: { values: fallback.map(t => tourToRow(t)) }
         }));
@@ -2532,7 +2566,7 @@ export async function appendTourToSheet(tour: any) {
     await ensureToursSheet(sheets, spreadsheetId);
     await retrySheetsWrite(() => sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "tours!A:H",
+      range: "tours!A:I",
       valueInputOption: "RAW",
       requestBody: { values: [tourToRow(tour)] }
     }));
@@ -2560,7 +2594,7 @@ export async function updateTourInSheet(tour: any) {
       const rowNumber = rowIndex + 2;
       await retrySheetsWrite(() => sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `tours!A${rowNumber}:H${rowNumber}`,
+        range: `tours!A${rowNumber}:I${rowNumber}`,
         valueInputOption: "RAW",
         requestBody: { values: [tourToRow(tour)] }
       }));
@@ -2591,9 +2625,9 @@ export async function deleteTourInSheet(id: string) {
       const rowNumber = rowIndex + 2;
       await retrySheetsWrite(() => sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `tours!A${rowNumber}:H${rowNumber}`,
+        range: `tours!A${rowNumber}:I${rowNumber}`,
         valueInputOption: "RAW",
-        requestBody: { values: [Array(8).fill("")] }
+        requestBody: { values: [Array(9).fill("")] }
       }));
       invalidateValuesCache("tours");
     }
@@ -2614,16 +2648,50 @@ export async function ensureFansSheet(sheets?: any, spreadsheetId?: string): Pro
     await ensureSheetTabExists(s, id, "fans");
     const check = await getValuesCached(s, {
       spreadsheetId: id,
-      range: "fans!A1:I1",
+      range: "fans!A1:J1",
     });
 
-    if (!check.data?.values || check.data.values.length === 0) {
+    const headers = ["id", "nombre", "email", "ciudad", "como_conocio", "concierto_origen_id", "concierto_origen_nombre", "fecha_captura", "consentimiento_rgpd", "band_id"];
+    const firstRow = check.data?.values?.[0];
+
+    if (!firstRow || firstRow.length === 0 || !firstRow[0]) {
       await retrySheetsWrite(() => s.spreadsheets.values.update({
         spreadsheetId: id,
-        range: "fans!A1:I1",
-        valueInputOption: "RAW",
+        range: "fans!A1:J1",
+        valueInputOption: "USER_ENTERED",
         requestBody: {
-          values: [["id", "nombre", "email", "ciudad", "como_conocio", "concierto_origen_id", "concierto_origen_nombre", "fecha_captura", "consentimiento_rgpd"]]
+          values: [headers]
+        }
+      }));
+      invalidateValuesCache("fans");
+    } else if (String(firstRow[0]).trim().toLowerCase() !== "id") {
+      const fansSheetId = await getSheetId(s, id, "fans");
+      if (fansSheetId !== null) {
+        await retrySheetsWrite(() => s.spreadsheets.batchUpdate({
+          spreadsheetId: id,
+          requestBody: {
+            requests: [
+              {
+                insertDimension: {
+                  range: {
+                    sheetId: fansSheetId,
+                    dimension: "ROWS",
+                    startIndex: 0,
+                    endIndex: 1
+                  },
+                  inheritFromBefore: false
+                }
+              }
+            ]
+          }
+        }));
+      }
+      await retrySheetsWrite(() => s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: "fans!A1:J1",
+        valueInputOption: "USER_ENTERED",
+        requestBody: {
+          values: [headers]
         }
       }));
       invalidateValuesCache("fans");
@@ -2652,7 +2720,8 @@ export function fanToRow(fan: Fan): any[] {
     fan.conciertoOrigenId || "",
     fan.conciertoOrigenNombre || "",
     fan.fechaCaptura || "",
-    fan.consentimientoRGPD ? "SÍ" : "NO"
+    fan.consentimientoRGPD ? "SÍ" : "NO",
+    fan.band_id || (fan as any).bandId || ""
   ];
 }
 
@@ -2666,7 +2735,8 @@ export function rowToFan(r: any[]): Fan {
     conciertoOrigenId: String(r[5] || "").trim(),
     conciertoOrigenNombre: String(r[6] || "").trim(),
     fechaCaptura: String(r[7] || "").trim(),
-    consentimientoRGPD: String(r[8]).toUpperCase() === "SÍ" || String(r[8]).toUpperCase() === "SI" || r[8] === true
+    consentimientoRGPD: String(r[8]).toUpperCase() === "SÍ" || String(r[8]).toUpperCase() === "SI" || r[8] === true,
+    band_id: String(r[9] || "").trim()
   };
 }
 
@@ -2680,7 +2750,7 @@ export async function fetchFansFromSheet(fallback: Fan[]): Promise<Fan[]> {
 
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "fans!A2:I",
+      range: "fans!A2:J",
     });
 
     const rows = response.data?.values;
@@ -2688,7 +2758,7 @@ export async function fetchFansFromSheet(fallback: Fan[]): Promise<Fan[]> {
       if (fallback && fallback.length > 0) {
         await retrySheetsWrite(() => sheets.spreadsheets.values.append({
           spreadsheetId,
-          range: "fans!A:I",
+          range: "fans!A:J",
           valueInputOption: "RAW",
           requestBody: { values: fallback.map(f => fanToRow(f)) }
         }));
@@ -2715,7 +2785,7 @@ export async function appendFanToSheet(fan: Fan) {
     await ensureFansSheet(sheets, spreadsheetId);
     await retrySheetsWrite(() => sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "fans!A:I",
+      range: "fans!A:J",
       valueInputOption: "RAW",
       requestBody: { values: [fanToRow(fan)] }
     }));
@@ -2743,9 +2813,9 @@ export async function deleteFanInSheet(id: string) {
       const rowNumber = rowIndex + 2;
       await retrySheetsWrite(() => sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `fans!A${rowNumber}:I${rowNumber}`,
+        range: `fans!A${rowNumber}:J${rowNumber}`,
         valueInputOption: "RAW",
-        requestBody: { values: [Array(9).fill("")] }
+        requestBody: { values: [Array(10).fill("")] }
       }));
       invalidateValuesCache("fans");
     }
@@ -2753,4 +2823,906 @@ export async function deleteFanInSheet(id: string) {
     console.error("Error deleting fan in sheet:", error.message || error);
   }
 }
+
+// ==================== REGISTRO DE NUEVAS BANDAS ====================
+
+export function registeredBandToRow(b: any): any[] {
+  return [
+    b.id || "",
+    b.fecha_registro || b.createdAt || new Date().toISOString(),
+    b.nombre_banda || b.bandName || "",
+    b.email || "",
+    b.plan || "emergente",
+    b.contacto_nombre || b.contactName || b.name || "",
+    b.estilo_musical || b.style || "",
+    b.localizacion || b.city || "España",
+    b.telefono || "",
+    b.instagram || "",
+    b.spotify_youtube || "",
+    b.aforo_promedio || 0,
+    b.estado_cuenta || "activo",
+    b.notas || "",
+    b.band_id || b.bandId || b.id || "band-1",
+    b.user_id || b.userId || b.owner_user_id || ""
+  ];
+}
+
+export function rowToRegisteredBand(r: any[]): any {
+  return {
+    id: String(r[0] || ""),
+    fecha_registro: String(r[1] || ""),
+    nombre_banda: String(r[2] || ""),
+    email: String(r[3] || ""),
+    plan: String(r[4] || "emergente"),
+    contacto_nombre: String(r[5] || ""),
+    estilo_musical: String(r[6] || ""),
+    localizacion: String(r[7] || ""),
+    telefono: String(r[8] || ""),
+    instagram: String(r[9] || ""),
+    spotify_youtube: String(r[10] || ""),
+    aforo_promedio: Number(r[11]) || 0,
+    estado_cuenta: String(r[12] || "activo"),
+    notas: String(r[13] || ""),
+    band_id: String(r[14] || r[0] || "band-1"),
+    user_id: String(r[15] || "")
+  };
+}
+
+export async function ensureRegistroBandasSheet(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  if (verifiedHeadersSet.has("registro_bandas")) return true;
+  try {
+    const s = sheets || getSheetsClient();
+    const id = spreadsheetId || getSpreadsheetId();
+    if (!s || !id) return false;
+    
+    await ensureSheetTabExists(s, id, "registro_bandas");
+    
+    const headers = [
+      "id", "fecha_registro", "nombre_banda", "email", "plan",
+      "contacto_nombre", "estilo_musical", "localizacion", "telefono",
+      "instagram", "spotify_youtube", "aforo_promedio", "estado_cuenta", "notas", "band_id", "user_id"
+    ];
+    
+    const res = await getValuesCached(s, { spreadsheetId: id, range: "registro_bandas!A1:P1" });
+    if (!res?.data?.values || res.data.values.length === 0 || !res.data.values[0][0]) {
+      await retrySheetsWrite(() => s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: "registro_bandas!A1:P1",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [headers] }
+      }));
+    }
+    verifiedHeadersSet.add("registro_bandas");
+    return true;
+  } catch (err: any) {
+    const isQuota = err?.status === 429 || err?.code === 429 || String(err?.message || "").toLowerCase().includes("quota");
+    if (isQuota) {
+      console.warn("[ensureRegistroBandasSheet] Quota limit hit for Google Sheets. Continuing gracefully.");
+      verifiedHeadersSet.add("registro_bandas");
+      return true;
+    } else {
+      console.warn("Notice ensuring registro_bandas sheet:", err?.message || err);
+    }
+    return false;
+  }
+}
+
+export async function fetchRegisteredBandsFromSheet(fallback: any[] = []): Promise<any[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return fallback;
+
+  try {
+    await ensureRegistroBandasSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "registro_bandas!A2:P",
+    });
+    const rows = response?.data?.values;
+    if (!rows || rows.length === 0) {
+      if (fallback && fallback.length > 0) {
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "registro_bandas!A:P",
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: fallback.map(b => registeredBandToRow(b)) },
+        }));
+        invalidateValuesCache("registro_bandas");
+      }
+      return fallback;
+    }
+    return rows.map(rowToRegisteredBand).filter((b: any) => b.id);
+  } catch (err: any) {
+    if (err?.status !== 429 && err?.code !== 429) {
+      console.warn("Notice reading registered bands from sheet:", err?.message || err);
+    }
+    return fallback;
+  }
+}
+
+export async function appendRegisteredBandToSheet(band: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureRegistroBandasSheet(sheets, spreadsheetId);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "registro_bandas!A:P",
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [registeredBandToRow(band)] },
+    });
+    invalidateValuesCache("registro_bandas");
+  } catch (error) {
+    console.error("Error appending registered band to sheet:", error);
+  }
+}
+
+export async function updateRegisteredBandInSheet(band: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureRegistroBandasSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "registro_bandas!A2:P",
+    });
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex((row: any) => row[0] === band.id || row[1] === band.band_id);
+
+    if (rowIndex !== -1) {
+      const range = `registro_bandas!A${rowIndex + 2}:P${rowIndex + 2}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [registeredBandToRow(band)] },
+      });
+      invalidateValuesCache("registro_bandas");
+    } else {
+      await appendRegisteredBandToSheet(band);
+    }
+  } catch (error) {
+    console.error("Error updating registered band in sheet:", error);
+  }
+}
+
+export function userToRow(u: any): any[] {
+  return [
+    u.id || "",
+    u.username || u.email || "",
+    u.name || u.bandName || "",
+    u.email || u.username || "",
+    u.role || "member",
+    u.plan || "emergente",
+    u.instrument || "Músico",
+    u.avatarColor || "#3b82f6",
+    u.createdAt || new Date().toISOString(),
+    u.band_id || u.bandId || u.id || "band-1"
+  ];
+}
+
+export function rowToUser(r: any[]): any {
+  return {
+    id: String(r[0] || ""),
+    username: String(r[1] || ""),
+    name: String(r[2] || ""),
+    email: String(r[3] || ""),
+    role: String(r[4] || "member"),
+    plan: String(r[5] || "emergente"),
+    instrument: String(r[6] || "Músico"),
+    avatarColor: String(r[7] || "#3b82f6"),
+    createdAt: String(r[8] || ""),
+    band_id: String(r[9] || r[0] || "band-1")
+  };
+}
+
+
+export function userBandToRow(ub: any): any[] {
+  return [
+    ub.id || "",
+    ub.user_id || "",
+    ub.band_id || "",
+    ub.role || "member",
+    ub.createdAt || new Date().toISOString()
+  ];
+}
+
+export function rowToUserBand(r: any[]): any {
+  return {
+    id: String(r[0] || ""),
+    user_id: String(r[1] || ""),
+    band_id: String(r[2] || ""),
+    role: String(r[3] || "member"),
+    createdAt: String(r[4] || "")
+  };
+}
+
+export async function ensureUsuariosBandasSheet(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  if (verifiedHeadersSet.has("usuarios_bandas")) return true;
+  try {
+    const s = sheets || getSheetsClient();
+    const id = spreadsheetId || getSpreadsheetId();
+    if (!s || !id) return false;
+    
+    await ensureSheetTabExists(s, id, "usuarios_bandas");
+    
+    const headers = ["id", "user_id", "band_id", "role", "createdAt"];
+    
+    const res = await getValuesCached(s, { spreadsheetId: id, range: "usuarios_bandas!A1:E1" });
+    if (!res?.data?.values || res.data.values.length === 0 || !res.data.values[0][0]) {
+      await retrySheetsWrite(() => s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: "usuarios_bandas!A1:E1",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [headers] }
+      }));
+    }
+    verifiedHeadersSet.add("usuarios_bandas");
+    return true;
+  } catch (err: any) {
+    const isQuota = err?.status === 429 || err?.code === 429 || String(err?.message || "").toLowerCase().includes("quota");
+    if (isQuota) {
+      console.warn("[ensureUsuariosBandasSheet] Quota limit hit for Google Sheets. Continuing gracefully.");
+      verifiedHeadersSet.add("usuarios_bandas");
+      return true;
+    } else {
+      console.warn("Notice ensuring usuarios_bandas sheet:", err?.message || err);
+    }
+    return false;
+  }
+}
+
+export async function fetchUserBandsFromSheet(fallback: any[] = []): Promise<any[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return fallback;
+
+  try {
+    await ensureUsuariosBandasSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "usuarios_bandas!A2:E",
+    });
+    const rows = response?.data?.values;
+    if (!rows || rows.length === 0) {
+      if (fallback && fallback.length > 0) {
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "usuarios_bandas!A:E",
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: fallback.map(userBandToRow) },
+        }));
+      }
+      return fallback;
+    }
+    return rows.map(rowToUserBand).filter(ub => ub.id && ub.user_id && ub.band_id);
+  } catch (error) {
+    console.error("Error fetching user bands from sheet:", error);
+    return fallback;
+  }
+}
+
+export async function appendUserBandToSheet(userBand: any): Promise<void> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureUsuariosBandasSheet(sheets, spreadsheetId);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "usuarios_bandas!A:E",
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [userBandToRow(userBand)] },
+    });
+    invalidateValuesCache("usuarios_bandas");
+  } catch (error) {
+    console.error("Error appending user band to sheet:", error);
+  }
+}
+
+export async function updateUserBandInSheet(userBand: any): Promise<void> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureUsuariosBandasSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "usuarios_bandas!A2:E",
+    });
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex((row: any) => row[0] === userBand.id);
+    if (rowIndex !== -1) {
+      const range = `usuarios_bandas!A${rowIndex + 2}:E${rowIndex + 2}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [userBandToRow(userBand)] },
+      });
+      invalidateValuesCache("usuarios_bandas");
+    } else {
+      await appendUserBandToSheet(userBand);
+    }
+  } catch (error) {
+    console.error("Error updating user band in sheet:", error);
+  }
+}
+
+export async function deleteUserBandInSheet(userBandId: string): Promise<void> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureUsuariosBandasSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "usuarios_bandas!A2:E",
+    });
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex((row: any) => row[0] === userBandId);
+    if (rowIndex !== -1) {
+      const range = `usuarios_bandas!A${rowIndex + 2}:E${rowIndex + 2}`;
+      await sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range,
+      });
+      invalidateValuesCache("usuarios_bandas");
+    }
+  } catch (error) {
+    console.error("Error deleting user band in sheet:", error);
+  }
+}
+
+export async function ensureUsuariosSheet(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  if (verifiedHeadersSet.has("usuarios")) return true;
+  try {
+    const s = sheets || getSheetsClient();
+    const id = spreadsheetId || getSpreadsheetId();
+    if (!s || !id) return false;
+    
+    await ensureSheetTabExists(s, id, "usuarios");
+    
+    const headers = [
+      "id", "username", "name", "email", "role", "plan",
+      "instrument", "avatarColor", "createdAt", "band_id"
+    ];
+    
+    const res = await getValuesCached(s, { spreadsheetId: id, range: "usuarios!A1:J1" });
+    if (!res?.data?.values || res.data.values.length === 0 || !res.data.values[0][0]) {
+      await retrySheetsWrite(() => s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: "usuarios!A1:J1",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [headers] }
+      }));
+    }
+    verifiedHeadersSet.add("usuarios");
+    return true;
+  } catch (err: any) {
+    const isQuota = err?.status === 429 || err?.code === 429 || String(err?.message || "").toLowerCase().includes("quota");
+    if (isQuota) {
+      console.warn("[ensureUsuariosSheet] Quota limit hit for Google Sheets. Continuing gracefully.");
+      verifiedHeadersSet.add("usuarios");
+      return true;
+    } else {
+      console.warn("Notice ensuring usuarios sheet:", err?.message || err);
+    }
+    return false;
+  }
+}
+
+export async function fetchUsersFromSheet(fallback: any[] = []): Promise<any[]> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return fallback;
+
+  try {
+    await ensureUsuariosSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "usuarios!A2:J",
+    });
+    const rows = response?.data?.values;
+    if (!rows || rows.length === 0) {
+      if (fallback && fallback.length > 0) {
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "usuarios!A:J",
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: fallback.map(u => userToRow(u)) },
+        }));
+        invalidateValuesCache("usuarios");
+      }
+      return fallback;
+    }
+    return rows.map(rowToUser).filter((u: any) => u.id);
+  } catch (err: any) {
+    if (err?.status !== 429 && err?.code !== 429) {
+      console.warn("Notice reading users from sheet:", err?.message || err);
+    }
+    return fallback;
+  }
+}
+
+export async function appendUserToSheet(user: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureUsuariosSheet(sheets, spreadsheetId);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "usuarios!A:J",
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [userToRow(user)] },
+    });
+    invalidateValuesCache("usuarios");
+  } catch (error) {
+    console.error("Error appending user to sheet:", error);
+  }
+}
+
+export async function updateUserInSheet(user: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureUsuariosSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "usuarios!A2:J",
+    });
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex((row: any) => row[0] === user.id || row[1] === user.username);
+
+    if (rowIndex !== -1) {
+      const range = `usuarios!A${rowIndex + 2}:J${rowIndex + 2}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [userToRow(user)] },
+      });
+      invalidateValuesCache("usuarios");
+    } else {
+      await appendUserToSheet(user);
+    }
+  } catch (error) {
+    console.error("Error updating user in sheet:", error);
+  }
+}
+
+export async function deleteUserInSheet(userId: string) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureUsuariosSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "usuarios!A2:J",
+    });
+    const rows = response.data.values || [];
+    const rowIndex = rows.findIndex((row: any) => row[0] === userId);
+
+    if (rowIndex !== -1) {
+      const range = `usuarios!A${rowIndex + 2}:J${rowIndex + 2}`;
+      await sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range,
+      });
+      invalidateValuesCache("usuarios");
+    }
+  } catch (error) {
+    console.error("Error deleting user from sheet:", error);
+  }
+}
+
+export function epkConfigToRow(bandId: string, epk: any): any[] {
+  return [
+    bandId || "band-bakandeya",
+    epk.biografia || "",
+    epk.logoUrl || "",
+    epk.dossierPdfUrl || "",
+    epk.dossierPdfName || "",
+    epk.dossierTextoExtra || "",
+    epk.riderTecnico || "",
+    epk.riderPdfUrl || "",
+    epk.riderPdfName || "",
+    epk.contactoBooking?.nombre || "",
+    epk.contactoBooking?.email || "",
+    epk.contactoBooking?.telefono || "",
+    epk.enlacesRedes?.spotify || "",
+    epk.enlacesRedes?.youtube || "",
+    epk.enlacesRedes?.instagram || "",
+    epk.enlacesRedes?.tiktok || "",
+    JSON.stringify(epk.temasDestacadosIds || []),
+    new Date().toISOString()
+  ];
+}
+
+export function rowToEpkConfig(r: any[]): { bandId: string; epk: any } {
+  let temas: string[] = [];
+  try {
+    if (r[16]) temas = JSON.parse(r[16]);
+  } catch (e) {
+    if (typeof r[16] === 'string') temas = r[16].split(',').map((s: string) => s.trim());
+  }
+  return {
+    bandId: r[0] || "band-bakandeya",
+    epk: {
+      biografia: r[1] || "",
+      logoUrl: r[2] || "",
+      dossierPdfUrl: r[3] || "",
+      dossierPdfName: r[4] || "",
+      dossierTextoExtra: r[5] || "",
+      riderTecnico: r[6] || "",
+      riderPdfUrl: r[7] || "",
+      riderPdfName: r[8] || "",
+      contactoBooking: {
+        nombre: r[9] || "",
+        email: r[10] || "",
+        telefono: r[11] || "",
+      },
+      enlacesRedes: {
+        spotify: r[12] || "",
+        youtube: r[13] || "",
+        instagram: r[14] || "",
+        tiktok: r[15] || "",
+      },
+      temasDestacadosIds: temas
+    }
+  };
+}
+
+export async function ensureEpkSheet(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  const s = sheets || getSheetsClient();
+  const id = spreadsheetId || getSpreadsheetId();
+  if (!s || !id) return false;
+
+  if (verifiedHeadersSet.has("dossier_epk")) return true;
+
+  try {
+    await ensureSheetTabExists(s, id, "dossier_epk");
+
+    const response = await getValuesCached(s, {
+      spreadsheetId: id,
+      range: "dossier_epk!A1:R1",
+    });
+
+    const rows = response?.data?.values;
+    if (!rows || rows.length === 0 || !rows[0] || rows[0].length === 0) {
+      const headers = [
+        "band_id", "biografia", "logo_url", "dossier_pdf_url", "dossier_pdf_name", "dossier_texto_extra", "rider_tecnico", "rider_pdf_url", "rider_pdf_name", "contacto_nombre", "contacto_email", "contacto_telefono", "spotify_url", "youtube_url", "instagram_url", "tiktok_url", "temas_destacados", "fecha_actualizacion"
+      ];
+      await retrySheetsWrite(() => s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: "dossier_epk!A1:R1",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [headers] }
+      }));
+    }
+    verifiedHeadersSet.add("dossier_epk");
+    return true;
+  } catch (err: any) {
+    const isQuota = err?.status === 429 || err?.code === 429 || String(err?.message || "").toLowerCase().includes("quota");
+    if (isQuota) {
+      console.warn("[ensureEpkSheet] Quota limit hit for Google Sheets. Continuing gracefully.");
+      verifiedHeadersSet.add("dossier_epk");
+      return true;
+    } else {
+      console.warn("Notice ensuring dossier_epk sheet:", err?.message || err);
+    }
+    return false;
+  }
+}
+
+export async function fetchEpkConfigsFromSheet(fallbackMap: Record<string, any> = {}): Promise<Record<string, any>> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return fallbackMap;
+
+  try {
+    await ensureEpkSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "dossier_epk!A2:R",
+    });
+    const rows = response?.data?.values;
+    if (!rows || rows.length === 0) {
+      if (fallbackMap && Object.keys(fallbackMap).length > 0) {
+        const rowsToWrite = Object.entries(fallbackMap).map(([bId, config]) => epkConfigToRow(bId, config));
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "dossier_epk!A:R",
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: rowsToWrite },
+        }));
+        invalidateValuesCache("dossier_epk");
+      }
+      return fallbackMap;
+    }
+
+    const result: Record<string, any> = { ...fallbackMap };
+    for (const r of rows) {
+      if (r && r[0]) {
+        const parsed = rowToEpkConfig(r);
+        result[parsed.bandId] = {
+          ...(result[parsed.bandId] || {}),
+          ...parsed.epk
+        };
+      }
+    }
+    return result;
+  } catch (err: any) {
+    if (err?.status !== 429 && err?.code !== 429) {
+      console.warn("Notice reading dossier_epk from sheet:", err?.message || err);
+    }
+    return fallbackMap;
+  }
+}
+
+export async function updateEpkInSheet(bandId: string, epkConfig: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureEpkSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "dossier_epk!A2:R",
+    });
+    const rows = response.data.values || [];
+    const targetId = bandId || "band-bakandeya";
+    const rowIndex = rows.findIndex((row: any) => row[0] === targetId);
+
+    if (rowIndex !== -1) {
+      const range = `dossier_epk!A${rowIndex + 2}:R${rowIndex + 2}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [epkConfigToRow(targetId, epkConfig)] },
+      });
+      invalidateValuesCache("dossier_epk");
+    } else {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: "dossier_epk!A:R",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [epkConfigToRow(targetId, epkConfig)] },
+      });
+      invalidateValuesCache("dossier_epk");
+    }
+  } catch (error) {
+    console.error("Error updating dossier_epk in sheet:", error);
+  }
+}
+
+export async function syncAllTabsWithBakandeya(state: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  const bandId = "band-bakandeya";
+
+  try {
+    // 1. registro_bandas
+    await ensureRegistroBandasSheet(sheets, spreadsheetId);
+    if (state.registeredBands && state.registeredBands.length > 0) {
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "registro_bandas!A2:P",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: state.registeredBands.map((b: any) => registeredBandToRow({ ...b, band_id: bandId })) }
+      }));
+    }
+
+    // 2. usuarios
+    await ensureUsuariosSheet(sheets, spreadsheetId);
+    if (state.users && state.users.length > 0) {
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "usuarios!A2:J",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: state.users.map((u: any) => userToRow({ ...u, band_id: bandId })) }
+      }));
+    }
+
+    // 2b. usuarios_bandas
+    await ensureUsuariosBandasSheet(sheets, spreadsheetId);
+    if (state.userBands && state.userBands.length > 0) {
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "usuarios_bandas!A2:E",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: state.userBands.map((ub: any) => userBandToRow(ub)) }
+      }));
+    }
+
+    // 3. leads & hilos_emails
+    if (state.leads && state.leads.length > 0) {
+      const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
+      const headers = DEFAULT_LEADS_HEADERS;
+      const leadRows = state.leads.map((l: any) => leadToRowDynamic({ ...l, band_id: bandId }, headers, hilosSheetId));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "leads!A2",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: leadRows }
+      }));
+
+      await bootstrapHilosEmailsSheet(sheets, spreadsheetId, state.leads.map((l: any) => ({ ...l, band_id: bandId })));
+    }
+
+    // 4. ensayos
+    if (state.rehearsals && state.rehearsals.length > 0) {
+      await ensureSheetTabExists(sheets, spreadsheetId, "ensayos");
+      const rows = state.rehearsals.map((r: any) => rehearsalToRow({ ...r, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "ensayos!A2:M",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 5. conciertos
+    if (state.concerts && state.concerts.length > 0) {
+      await ensureSheetTabExists(sheets, spreadsheetId, "conciertos");
+      const rows = state.concerts.map((c: any) => concertToRow({ ...c, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "conciertos!A2:N",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 6. redes_sociales
+    if (state.posts && state.posts.length > 0) {
+      await ensureSheetTabExists(sheets, spreadsheetId, "redes_sociales");
+      const rows = state.posts.map((p: any) => socialPostToRow({ ...p, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "redes_sociales!A2:I",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 7. finanzas
+    if (state.payments && state.payments.length > 0) {
+      await ensureSheetTabExists(sheets, spreadsheetId, "finanzas");
+      const rows = state.payments.map((p: any) => paymentToRow({ ...p, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "finanzas!A2:K",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 8. seguidores
+    if (state.metrics && state.metrics.length > 0) {
+      await ensureSheetTabExists(sheets, spreadsheetId, "seguidores");
+      const rows = state.metrics.map((m: any) => socialMetricToRow({ ...m, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "seguidores!A2:G",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 9. canciones
+    if (state.songs && state.songs.length > 0) {
+      await ensureSheetTabExists(sheets, spreadsheetId, "canciones");
+      const rows = state.songs.map((s: any) => songToRow({ ...s, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "canciones!A2:P",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 10. repertorios
+    if (state.setlists && state.setlists.length > 0) {
+      await ensureSheetTabExists(sheets, spreadsheetId, "repertorios");
+      const rows = state.setlists.map((st: any) => setlistToRow({ ...st, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "repertorios!A2:I",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 11. tours
+    if (state.tours && state.tours.length > 0) {
+      await ensureToursSheet(sheets, spreadsheetId);
+      const rows = state.tours.map((t: any) => tourToRow({ ...t, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "tours!A2:I",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 12. fans
+    if (state.fans && state.fans.length > 0) {
+      await ensureFansSheet(sheets, spreadsheetId);
+      const rows = state.fans.map((f: any) => fanToRow({ ...f, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "fans!A2:J",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 13. bandas
+    if (state.bands && state.bands.length > 0) {
+      await ensureBandasSheet(sheets, spreadsheetId);
+      const rows = state.bands.map((b: any) => bandToRow({ ...b, band_id: bandId }));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "bandas!A2:Q",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 14. logistics (runOfShow & gearChecklists)
+    if (state.runOfShow || state.gearChecklists) {
+      await syncLogisticsToSheet(
+        Object.fromEntries(
+          Object.entries(state.runOfShow || {}).map(([k, list]: [string, any]) => [
+            k,
+            list.map((item: any) => ({ ...item, band_id: bandId }))
+          ])
+        ),
+        Object.fromEntries(
+          Object.entries(state.gearChecklists || {}).map(([k, list]: [string, any]) => [
+            k,
+            list.map((item: any) => ({ ...item, band_id: bandId }))
+          ])
+        )
+      );
+    }
+
+    // 15. dossier_epk
+    if (state.epkConfigsByBand && Object.keys(state.epkConfigsByBand).length > 0) {
+      await ensureEpkSheet(sheets, spreadsheetId);
+      const rows = Object.entries(state.epkConfigsByBand).map(([bId, cfg]: [string, any]) => epkConfigToRow(bId, cfg));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "dossier_epk!A2:R",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    invalidateValuesCache();
+    console.log("[Google Sheets] All tabs successfully updated with band_id = band-bakandeya!");
+  } catch (err: any) {
+    console.warn("Notice syncing sheets with band_id:", err?.message || err);
+  }
+}
+
+
 

@@ -38,8 +38,10 @@ export default function App() {
     authToken,
     isLoggedIn,
     isAdmin,
+    availableBands,
     setCurrentUser,
     handleLoginSuccess,
+    handleSwitchBand,
     handleLogout
   } = useAuth();
 
@@ -78,7 +80,7 @@ export default function App() {
     handleAddFan,
     handleDeleteFan,
     handleUpdateIncentive
-  } = useAppData(isLoggedIn);
+  } = useAppData(isLoggedIn, currentUser?.band_id);
 
   const [showUserManagementModal, setShowUserManagementModal] = useState(false);
   const [showUserProfileModal, setShowUserProfileModal] = useState(false);
@@ -218,6 +220,11 @@ export default function App() {
  );
  }
 
+  const currentActiveBandName = currentUser?.bandName || currentUser?.name || 'BAKANDEYA';
+  const currentActiveBandLogo = (currentUser?.band_id === 'band-bakandeya' || currentUser?.band_id === 'reg-bakandeya')
+    ? '/logo_bakandeya_bueno_sin_fondo.png'
+    : (epkConfig?.logoUrl || '');
+
  return (
  <div 
  className={`min-h-screen ${colors.bg} flex flex-col md:flex-row transition-colors duration-500 font-sans w-full max-w-[100vw] overflow-clip`}
@@ -228,16 +235,22 @@ export default function App() {
  {/* Top Brand & Menu Row */}
  <div className="flex items-center justify-between px-4 pt-3 pb-2">
  <div className="flex items-center gap-3">
+ {currentActiveBandLogo ? (
  <img 
- src="/logo_bakandeya.jpg" 
- alt="Bakandeya Logo" 
- className="w-8 h-8 object-cover rounded-lg border-neutral-700/80 shrink-0"
+ src={currentActiveBandLogo} 
+ alt="Logo" 
+ className="w-12 h-12 object-contain p-1 bg-neutral-950/90 rounded-xl border border-amber-500/50 shadow-md shrink-0"
  referrerPolicy="no-referrer"
  />
+ ) : (
+ <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
+ {currentActiveBandName[0]?.toUpperCase() || 'B'}
+ </div>
+ )}
  <div className="flex flex-col">
  <div className="flex items-center gap-2">
  <h1 className="text-sm font-bold font-display tracking-wider uppercase text-zinc-100 leading-none">
- BAKANDEYA
+ {currentActiveBandName}
  </h1>
  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncStatus === 'synced' ? 'bg-emerald-400/20' : syncStatus === 'error' ? 'bg-rose-500' : 'bg-zinc-400 animate-pulse'}`} />
  </div>
@@ -290,16 +303,16 @@ export default function App() {
  <button
  key={`top-tab-${item.id}`}
  onClick={() => handleNavigate(item.id as any)}
- className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-sans whitespace-nowrap shrink-0 transition-all cursor-pointer active:scale-95 ${
+ className={`flex items-center gap-2 px-3.5 py-2 md:px-3 md:py-1.5 rounded-full text-sm md:text-xs font-semibold md:font-normal font-sans whitespace-nowrap shrink-0 transition-all cursor-pointer active:scale-95 ${
  isSelected
  ? 'bg-zinc-800 text-zinc-100 border-zinc-700 font-bold shadow-xs'
  : 'bg-[#1A1918] text-neutral-300 border-[#22211F] hover:bg-[#22211F] hover:text-white'
  }`}
  >
- <IconComp className="w-3.5 h-3.5 shrink-0" />
+ <IconComp className="w-4 h-4 md:w-3.5 md:h-3.5 shrink-0" />
  <span>{item.label}</span>
  {item.badge !== undefined && item.badge > 0 && (
- <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+ <span className={`text-xs md:text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
  isSelected ? 'bg-zinc-700 text-zinc-300' : 'bg-[#2b2927] text-zinc-400'
  }`}>
  {item.badge}
@@ -324,15 +337,21 @@ export default function App() {
  {/* Drawer Header */}
  <div className="p-4 flex items-center justify-between border-[#22211F]/50 bg-gradient-to-b from-[#1A1918] to-[#121110]">
  <div className="flex items-center gap-2.5">
+ {currentActiveBandLogo ? (
  <img 
- src="/logo_bakandeya.jpg" 
- alt="Bakandeya Logo" 
- className="w-10 h-10 object-cover rounded-xl border-neutral-700/80 shrink-0"
+ src={currentActiveBandLogo} 
+ alt="Logo" 
+ className="w-14 h-14 object-contain p-1 bg-neutral-950/90 rounded-xl border border-amber-500/50 shadow-md shrink-0"
  referrerPolicy="no-referrer"
  />
+ ) : (
+ <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-bold text-sm shrink-0">
+ {currentActiveBandName[0]?.toUpperCase() || 'B'}
+ </div>
+ )}
  <div className="flex flex-col">
  <h1 className="text-base font-bold font-display tracking-wider uppercase text-zinc-100 leading-none">
- BAKANDEYA
+ {currentActiveBandName}
  </h1>
  <div className="flex items-center gap-1.5 mt-1">
  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncStatus === 'synced' ? 'bg-emerald-400/20' : syncStatus === 'error' ? 'bg-rose-500' : 'bg-zinc-400 animate-pulse'}`} />
@@ -410,25 +429,62 @@ export default function App() {
  {/* Drawer User Footer */}
  <div className="p-4 mt-auto border-[#22211F]/50">
  {currentUser && (
- <button 
- onClick={() => { setShowUserProfileModal(true); setIsMobileMenuOpen(false); }}
- className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-[#22211F] transition-colors cursor-pointer text-left border-transparent hover:border-[#333130] mb-4"
- >
- <div 
- className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[#121110] text-xs font-sans shrink-0 uppercase"
- style={{ backgroundColor: currentUser.avatarColor || '#eab308' }}
- >
- {currentUser.name.slice(0, 2)}
- </div>
- <div className="flex flex-col min-w-0">
- <span className="text-[13px] font-bold font-sans text-zinc-100 truncate">
- {currentUser.name}
- </span>
- <span className="text-[11px] font-sans text-[#9a9591] truncate">
- {isAdmin ? 'Mánager' : currentUser.instrument || 'Músico'}
- </span>
- </div>
- </button>
+  <div className="flex flex-col gap-2 mb-4 p-2.5 rounded-xl bg-[#1A1918] border border-[#22211F]">
+   <div 
+    onClick={() => { setShowUserProfileModal(true); setIsMobileMenuOpen(false); }}
+    className="flex items-center gap-3 w-full cursor-pointer text-left group"
+   >
+    <div 
+     className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[#121110] text-xs font-sans shrink-0 uppercase transition-transform group-hover:scale-105"
+     style={{ backgroundColor: currentUser.avatarColor || '#eab308' }}
+    >
+     {currentUser.name ? currentUser.name.slice(0, 2) : 'US'}
+    </div>
+    <div className="flex flex-col min-w-0 flex-1">
+     <span className="text-[12px] font-bold font-sans text-zinc-100 truncate">
+      {currentUser.name}
+     </span>
+     <span className="text-[10px] font-mono text-[#9a9591] truncate" title={currentUser.email || currentUser.username}>
+      {currentUser.email || currentUser.username}
+     </span>
+    </div>
+   </div>
+
+   {/* Band Switcher Dropdown */}
+   {availableBands && availableBands.length > 1 && (
+    <div className="mt-2 pt-2 border-t border-[#22211F]/60 flex flex-col gap-1">
+     <label className="text-[9px] font-mono uppercase tracking-wider text-[#9a9591]">
+      Mis Bandas
+     </label>
+     <div className="relative">
+      <select
+       value={currentUser.band_id}
+       onChange={async (e) => {
+        const selectedBandId = e.target.value;
+        if (selectedBandId && selectedBandId !== currentUser.band_id) {
+         try {
+          await handleSwitchBand(selectedBandId);
+          setIsMobileMenuOpen(false);
+         } catch (err) {
+          console.error("Error switching band:", err);
+         }
+        }
+       }}
+       className="w-full bg-[#121110] text-zinc-300 text-xs px-2.5 py-1.5 rounded-lg border border-[#333130] focus:border-amber-500/50 focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+      >
+       {availableBands.map((b) => (
+        <option key={`mob-switch-band-${b.band_id}`} value={b.band_id}>
+         {b.bandName}
+        </option>
+       ))}
+      </select>
+      <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-[#9a9591]">
+       <RefreshCw className="w-3 h-3 animate-pulse" />
+      </div>
+     </div>
+    </div>
+   )}
+  </div>
  )}
  <div className="flex items-center justify-between px-2">
  <div className="flex items-center gap-2">
@@ -461,15 +517,24 @@ export default function App() {
  
  {/* Brand Header */}
  <div className="p-6 flex flex-col gap-4 items-center text-center border-[#22211F]/50 bg-gradient-to-b from-[#1A1918] to-[#121110]">
+ {currentActiveBandLogo ? (
  <img 
- src="/logo_bakandeya.jpg" 
- alt="Bakandeya Logo" 
+ src={currentActiveBandLogo} 
+ alt="Logo" 
  className="w-40 h-40 xl:w-48 xl:h-48 object-cover rounded-2xl shadow-xl shadow-black/50 border-[#333130] shrink-0"
  referrerPolicy="no-referrer"
  />
+ ) : (
+ <div className="w-40 h-40 xl:w-48 xl:h-48 rounded-2xl shadow-xl shadow-black/50 border-[#333130] bg-[#1A1918] flex flex-col items-center justify-center text-amber-400 gap-2 p-4 shrink-0">
+ <Guitar className="w-16 h-16 opacity-80" />
+ <span className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-widest text-center">
+ {currentActiveBandName}
+ </span>
+ </div>
+ )}
  <div className="flex flex-col items-center">
  <h1 className="text-[22px] font-black font-display tracking-widest uppercase text-zinc-100 leading-none">
- BAKANDEYA
+ {currentActiveBandName}
  </h1>
  <div className="flex items-center justify-center gap-2 mt-3 bg-[#1A1918] px-3 py-1.5 rounded-full border-[#333130] shadow-inner">
  <span className={`w-2 h-2 rounded-full shrink-0 shadow-[0_0_8px_currentColor] ${syncStatus === 'synced' ? 'bg-emerald-400/20 text-[#73c991]/20' : syncStatus === 'error' ? 'bg-rose-500/15 text-rose-400' : 'bg-zinc-400 text-zinc-400 animate-pulse'}`} />
@@ -565,25 +630,61 @@ export default function App() {
  {/* Bottom User Profile */}
  <div className="p-4 mt-auto border-[#22211F]/50">
  {currentUser && (
- <button 
- onClick={() => setShowUserProfileModal(true)}
- className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-[#22211F] transition-colors cursor-pointer text-left border-transparent hover:border-[#333130] mb-4"
- >
- <div 
- className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[#121110] text-xs font-sans shrink-0 uppercase"
- style={{ backgroundColor: currentUser.avatarColor || '#eab308' }}
- >
- {currentUser.name.slice(0, 2)}
- </div>
- <div className="flex flex-col min-w-0">
- <span className="text-[13px] font-bold font-sans text-zinc-100 truncate">
- {currentUser.name}
- </span>
- <span className="text-[11px] font-sans text-[#9a9591] truncate">
- {isAdmin ? 'Mánager' : currentUser.instrument || 'Músico'}
- </span>
- </div>
- </button>
+  <div className="flex flex-col gap-2 mb-4 p-2.5 rounded-xl bg-[#1A1918] border border-[#22211F]">
+   <div 
+    onClick={() => setShowUserProfileModal(true)}
+    className="flex items-center gap-3 w-full cursor-pointer text-left group"
+   >
+    <div 
+     className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[#121110] text-xs font-sans shrink-0 uppercase transition-transform group-hover:scale-105"
+     style={{ backgroundColor: currentUser.avatarColor || '#eab308' }}
+    >
+     {currentUser.name ? currentUser.name.slice(0, 2) : 'US'}
+    </div>
+    <div className="flex flex-col min-w-0 flex-1">
+     <span className="text-[12px] font-bold font-sans text-zinc-100 truncate">
+      {currentUser.name}
+     </span>
+     <span className="text-[10px] font-mono text-[#9a9591] truncate" title={currentUser.email || currentUser.username}>
+      {currentUser.email || currentUser.username}
+     </span>
+    </div>
+   </div>
+
+   {/* Band Switcher Dropdown */}
+   {availableBands && availableBands.length > 1 && (
+    <div className="mt-2 pt-2 border-t border-[#22211F]/60 flex flex-col gap-1">
+     <label className="text-[9px] font-mono uppercase tracking-wider text-[#9a9591]">
+      Mis Bandas
+     </label>
+     <div className="relative">
+      <select
+       value={currentUser.band_id}
+       onChange={async (e) => {
+        const selectedBandId = e.target.value;
+        if (selectedBandId && selectedBandId !== currentUser.band_id) {
+         try {
+          await handleSwitchBand(selectedBandId);
+         } catch (err) {
+          console.error("Error switching band:", err);
+         }
+        }
+       }}
+       className="w-full bg-[#121110] text-zinc-300 text-xs px-2.5 py-1.5 rounded-lg border border-[#333130] focus:border-amber-500/50 focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+      >
+       {availableBands.map((b) => (
+        <option key={`switch-band-${b.band_id}`} value={b.band_id}>
+         {b.bandName}
+        </option>
+       ))}
+      </select>
+      <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-[#9a9591]">
+       <RefreshCw className="w-3 h-3 animate-pulse" />
+      </div>
+     </div>
+    </div>
+   )}
+  </div>
  )}
 
  <div className="flex items-center justify-between px-2">
@@ -649,6 +750,8 @@ export default function App() {
  metrics={metrics}
  concerts={concerts}
  rehearsals={rehearsals}
+ currentUser={currentUser}
+ bandName={currentActiveBandName}
  onNavigate={handleNavigate}
  />
  )}
@@ -703,6 +806,7 @@ export default function App() {
  colors={colors}
  concerts={concerts}
  rehearsals={rehearsals}
+ bandName={currentActiveBandName}
  onUpdateConcert={handleUpdateConcert}
  onUpdateRehearsal={handleUpdateRehearsal}
  />
@@ -1052,13 +1156,30 @@ export default function App() {
  </div>
 
  <div className="space-y-2">
- <p className="text-neutral-500 uppercase tracking-widest text-[9px]">Pestañas Requeridas</p>
+ <div className="flex items-center justify-between">
+ <p className="text-neutral-500 uppercase tracking-widest text-[9px]">Pestañas Requeridas en Google Sheets</p>
+ <a 
+ href="/api/export-excel" 
+ download="band_data.xlsx"
+ className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer"
+ >
+ <FileSpreadsheet className="w-3 h-3" /> Descargar Excel (.xlsx)
+ </a>
+ </div>
  
- <div className="space-y-1.5">
+ <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
  {[
+ { key: 'registro_bandas', name: 'registro_bandas', desc: 'Registro de nuevas bandas SaaS (columna band_id)' },
+ { key: 'usuarios', name: 'usuarios', desc: 'Tabla oficial de usuarios, roles y accesos (columna band_id)' },
  { key: 'leads', name: 'leads', desc: 'Directorio de salas, medios y contactos' },
+ { key: 'bandas', name: 'bandas', desc: 'Bandas amigas y red co-booking' },
+ { key: 'canciones', name: 'canciones', desc: 'Catálogo de temas y repertorio' },
+ { key: 'repertorios', name: 'repertorios', desc: 'Setlists y listas de canciones' },
+ { key: 'fans', name: 'fans', desc: 'Base de fans y tribu' },
+ { key: 'tours', name: 'tours', desc: 'Giras y logística de ruta' },
+ { key: 'conciertos', name: 'conciertos', desc: 'Historial de conciertos' },
  { key: 'ensayos', name: 'ensayos', desc: 'Historial de ensayos' },
- { key: 'conciertos', name: 'conciertos', desc: 'Historial de conciertos' }
+ { key: 'finanzas', name: 'finanzas', desc: 'Registro de ingresos y gastos' }
  ].map(tab => {
  const exists = sheetsStatus.status[tab.key];
  const wasCreated = (sheetsStatus.created || []).includes(tab.key);

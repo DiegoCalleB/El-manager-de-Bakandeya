@@ -3,6 +3,7 @@ import path from "path";
 import express from "express";
 import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES, INITIAL_SOCIAL_METRICS, INITIAL_USERS, INITIAL_SONGS, INITIAL_SETLISTS, INITIAL_BANDS, INITIAL_TOURS } from "../src/db_seed.js";
 import { ACTIVE_SESSIONS, hashPassword, getUserFromRequest, createAuthMiddleware, createLeaderMiddleware, createCronOrAuthMiddleware } from "./auth.js";
+import { generateUniqueSlugId, slugify } from "./utils/slug.js";
 
 const DATA_FILE = path.join(process.cwd(), "data.json");
 
@@ -86,6 +87,406 @@ const INITIAL_FANS = [
     consentimientoRGPD: true
   }
 ];
+
+export const BAKANDEYA_BAND_ID = "band-bakandeya";
+
+export const BAKANDEYA_REGISTERED_BAND = {
+  id: "reg-bakandeya",
+  band_id: BAKANDEYA_BAND_ID,
+  user_id: "user-diego",
+  fecha_registro: "2026-01-01T10:00:00.000Z",
+  nombre_banda: "Bakandeya",
+  email: "diego.delacalleb@gmail.com",
+  plan: "pro",
+  contacto_nombre: "Diego de la Calle",
+  estilo_musical: "Mestizaje / Ska-Rock / Reggae / Electrónica",
+  localizacion: "Madrid / Sevilla (España)",
+  telefono: "+34 612 345 678",
+  instagram: "@bakandeya_oficial",
+  spotify_youtube: "https://open.spotify.com/artist/bakandeya",
+  aforo_promedio: 500,
+  estado_cuenta: "activo",
+  notas: "Banda oficial de la plataforma Bakandeya"
+};
+
+export function ensureBakandeyaBandId(state: any): boolean {
+  let changed = false;
+
+  if (!state.registeredBands || !Array.isArray(state.registeredBands)) {
+    state.registeredBands = [BAKANDEYA_REGISTERED_BAND];
+    changed = true;
+  } else {
+    const existingBakandeya = state.registeredBands.find(
+      (b: any) => b.band_id === BAKANDEYA_BAND_ID || String(b.nombre_banda || "").toLowerCase() === "bakandeya"
+    );
+    if (!existingBakandeya) {
+      state.registeredBands.unshift(BAKANDEYA_REGISTERED_BAND);
+      changed = true;
+    } else if (existingBakandeya.band_id !== BAKANDEYA_BAND_ID) {
+      existingBakandeya.band_id = BAKANDEYA_BAND_ID;
+      changed = true;
+    }
+  }
+
+  if (state.registeredBands && Array.isArray(state.registeredBands)) {
+    for (const b of state.registeredBands) {
+      if (b.nombre_banda && b.nombre_banda.toLowerCase() !== "bakandeya") {
+        const cleanSlug = slugify(b.nombre_banda);
+        if (cleanSlug && (b.band_id === BAKANDEYA_BAND_ID || b.band_id.startsWith("user-"))) {
+          b.band_id = `band-${cleanSlug}`;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  if (state.users && Array.isArray(state.users)) {
+    const initialSeedUserIds = new Set(['user-jose', 'user-diego', 'user-jon', 'user-elyar', 'user-raul']);
+    for (const u of state.users) {
+      if (initialSeedUserIds.has(u.id)) {
+        if (u.band_id !== BAKANDEYA_BAND_ID) {
+          u.band_id = BAKANDEYA_BAND_ID;
+          u.bandName = "Bakandeya";
+          changed = true;
+        }
+      } else {
+        // Find matching registered band
+        const regBand = state.registeredBands?.find((b: any) =>
+          (u.email && b.email?.toLowerCase() === u.email?.toLowerCase()) || b.nombre_banda === u.name || b.nombre_banda === u.bandName
+        );
+        if (regBand && regBand.band_id) {
+          if (!regBand.user_id || regBand.user_id.startsWith("user-17")) {
+            regBand.user_id = u.id;
+            changed = true;
+          }
+          if (u.band_id !== regBand.band_id) {
+            u.band_id = regBand.band_id;
+            changed = true;
+          }
+          if (regBand.nombre_banda && u.bandName !== regBand.nombre_banda) {
+            u.bandName = regBand.nombre_banda;
+            changed = true;
+          }
+        } else if (!u.band_id || u.band_id.startsWith('user-')) {
+          u.band_id = `band-${slugify(u.bandName || u.name || u.id.replace('user-', ''))}`;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  if (!state.userBands || !Array.isArray(state.userBands)) {
+    state.userBands = [];
+    changed = true;
+  }
+
+  // Ensure all current users have their active bands in userBands
+  if (state.users && Array.isArray(state.users)) {
+    state.users.forEach((u: any) => {
+      const bid = u.band_id || "band-bakandeya";
+      const hasUB = state.userBands.some((ub: any) => ub.user_id === u.id && ub.band_id === bid);
+      if (!hasUB) {
+        state.userBands.push({
+          id: `ub-${u.id}-${bid}`,
+          user_id: u.id,
+          band_id: bid,
+          role: u.role || "member",
+          createdAt: u.createdAt || new Date().toISOString()
+        });
+        changed = true;
+      }
+    });
+  }
+
+  // Ensure all registered bands have leader associations in userBands
+  if (state.registeredBands && Array.isArray(state.registeredBands)) {
+    state.registeredBands.forEach((rb: any) => {
+      if (rb.user_id && rb.band_id) {
+        const hasUB = state.userBands.some((ub: any) => ub.user_id === rb.user_id && ub.band_id === rb.band_id);
+        if (!hasUB) {
+          state.userBands.push({
+            id: `ub-${rb.user_id}-${rb.band_id}`,
+            user_id: rb.user_id,
+            band_id: rb.band_id,
+            role: "leader",
+            createdAt: rb.fecha_registro || new Date().toISOString()
+          });
+          changed = true;
+        }
+      }
+    });
+  }
+
+  const collections = ['leads', 'rehearsals', 'concerts', 'posts', 'payments', 'metrics', 'songs', 'setlists', 'tours', 'fans', 'bands', 'messages'];
+  for (const colKey of collections) {
+    if (state[colKey] && Array.isArray(state[colKey])) {
+      for (const item of state[colKey]) {
+        if (!item.band_id) {
+          item.band_id = BAKANDEYA_BAND_ID;
+          changed = true;
+        }
+        if (colKey === 'leads' && item.hilo_emails && Array.isArray(item.hilo_emails)) {
+          for (const msg of item.hilo_emails) {
+            if (!msg.band_id) {
+              msg.band_id = item.band_id;
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (state.runOfShow) {
+    for (const key of Object.keys(state.runOfShow)) {
+      if (Array.isArray(state.runOfShow[key])) {
+        for (const item of state.runOfShow[key]) {
+          if (!item.band_id) {
+            item.band_id = BAKANDEYA_BAND_ID;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
+  if (state.gearChecklists) {
+    for (const key of Object.keys(state.gearChecklists)) {
+      if (Array.isArray(state.gearChecklists[key])) {
+        for (const item of state.gearChecklists[key]) {
+          if (!item.band_id) {
+            item.band_id = BAKANDEYA_BAND_ID;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
+  if (!state.epkConfigsByBand) {
+    state.epkConfigsByBand = {
+      [BAKANDEYA_BAND_ID]: state.epkConfig || DEFAULT_EPK_CONFIG
+    };
+    changed = true;
+  } else if (!state.epkConfigsByBand[BAKANDEYA_BAND_ID] && state.epkConfig) {
+    state.epkConfigsByBand[BAKANDEYA_BAND_ID] = state.epkConfig;
+    changed = true;
+  }
+
+  if (migrateTimestampIdsToPersonalized(state)) {
+    changed = true;
+  }
+
+  if (ensureUniqueIdsInState(state)) {
+    changed = true;
+  }
+
+  return changed;
+}
+
+export function ensureUniqueIdsInState(state: any): boolean {
+  let changed = false;
+
+  const collections = [
+    'songs', 'setlists', 'leads', 'rehearsals', 'concerts', 'posts',
+    'payments', 'metrics', 'tours', 'fans', 'bands', 'users', 'registeredBands', 'messages'
+  ];
+
+  for (const colKey of collections) {
+    if (Array.isArray(state[colKey])) {
+      const seenIds = new Set<string>();
+      state[colKey].forEach((item: any, idx: number) => {
+        if (!item || typeof item !== 'object') return;
+        
+        let prefix = colKey.endsWith('s') ? colKey.slice(0, -1) : colKey;
+        if (colKey === 'registeredBands') prefix = 'reg';
+
+        if (!item.id || seenIds.has(item.id)) {
+          const oldId = item.id;
+          const newId = oldId ? `${oldId}-${idx + 1}` : `${prefix}-${Date.now()}-${idx + 1}`;
+          item.id = newId;
+          seenIds.add(newId);
+          changed = true;
+        } else {
+          seenIds.add(item.id);
+        }
+
+        // Sub-arrays like setlist items
+        if (colKey === 'setlists' && Array.isArray(item.items)) {
+          const subSeen = new Set<string>();
+          item.items.forEach((sItem: any, sIdx: number) => {
+            if (!sItem.id || subSeen.has(sItem.id)) {
+              sItem.id = sItem.id ? `${sItem.id}-${sIdx + 1}` : `item-${Date.now()}-${sIdx + 1}`;
+              changed = true;
+            }
+            subSeen.add(sItem.id);
+          });
+        }
+      });
+    }
+  }
+
+  return changed;
+}
+
+export function migrateTimestampIdsToPersonalized(state: any): boolean {
+  let changed = false;
+  const existingIds = new Set<string>();
+
+  const isTimestampId = (id: any) => typeof id === "string" && /^(user|band|reg)-\d{8,}$/.test(id);
+  const idMap = new Map<string, string>();
+
+  // Register non-timestamp IDs
+  if (Array.isArray(state.users)) {
+    for (const u of state.users) {
+      if (u.id && !isTimestampId(u.id)) existingIds.add(u.id);
+      if (u.band_id && !isTimestampId(u.band_id)) existingIds.add(u.band_id);
+    }
+  }
+  if (Array.isArray(state.registeredBands)) {
+    for (const b of state.registeredBands) {
+      if (b.id && !isTimestampId(b.id)) existingIds.add(b.id);
+      if (b.band_id && !isTimestampId(b.band_id)) existingIds.add(b.band_id);
+    }
+  }
+
+  // 1. Process registeredBands
+  if (Array.isArray(state.registeredBands)) {
+    for (const b of state.registeredBands) {
+      const bandName = b.nombre_banda || b.contacto_nombre || "banda";
+      if (isTimestampId(b.band_id)) {
+        if (!idMap.has(b.band_id)) {
+          const newBandId = generateUniqueSlugId("band", bandName, existingIds);
+          existingIds.add(newBandId);
+          idMap.set(b.band_id, newBandId);
+        }
+        b.band_id = idMap.get(b.band_id)!;
+        changed = true;
+      }
+      if (isTimestampId(b.id)) {
+        if (!idMap.has(b.id)) {
+          const newRegId = generateUniqueSlugId("reg", bandName, existingIds);
+          existingIds.add(newRegId);
+          idMap.set(b.id, newRegId);
+        }
+        b.id = idMap.get(b.id)!;
+        changed = true;
+      }
+    }
+  }
+
+  // 2. Process users
+  if (Array.isArray(state.users)) {
+    for (const u of state.users) {
+      const bandName = u.bandName || u.name || "banda";
+      const userRaw = u.username?.includes("@") ? u.username.split("@")[0] : (u.username || u.name || "usuario");
+
+      if (isTimestampId(u.band_id)) {
+        if (!idMap.has(u.band_id)) {
+          const newBandId = generateUniqueSlugId("band", bandName, existingIds);
+          existingIds.add(newBandId);
+          idMap.set(u.band_id, newBandId);
+        }
+        u.band_id = idMap.get(u.band_id)!;
+        changed = true;
+      }
+
+      if (isTimestampId(u.id)) {
+        if (!idMap.has(u.id)) {
+          const newUserId = generateUniqueSlugId("user", userRaw, existingIds);
+          existingIds.add(newUserId);
+          idMap.set(u.id, newUserId);
+        }
+        u.id = idMap.get(u.id)!;
+        changed = true;
+      }
+    }
+  }
+
+  // 3. Update references across collections
+  if (idMap.size > 0) {
+    const collections = ['leads', 'rehearsals', 'concerts', 'posts', 'payments', 'metrics', 'songs', 'setlists', 'tours', 'fans', 'bands', 'messages'];
+    for (const colKey of collections) {
+      if (state[colKey] && Array.isArray(state[colKey])) {
+        for (const item of state[colKey]) {
+          if (item.band_id && idMap.has(item.band_id)) {
+            item.band_id = idMap.get(item.band_id)!;
+            changed = true;
+          }
+          if (colKey === 'leads' && Array.isArray(item.hilo_emails)) {
+            for (const msg of item.hilo_emails) {
+              if (msg.band_id && idMap.has(msg.band_id)) {
+                msg.band_id = idMap.get(msg.band_id)!;
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (state.epkConfigsByBand) {
+      for (const [oldId, newId] of idMap.entries()) {
+        if (state.epkConfigsByBand[oldId]) {
+          state.epkConfigsByBand[newId] = state.epkConfigsByBand[oldId];
+          delete state.epkConfigsByBand[oldId];
+          changed = true;
+        }
+      }
+    }
+
+    for (const token of Object.keys(ACTIVE_SESSIONS)) {
+      const sess = ACTIVE_SESSIONS[token];
+      if (sess?.userId && idMap.has(sess.userId)) {
+        sess.userId = idMap.get(sess.userId)!;
+        changed = true;
+      }
+    }
+  }
+
+  return changed;
+}
+
+export function getDefaultEpkConfig(bandName: string = "Tu Banda", email?: string): any {
+  return {
+    biografia: `${bandName} es una propuesta musical en directo.`,
+    logoUrl: "",
+    bandPhotos: [],
+    riderTecnico: "Rider técnico y necesidades de escenario por definir.",
+    enlacesRedes: {
+      spotify: "",
+      youtube: "",
+      instagram: "",
+      tiktok: "",
+      website: ""
+    },
+    contactoBooking: {
+      nombre: bandName,
+      email: email || "",
+      telefono: ""
+    },
+    temasDestacadosIds: [],
+    incentivoFans: {
+      mensajeAgradecimiento: `¡Muchas gracias por unirte a la comunidad de ${bandName}!`,
+      enlaceDescarga: "",
+      codigoDescuento: ""
+    }
+  };
+}
+
+export function getEpkConfigForBand(state: any, bandId: string, bandName: string = "Tu Banda", email?: string): any {
+  if (!state.epkConfigsByBand) {
+    state.epkConfigsByBand = {};
+  }
+  if (!state.epkConfigsByBand[bandId]) {
+    if (bandId === BAKANDEYA_BAND_ID || bandId === 'reg-bakandeya') {
+      state.epkConfigsByBand[bandId] = state.epkConfig || DEFAULT_EPK_CONFIG;
+    } else {
+      state.epkConfigsByBand[bandId] = getDefaultEpkConfig(bandName, email);
+    }
+  }
+  return state.epkConfigsByBand[bandId];
+}
 
 export function loadState(): any {
   if (fs.existsSync(DATA_FILE)) {
@@ -192,6 +593,10 @@ export function loadState(): any {
         });
       }
       
+      if (ensureBakandeyaBandId(state)) {
+        changed = true;
+      }
+
       if (changed) {
         saveState(state);
       }
@@ -203,6 +608,7 @@ export function loadState(): any {
   }
   
   const defaultState = {
+    registeredBands: [BAKANDEYA_REGISTERED_BAND],
     epkConfig: DEFAULT_EPK_CONFIG,
     fans: INITIAL_FANS,
     leads: INITIAL_LEADS,
@@ -229,10 +635,13 @@ export function loadState(): any {
         avatarColor: u.avatarColor,
         passwordHash: hash,
         salt: salt,
-        createdAt: u.createdAt
+        createdAt: u.createdAt,
+        band_id: BAKANDEYA_BAND_ID,
+        bandName: "Bakandeya"
       };
     })
   };
+  ensureBakandeyaBandId(defaultState);
   saveState(defaultState);
   return defaultState;
 }
@@ -245,7 +654,7 @@ export function saveState(state: any) {
   }
 }
 
-export function getUserFromRequestLocal(req: express.Request): { id: string; role: string; username: string } | null {
+export function getUserFromRequestLocal(req: express.Request): { id: string; role: string; username: string; band_id?: string; bandName?: string; email?: string } | null {
   return getUserFromRequest(req, loadState);
 }
 

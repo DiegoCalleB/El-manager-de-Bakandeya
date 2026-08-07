@@ -9,7 +9,16 @@ export const toursController = {
       const state = loadState();
       state.tours = await googleSheetsService.fetchTours(state.tours || []);
       saveState(state);
-      res.json({ tours: state.tours });
+
+      const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+      const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+
+      const allTours = state.tours || [];
+      const filtered = isBakandeyaOrAdmin
+        ? allTours
+        : allTours.filter((t: Tour) => (t as any).band_id === userBandId || (t as any).bandId === userBandId || !(t as any).band_id);
+
+      res.json({ tours: filtered });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Error al obtener giras" });
     }
@@ -18,6 +27,10 @@ export const toursController = {
   async createTour(req: Request, res: Response) {
     try {
       const newTour: Tour = req.body;
+      const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+      if (!(newTour as any).band_id) {
+        (newTour as any).band_id = userBandId;
+      }
       const state = loadState();
       state.tours = state.tours || [];
       state.tours.push(newTour);

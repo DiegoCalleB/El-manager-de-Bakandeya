@@ -1,24 +1,51 @@
 import express from "express";
-import { loadState, saveState, requireAuth } from "../state.js";
+import { loadState, saveState, requireAuth, getEpkConfigForBand, BAKANDEYA_BAND_ID } from "../state.js";
 import { EPKConfig, Fan } from "../../src/types.js";
 import { appendFanToSheet, deleteFanInSheet } from "../sheets.js";
+import { googleSheetsService } from "../services/googleSheets.service.js";
 
 const router = express.Router();
 
 // Get EPK Config (Authenticated)
-router.get("/epk", requireAuth, (req, res) => {
+router.get("/epk", async (req, res) => {
   const state = loadState();
-  res.json(state.epkConfig || {});
+  const user = (req as any).user;
+  const userBandId = user?.band_id || BAKANDEYA_BAND_ID;
+  const userBandName = user?.bandName || user?.name || 'Tu Banda';
+  
+  // Try loading from Google Sheets to ensure sync
+  try {
+    const sheetEpks = await googleSheetsService.fetchEpkConfigs(state.epkConfigsByBand || {});
+    state.epkConfigsByBand = { ...state.epkConfigsByBand, ...sheetEpks };
+  } catch (e) {
+    // Keep local state fallback
+  }
+
+  const epk = getEpkConfigForBand(state, userBandId, userBandName, user?.email);
+  res.json(epk);
 });
 
 // Update EPK Config (Authenticated)
-router.put("/epk", requireAuth, (req, res) => {
+router.put("/epk", requireAuth, async (req, res) => {
   try {
     const updatedConfig: Partial<EPKConfig> = req.body;
     const state = loadState();
-    state.epkConfig = { ...state.epkConfig, ...updatedConfig };
+    const user = (req as any).user;
+    const userBandId = user?.band_id || BAKANDEYA_BAND_ID;
+    const userBandName = user?.bandName || user?.name || 'Tu Banda';
+    const current = getEpkConfigForBand(state, userBandId, userBandName, user?.email);
+    state.epkConfigsByBand[userBandId] = { ...current, ...updatedConfig };
+    if (userBandId === BAKANDEYA_BAND_ID) {
+      state.epkConfig = state.epkConfigsByBand[userBandId];
+    }
     saveState(state);
-    res.json({ success: true, epkConfig: state.epkConfig });
+
+    // Sync to Google Sheets tab 'dossier_epk'
+    googleSheetsService.updateEpk(userBandId, state.epkConfigsByBand[userBandId]).catch(err => {
+      console.warn("Notice syncing EPK config to Google Sheets:", err?.message || err);
+    });
+
+    res.json({ success: true, epkConfig: state.epkConfigsByBand[userBandId] });
   } catch (err: any) {
     console.error("Error updating EPK config:", err);
     res.status(500).json({ error: err?.message || "Error al actualizar la configuración del EPK." });
@@ -28,9 +55,13 @@ router.put("/epk", requireAuth, (req, res) => {
 // Public EPK Data endpoint (No Auth required for public sharing)
 router.get("/public/epk", (req, res) => {
   const state = loadState();
-  const epkConfig = state.epkConfig || {};
-  const songs = state.songs || [];
-  const concerts = state.concerts || [];
+  const reqBandId = (req.query.band_id as string) || (req.query.band as string) || BAKANDEYA_BAND_ID;
+  const epkConfig = getEpkConfigForBand(state, reqBandId);
+  const songs = (state.songs || []).filter((s: any) => s.band_id === reqBandId || (!s.band_id && reqBandId === BAKANDEYA_BAND_ID));
+  const concerts = (state.concerts || []).filter((c: any) => c.band_id === reqBandId || (!c.band_id && reqBandId === BAKANDEYA_BAND_ID));
+
+  const regBand = (state.registeredBands || []).find((b: any) => b.band_id === reqBandId || b.id === reqBandId);
+  const bandName = regBand?.nombre_banda || (reqBandId === BAKANDEYA_BAND_ID ? "Bakandeya" : "Banda");
 
   // Filter 2-3 highlighted songs
   const highlightedSongs = epkConfig.temasDestacadosIds?.length > 0
@@ -42,7 +73,7 @@ router.get("/public/epk", (req, res) => {
   const upcomingConcerts = concerts.filter((c: any) => c.fecha >= today);
 
   res.json({
-    bandName: "Bakandeya",
+    bandName,
     epkConfig,
     highlightedSongs,
     upcomingConcerts: upcomingConcerts.slice(0, 5),
@@ -53,7 +84,15 @@ router.get("/public/epk", (req, res) => {
 // Get Fans List (Authenticated)
 router.get("/fans", requireAuth, (req, res) => {
   const state = loadState();
-  res.json(state.fans || []);
+  const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+  const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+
+  const allFans = state.fans || [];
+  const filtered = isBakandeyaOrAdmin
+    ? allFans
+    : allFans.filter((f: Fan) => (f as any).band_id === userBandId || !(f as any).band_id);
+
+  res.json(filtered);
 });
 
 // Add Fan manually (Authenticated)
@@ -62,6 +101,10 @@ router.post("/fans", requireAuth, async (req, res) => {
     const newFan: Fan = req.body;
     if (!newFan.nombre || !newFan.email) {
       return res.status(400).json({ error: "Nombre y Email son obligatorios" });
+    }
+    const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+    if (!(newFan as any).band_id) {
+      (newFan as any).band_id = userBandId;
     }
     const state = loadState();
     if (!state.fans) state.fans = [];
