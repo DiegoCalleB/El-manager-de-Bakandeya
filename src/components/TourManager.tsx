@@ -214,14 +214,22 @@ export default function TourManager({ colors, tours, concerts, leads = [], onSav
             </button>
           </div>
         ) : (
-          tours.map(tour => {
-            const totalGastos = tour.stops.reduce((sum, s) => sum + (s.gastosAlojamiento || 0) + (s.gastosGasolina || 0) + (s.gastosDietas || 0), 0);
-            const totalIngresos = tour.stops.reduce((sum, s) => sum + (s.ingresoCacheEstimated || 0), 0);
-            const beneficioNeto = totalIngresos - totalGastos;
-            const totalKm = tour.stops.reduce((sum, s) => sum + (s.distanciaAnteriorKm || 0), 0);
+          (() => {
+            const seen = new Set<string>();
+            const uniqueTours = tours.filter((t, index) => {
+              const key = t.id || `tour-${index}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            return uniqueTours.map((tour, index) => {
+              const totalGastos = tour.stops.reduce((sum, s) => sum + (s.gastosAlojamiento || 0) + (s.gastosGasolina || 0) + (s.gastosDietas || 0), 0);
+              const totalIngresos = tour.stops.reduce((sum, s) => sum + (s.ingresoCacheEstimated || 0), 0);
+              const beneficioNeto = totalIngresos - totalGastos;
+              const totalKm = tour.stops.reduce((sum, s) => sum + (s.distanciaAnteriorKm || 0), 0);
 
-            return (
-              <div key={tour.id} className={`p-5 rounded-2xl ${colors.card} border border-white/5 shadow-sm group hover:border-white/10 transition-colors`}>
+              return (
+                <div key={tour.id || `tour-${index}`} className={`p-5 rounded-2xl ${colors.card} border border-white/5 shadow-sm group hover:border-white/10 transition-colors`}>
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="font-bold text-lg font-display">{tour.nombre}</h3>
@@ -294,15 +302,15 @@ export default function TourManager({ colors, tours, concerts, leads = [], onSav
                       tour.stops.slice(0, 4).map((stop, idx) => (
                         <div key={stop.id} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-black/20 border border-white/5">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sky-400 font-mono text-[10px] font-bold">{idx + 1}.</span>
-                            <span className="font-bold truncate text-slate-200">{stop.ciudad || 'Por determinar'}</span>
-                            <span className="text-neutral-400 text-[10px] truncate">({stop.sala || 'Sala tbd'})</span>
+                            <span className="text-sky-400 font-mono text-xs font-bold">{idx + 1}.</span>
+                            <span className="font-bold truncate text-slate-100 text-xs sm:text-sm">{stop.ciudad || 'Por determinar'}</span>
+                            <span className="text-zinc-300 text-xs font-semibold truncate">({stop.sala || 'Sala tbd'})</span>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0 font-mono text-[10px]">
+                          <div className="flex items-center gap-2 shrink-0 font-mono text-xs">
                             {stop.ingresoCacheEstimated ? (
-                              <span className="text-emerald-400 font-semibold">+{stop.ingresoCacheEstimated}€</span>
+                              <span className="text-emerald-400 font-bold">+{stop.ingresoCacheEstimated}€</span>
                             ) : null}
-                            <span className="text-neutral-400">{stop.fecha}</span>
+                            <span className="text-amber-300 font-mono text-xs font-bold">{stop.fecha}</span>
                           </div>
                         </div>
                       ))
@@ -314,7 +322,8 @@ export default function TourManager({ colors, tours, concerts, leads = [], onSav
                 </div>
               </div>
             );
-          })
+          });
+        })()
         )}
       </div>
 

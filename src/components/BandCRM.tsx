@@ -15,6 +15,7 @@ interface BandCRMProps {
  leads?: Lead[];
  onAddLead?: (lead: Lead) => void;
  onUpdateLead?: (id: string, updatedFields: Partial<Lead>) => void;
+ currentBandId?: string;
 }
 
 // Seed initial realistic band data for Bakandeya's co-booking network
@@ -149,13 +150,13 @@ const INITIAL_BANDS: BandContact[] = [
  }
 ];
 
-export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }: BandCRMProps) {
+export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead, currentBandId }: BandCRMProps) {
  // Local state for band contacts with persistence
  const [bands, setBands] = useState<BandContact[]>([]);
  const [isLoading, setIsLoading] = useState(true);
 
  const fetchBands = () => {
-   const token = localStorage.getItem('token');
+   const token = localStorage.getItem('bakandeya_token') || localStorage.getItem('token');
    fetch('/api/bands', {
      headers: {
        'Content-Type': 'application/json',
@@ -181,7 +182,7 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
 
  useEffect(() => {
    fetchBands();
- }, []);
+ }, [currentBandId]);
 
  // Save changes to localStorage whenever bands state updates
  
@@ -244,7 +245,7 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
 
  const fetchRegisteredBands = () => {
    setIsLoadingRegBands(true);
-   const token = localStorage.getItem('token');
+   const token = localStorage.getItem('bakandeya_token') || localStorage.getItem('token');
    fetch('/api/registered-bands', {
      headers: {
        'Content-Type': 'application/json',
@@ -271,8 +272,8 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead }:
  };
 
  useEffect(() => {
- fetchRegisteredBands();
- }, []);
+   fetchRegisteredBands();
+ }, [currentBandId]);
 
  const [searchTerm, setSearchTerm] = useState('');
  const [statusFilter, setStatusFilter] = useState<BandRelationshipStatus | 'todos'>('todos');

@@ -696,7 +696,9 @@ export const INITIAL_REHEARSALS: Rehearsal[] = [
     lugar: 'Locales Rock Palace, Madrid',
     asistentes: ['Jon', 'Filgue', 'R-violin', 'elyar'],
     notas: 'Ensayo general. Importante repasar el setlist de verano y cuadrar las nuevas intros con los loops de Jon y el violín de R-violin. Filgue traerá las nuevas percusiones recicladas.',
-    estado: 'programado'
+    estado: 'programado',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
   },
   {
     id: 'reh-2',
@@ -705,7 +707,9 @@ export const INITIAL_REHEARSALS: Rehearsal[] = [
     lugar: 'Locales El Observatorio, Madrid',
     asistentes: ['Jon', 'Filgue', 'elyar'],
     notas: 'Ensayo seccional de bases rítmicas y percusión reciclada para pulir la transición con el hang pan de elyar en el tema "Ska Brutal".',
-    estado: 'programado'
+    estado: 'programado',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
   },
   {
     id: 'reh-3',
@@ -714,7 +718,31 @@ export const INITIAL_REHEARSALS: Rehearsal[] = [
     lugar: 'Locales Rock Palace, Madrid',
     asistentes: ['Jon', 'Filgue', 'R-violin', 'elyar'],
     notas: 'Ensayo de post-gira de primavera. Se grabaron las maquetas de los tres nuevos temas con loops y violín acústico.',
-    estado: 'completado'
+    estado: 'completado',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
+  },
+  {
+    id: 'reh-4',
+    fecha: '2026-07-18',
+    hora: '11:00 - 13:00',
+    lugar: 'Locales La Drassana, Barcelona',
+    asistentes: ['Marc', 'Pau', 'Laura'],
+    notas: 'Ensayo previo al concierto de noche en Sala Zero. Ajustar metales.',
+    estado: 'programado',
+    band_id: 'band-2',
+    bandName: 'Tarraco Ska Sound'
+  },
+  {
+    id: 'reh-5',
+    fecha: '2026-08-08',
+    hora: '16:00 - 18:30',
+    lugar: 'Bikini Rehearsal Studios, BCN',
+    asistentes: ['Alba', 'Núria', 'Marta'],
+    notas: 'Ensayo general repertorio de metales y brass balkan.',
+    estado: 'programado',
+    band_id: 'band-3',
+    bandName: 'Balkan Paradise Orchestra'
   }
 ];
 
@@ -730,8 +758,26 @@ export const INITIAL_CONCERTS: Concert[] = [
     aforo_total: 35000,
     contrato_firmado: true,
     estado_pago: 'anticipo',
-    notas: 'Recibido el 50% de anticipo (2.250€). El resto se cobra por transferencia a los 15 días del festival. Alojamiento y catering incluidos en zona VIP. Diego viaja el viernes, el resto sale en furgoneta el sábado por la mañana.',
-    tipo: 'festival'
+    notas: 'Recibido el 50% de anticipo (2.250€). El resto se cobra por transferencia a los 15 días del festival. Alojamiento y catering incluidos en zona VIP.',
+    tipo: 'festival',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
+  },
+  {
+    id: 'con-alt-1',
+    fecha: '2026-07-18',
+    ciudad: 'Tarragona',
+    sala: 'Sala Zero (Noche Ska Roots)',
+    direccion: 'Carrer de Sant Magí, 12, 43004 Tarragona',
+    cache: 1200,
+    aforo_vendido: 280,
+    aforo_total: 300,
+    contrato_firmado: true,
+    estado_pago: 'pendiente',
+    notas: 'Concierto co-headliner de Tarraco Ska Sound con entrada vendida casi al 100%.',
+    tipo: 'sala',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
   },
   {
     id: 'con-2',
@@ -744,8 +790,26 @@ export const INITIAL_CONCERTS: Concert[] = [
     aforo_total: 5000,
     contrato_firmado: true,
     estado_pago: 'pendiente',
-    notas: 'Bolo gestionado con el Ayuntamiento. Factura emitida, pendiente de cobro tras la actuación. Escenario y PA a cargo del ayuntamiento. Camerino con cena para 8 personas contratado.',
-    tipo: 'ayuntamiento'
+    notas: 'Bolo gestionado con el Ayuntamiento. Factura emitida, pendiente de cobro tras la actuación.',
+    tipo: 'ayuntamiento',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
+  },
+  {
+    id: 'con-alt-2',
+    fecha: '2026-08-14',
+    ciudad: 'Barcelona',
+    sala: 'Sala Razzmatazz 2 (Ciclo World Music)',
+    direccion: 'Carrer dels Almogàvers, 122, 08018 Barcelona',
+    cache: 2800,
+    aforo_vendido: 750,
+    aforo_total: 800,
+    contrato_firmado: true,
+    estado_pago: 'anticipo',
+    notas: 'Concierto especial de Repercusion.',
+    tipo: 'sala',
+    band_id: 'reg-repercusion',
+    bandName: 'Repercusion'
   },
   {
     id: 'con-3',
@@ -758,8 +822,26 @@ export const INITIAL_CONCERTS: Concert[] = [
     aforo_total: 500,
     contrato_firmado: false,
     estado_pago: 'pendiente',
-    notas: 'Concierto propio de taquilla. Estimamos caché de 2.200€ basado en vender el 90% del aforo a 10€. Alquiler de sala ya descontado (600€). Contrato en revisión por parte de la banda.',
-    tipo: 'sala'
+    notas: 'Concierto propio de taquilla.',
+    tipo: 'sala',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
+  },
+  {
+    id: 'con-alt-3',
+    fecha: '2026-09-12',
+    ciudad: 'Barcelona',
+    sala: 'Sala Apolo 1 (Fiesta Electro-Latin)',
+    direccion: 'Carrer Nou de la Rambla, 113, 08004 Barcelona',
+    cache: 3200,
+    aforo_vendido: 1100,
+    aforo_total: 1200,
+    contrato_firmado: true,
+    estado_pago: 'anticipo',
+    notas: 'Concierto de Bakandeya en Apolo 1.',
+    tipo: 'sala',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
   },
   {
     id: 'con-4',
@@ -772,8 +854,10 @@ export const INITIAL_CONCERTS: Concert[] = [
     aforo_total: 400,
     contrato_firmado: true,
     estado_pago: 'pagado',
-    notas: '¡Llenazo absoluto! Recibidos los 1.800€ netos en cuenta de la banda. El público estuvo increible. Vendimos además 350€ de merchandising (camisetas y vinilos).',
-    tipo: 'sala'
+    notas: 'Llenazo absoluto en Málaga.',
+    tipo: 'sala',
+    band_id: 'band-bakandeya',
+    bandName: 'Bakandeya'
   }
 ];
 

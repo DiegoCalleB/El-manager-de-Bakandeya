@@ -42,6 +42,10 @@ router.put("/rehearsals/:id", requireAuth, async (req, res) => {
 router.post("/rehearsals", requireAuth, async (req, res) => {
   try {
     const newRehearsal: Rehearsal = req.body;
+    const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+    if (!(newRehearsal as any).band_id) {
+      (newRehearsal as any).band_id = userBandId;
+    }
     const state = loadState();
     state.rehearsals.push(newRehearsal);
     saveState(state);
@@ -78,6 +82,10 @@ router.put("/concerts/:id", requireAuth, async (req, res) => {
 router.post("/concerts", requireAuth, async (req, res) => {
   try {
     const newConcert: Concert = req.body;
+    const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+    if (!(newConcert as any).band_id) {
+      (newConcert as any).band_id = userBandId;
+    }
     const state = loadState();
     state.concerts.push(newConcert);
     saveState(state);

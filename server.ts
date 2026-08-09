@@ -29,6 +29,7 @@ import {
   ensureToursSheet,
   ensureRegistroBandasSheet,
   ensureUsuariosSheet,
+  ensureAutonomiaSheet,
   syncAllTabsWithBakandeya
 } from "./server/sheets.js";
 import { loadState, saveState, getEpkConfigForBand } from "./server/state.js";
@@ -149,7 +150,7 @@ app.get("/api/check-sheets", async (req, res) => {
     const sheetsList = meta.data.sheets || [];
     const existingTabs = sheetsList.map((s: any) => s.properties.title);
     
-    const required = ["registro_bandas", "usuarios", "leads", "ensayos", "conciertos", "redes_sociales", "finanzas", "seguidores", "hilos_emails", "logistica_horarios", "logistica_equipo", "canciones", "repertorios", "fans", "bandas", "tours"];
+    const required = ["registro_bandas", "usuarios", "leads", "ensayos", "conciertos", "redes_sociales", "finanzas", "seguidores", "hilos_emails", "logistica_horarios", "logistica_equipo", "canciones", "repertorios", "fans", "bandas", "tours", "dossier_epk", "config_autonomia"];
     const status: Record<string, boolean> = {};
     const created: string[] = [];
 
@@ -159,6 +160,7 @@ app.get("/api/check-sheets", async (req, res) => {
     await ensureToursSheet(sheets, spreadsheetId);
     await ensureRegistroBandasSheet(sheets, spreadsheetId);
     await ensureUsuariosSheet(sheets, spreadsheetId);
+    await ensureAutonomiaSheet(sheets, spreadsheetId);
 
     for (const tab of required) {
       if (existingTabs.includes(tab)) {
@@ -445,7 +447,7 @@ app.get("/api/state", async (req, res) => {
   const user = getUserFromRequest(req, loadState);
   const isLeader = user?.role === "leader";
   const userBandId = user?.band_id || 'band-bakandeya';
-  const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || user?.role === 'admin';
+  const isBakandeya = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya';
 
   const state = loadState();
   try {
@@ -474,61 +476,141 @@ app.get("/api/state", async (req, res) => {
   const rawPayments = isLeader ? (state.payments || []) : [];
   const rawUsers = getSafeUsers(state.users);
 
-  if (isBakandeyaOrAdmin) {
-    res.json({
-      ...state,
-      payments: rawPayments,
-      users: rawUsers
-    });
-  } else {
-    // Filter state for specific non-Bakandeya band
-    const matchBand = (item: any) => item && (item.band_id === userBandId || item.bandId === userBandId);
+  // Strict single-active-band isolation logic for single workspace items
+  const matchBand = (item: any) => {
+    if (!item) return false;
+    const itemBandId = item.band_id || item.bandId;
+    if (itemBandId) {
+      if (itemBandId === userBandId) return true;
+      const cleanItem = itemBandId.replace(/^(band|reg)-/, '');
+      const cleanUser = userBandId.replace(/^(band|reg)-/, '');
+      return cleanItem === cleanUser;
+    }
+    // Legacy items without band_id default to Bakandeya
+    return userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya';
+  };
 
-    const filterObjectLists = (obj: any) => {
-      if (!obj || typeof obj !== 'object') return {};
-      const resObj: any = {};
-      for (const key of Object.keys(obj)) {
-        if (Array.isArray(obj[key])) {
-          const filtered = obj[key].filter(matchBand);
-          if (filtered.length > 0) resObj[key] = filtered;
+  // Build allowed band IDs for this user (for Calendar / Agenda / Tours view across all user's bands)
+  const userAllowedBandIds = new Set<string>();
+  if (userBandId) {
+    userAllowedBandIds.add(userBandId);
+    const cleanId = userBandId.replace(/^(band|reg)-/, '');
+    userAllowedBandIds.add(`band-${cleanId}`);
+    userAllowedBandIds.add(`reg-${cleanId}`);
+  }
+
+  if (user) {
+    (state.userBands || []).forEach((ub: any) => {
+      if (ub.user_id === user.id && ub.band_id) {
+        userAllowedBandIds.add(ub.band_id);
+        const cleanId = ub.band_id.replace(/^(band|reg)-/, '');
+        userAllowedBandIds.add(`band-${cleanId}`);
+        userAllowedBandIds.add(`reg-${cleanId}`);
+      }
+    });
+    const userEmail = (user.email || user.username || '').toLowerCase();
+    (state.registeredBands || []).forEach((b: any) => {
+      if (b.user_id === user.id || (userEmail && b.email?.toLowerCase() === userEmail)) {
+        if (b.band_id) {
+          userAllowedBandIds.add(b.band_id);
+          const cleanId = b.band_id.replace(/^(band|reg)-/, '');
+          userAllowedBandIds.add(`band-${cleanId}`);
+          userAllowedBandIds.add(`reg-${cleanId}`);
+        }
+        if (b.id) {
+          userAllowedBandIds.add(b.id);
+          const cleanId = b.id.replace(/^(band|reg)-/, '');
+          userAllowedBandIds.add(`band-${cleanId}`);
+          userAllowedBandIds.add(`reg-${cleanId}`);
         }
       }
-      return resObj;
-    };
-
-    const userBandName = user?.bandName || user?.name || 'Tu Banda';
-    const userEpkConfig = getEpkConfigForBand(state, userBandId, userBandName, user?.email);
-
-    res.json({
-      ...state,
-      epkConfig: userEpkConfig,
-      leads: (state.leads || []).filter(matchBand),
-      rehearsals: (state.rehearsals || []).filter(matchBand),
-      concerts: (state.concerts || []).filter(matchBand),
-      posts: (state.posts || []).filter(matchBand),
-      payments: rawPayments.filter(matchBand),
-      metrics: (state.metrics || []).filter(matchBand),
-      songs: (state.songs || []).filter(matchBand),
-      setlists: (state.setlists || []).filter(matchBand),
-      bands: (state.bands || []).filter((b: any) => b.band_id === userBandId || b.id === userBandId),
-      tours: (state.tours || []).filter(matchBand),
-      fans: (state.fans || []).filter(matchBand),
-      messages: (state.messages || []).filter(matchBand),
-      runOfShow: filterObjectLists(state.runOfShow),
-      gearChecklists: filterObjectLists(state.gearChecklists),
-      registeredBands: (state.registeredBands || []).filter((b: any) =>
-        b.band_id === userBandId ||
-        b.id === userBandId ||
-        b.id === `reg-${userBandId.replace('band-', '')}` ||
-        (user?.email && b.email?.toLowerCase() === user.email.toLowerCase())
-      ),
-      users: rawUsers.filter((u: any) => u.band_id === userBandId || u.id === user?.id)
+    });
+    (state.users || []).forEach((u: any) => {
+      if ((u.id === user.id || (userEmail && u.email?.toLowerCase() === userEmail)) && u.band_id) {
+        userAllowedBandIds.add(u.band_id);
+        const cleanId = u.band_id.replace(/^(band|reg)-/, '');
+        userAllowedBandIds.add(`band-${cleanId}`);
+        userAllowedBandIds.add(`reg-${cleanId}`);
+      }
     });
   }
+
+  // Multi-band calendar/agenda matching helper (allows events for any band the user is part of)
+  const matchUserBands = (item: any) => {
+    if (!item) return false;
+    const itemBandId = item.band_id || item.bandId;
+    if (itemBandId) {
+      return userAllowedBandIds.has(itemBandId);
+    }
+    return userAllowedBandIds.has('band-bakandeya') || userAllowedBandIds.has('reg-bakandeya');
+  };
+
+  const filterObjectLists = (obj: any, matcher = matchBand) => {
+    if (!obj || typeof obj !== 'object') return {};
+    const resObj: any = {};
+    for (const key of Object.keys(obj)) {
+      if (Array.isArray(obj[key])) {
+        const filtered = obj[key].filter(matcher);
+        if (filtered.length > 0) resObj[key] = filtered;
+      }
+    }
+    return resObj;
+  };
+
+  const userBandName = user?.bandName || user?.name || 'Tu Banda';
+  const userEpkConfig = getEpkConfigForBand(state, userBandId, userBandName, user?.email);
+
+  const bandUserIds = new Set(
+    (state.userBands || []).filter((ub: any) => ub.band_id === userBandId).map((ub: any) => ub.user_id)
+  );
+  const filteredUsers = rawUsers.filter((u: any) => u.band_id === userBandId || bandUserIds.has(u.id) || u.id === user?.id);
+
+  const uniqueById = (list: any[] = []) => {
+    const seen = new Set<string>();
+    return list.filter(item => {
+      if (!item) return false;
+      const id = item.id || item.code || item.key;
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  };
+
+  res.json({
+    ...state,
+    epkConfig: userEpkConfig,
+    leads: uniqueById((state.leads || []).filter(matchBand)),
+    rehearsals: uniqueById((state.rehearsals || []).filter(matchUserBands)),
+    concerts: uniqueById((state.concerts || []).filter(matchUserBands)),
+    posts: uniqueById((state.posts || []).filter(matchBand)),
+    payments: uniqueById(rawPayments.filter(matchBand)),
+    metrics: uniqueById((state.metrics || []).filter(matchBand)),
+    songs: uniqueById((state.songs || []).filter(matchBand)),
+    setlists: uniqueById((state.setlists || []).filter(matchBand)),
+    bands: uniqueById((state.bands || []).filter(matchBand)),
+    tours: uniqueById((state.tours || []).filter(matchBand)),
+    fans: uniqueById((state.fans || []).filter(matchBand)),
+    messages: uniqueById((state.messages || []).filter(matchBand)),
+    runOfShow: filterObjectLists(state.runOfShow, matchUserBands),
+    gearChecklists: filterObjectLists(state.gearChecklists, matchUserBands),
+    registeredBands: (state.registeredBands || []).filter((b: any) =>
+      b.band_id === userBandId ||
+      b.id === userBandId ||
+      b.id === `reg-${userBandId.replace('band-', '')}` ||
+      (user?.email && b.email?.toLowerCase() === user.email.toLowerCase())
+    ),
+    users: filteredUsers
+  });
 });
 
 // Static clip serving
 app.use("/clips", express.static(path.join(process.cwd(), "public", "clips")));
+
+// 404 catch-all for API endpoints to prevent returning index.html for missing routes
+app.use("/api/*", (req, res) => {
+  res.status(404).json({ error: `Ruta de API no encontrada: ${req.method} ${req.originalUrl}` });
+});
 
 // Vite middleware integration for full-stack SPA
 async function startServer() {

@@ -14,9 +14,19 @@ export class ApiError extends Error {
 
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('bakandeya_token');
+  let activeBandId = '';
+  try {
+    const userStr = localStorage.getItem('bakandeya_user');
+    if (userStr) {
+      const u = JSON.parse(userStr);
+      if (u?.band_id) activeBandId = u.band_id;
+    }
+  } catch (e) {}
+
   return {
     'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(activeBandId ? { 'x-band-id': activeBandId } : {})
   };
 }
 
@@ -49,7 +59,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   // Handle empty body responses (e.g., 204 No Content)
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
-    return response.json() as Promise<T>;
+    return response.json().catch(() => ({} as T)) as Promise<T>;
   }
 
   return {} as T;
@@ -92,7 +102,7 @@ export const api = {
 
   // EPK
   async updateEpkConfig(newConfig: Partial<EPKConfig>): Promise<EPKConfig> {
-    return request('/api/epk-config', {
+    return request('/api/epk', {
       method: 'PUT',
       body: JSON.stringify(newConfig)
     });
@@ -102,6 +112,18 @@ export const api = {
     return request('/api/epk', {
       method: 'PUT',
       body: JSON.stringify({ incentivoFans })
+    });
+  },
+
+  // Autonomy
+  async getAutonomyConfig(): Promise<any> {
+    return request('/api/autonomy');
+  },
+
+  async updateAutonomyConfig(config: any): Promise<any> {
+    return request('/api/autonomy', {
+      method: 'POST',
+      body: JSON.stringify(config)
     });
   },
 

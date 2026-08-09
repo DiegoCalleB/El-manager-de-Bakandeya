@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Message as MessageType, Lead, Rehearsal, Concert, ThemeColors } from '../types';
-import { Send, Bot, Guitar, User, Sparkles, RefreshCw, AlertCircle, CheckCircle, HelpCircle, Calendar, ShieldAlert, X, Activity, ExternalLink, Terminal, Clock, Copy, Key } from 'lucide-react';
+import { api } from '../services/api';
+import { Message as MessageType, Lead, Rehearsal, Concert, ThemeColors, User as UserType } from '../types';
+import { Send, Bot, Guitar, User, Sparkles, RefreshCw, AlertCircle, CheckCircle, HelpCircle, Calendar, ShieldAlert, X, Activity, ExternalLink, Terminal, Clock, Copy, Key, Sliders } from 'lucide-react';
 
 interface ProposedAction {
  type: 'propose_lead_approval' | 'propose_rehearsal' | 'propose_status_change' | 'propose_agent_trigger' | 'propose_concert' | 'propose_add_concert' | 'propose_band' | 'propose_tour' | 'propose_update_logo';
@@ -31,6 +32,7 @@ interface ChatMessage {
 }
 
 interface ChatbotProps {
+ key?: string;
  colors: ThemeColors;
  leads: Lead[];
  rehearsals: Rehearsal[];
@@ -41,42 +43,97 @@ interface ChatbotProps {
  isFloating?: boolean;
  onClose?: () => void;
  userRole?: string;
+ currentUser?: UserType | null;
+ activeBandName?: string;
  onLoadingChange?: (isLoading: boolean) => void;
 }
 
-export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateLead, onAddRehearsal, onAddConcert, isFloating, onClose, userRole, onLoadingChange }: ChatbotProps) {
- const [messages, setMessages] = useState<ChatMessage[]>(() => {
- const saved = localStorage.getItem('bakandeya_chat_messages');
- if (saved) {
- try {
- const parsed = JSON.parse(saved);
- if (Array.isArray(parsed) && parsed.length > 0) {
- return parsed.map((m: any) => ({
- ...m,
- timestamp: m.timestamp ? new Date(m.timestamp) : new Date()
- }));
- }
- } catch (e) {
- console.error("Error al cargar historial del chat:", e);
- }
- }
- return [
- {
- id: 'welcome-1',
- sender: 'bot',
- text: '👋 **¡Buenas, Jon/Filgue/R-violin/elyar!** Soy vuestro **Manager Virtual de Bakandeya**.\n\nEstoy conectado en tiempo real con vuestra hoja de datos de Google Sheets (salas), el calendario de ensayos de banda, la contabilidad y la logística de redes.\n\nPuedes preguntarme cosas como:\n- *¿Qué salas tengo pendientes de aprobación en Madrid o Granada?*\n- *Resúmeme el estado de la semana o hazme una lista de tareas para hoy.*\n- *¿Cuántas salas de Ska, Reggae o Fusión tenemos registradas?*\n\nSi necesitas, puedo **proponer cambios directos** en las salas (como aprobar un correo de contacto) o agendar ensayos, pidiéndote confirmación antes de actuar.',
- timestamp: new Date()
- }
- ];
- });
+export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateLead, onAddRehearsal, onAddConcert, isFloating, onClose, userRole, currentUser, activeBandName, onLoadingChange }: ChatbotProps) {
+  const bandDisplayName = activeBandName || currentUser?.bandName || 'vuestra banda';
+  const cleanUserName = (() => {
+    const rawName = currentUser?.name || currentUser?.username || '';
+    if (!rawName) return 'equipo';
+    
+    const lowerRaw = rawName.toLowerCase().replace(/^(band|reg)-/, '').trim();
+    const lowerBandDisplay = bandDisplayName.toLowerCase().replace(/^(band|reg)-/, '').trim();
+    
+    if (
+      lowerRaw === lowerBandDisplay ||
+      ['repercusion', 'bakandeya', 'admin', 'user', 'guest', 'leader', 'member', 'banda', 'equipo'].includes(lowerRaw) ||
+      lowerRaw.startsWith('band-') ||
+      lowerRaw.startsWith('reg-')
+    ) {
+      return 'equipo';
+    }
+    const firstName = rawName.split(' ')[0].trim();
+    return firstName || 'equipo';
+  })();
 
- useEffect(() => {
- try {
- localStorage.setItem('bakandeya_chat_messages', JSON.stringify(messages));
- } catch (e) {
- console.error("Error al guardar historial del chat:", e);
- }
- }, [messages]);
+  const storageKey = `bakandeya_chat_messages_${currentUser?.id || 'guest'}_${currentUser?.band_id || 'default'}`;
+
+  const getWelcomeMessageText = (name: string, band: string) => {
+    return `👋 **¡Buenas, ${name}!** Soy vuestro **Manager Virtual de ${band}**.\n\nEstoy conectado en tiempo real con vuestra hoja de datos de Google Sheets (salas), el calendario de ensayos de banda, la contabilidad y la logística de redes.\n\nPuedes preguntarme cosas como:\n- *¿Qué salas tengo pendientes de aprobación en Madrid o Granada?*\n- *Resúmeme el estado de la semana o hazme una lista de tareas para hoy.*\n- *¿Cuántas salas de Ska, Reggae o Fusión tenemos registradas?*\n\nSi necesitas, puedo **proponer cambios directos** en las salas (como aprobar un correo de contacto) o agendar ensayos, pidiéndote confirmación antes de actuar.`;
+  };
+
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((m: any) => ({
+            ...m,
+            timestamp: m.timestamp ? new Date(m.timestamp) : new Date()
+          }));
+        }
+      } catch (e) {
+        console.error("Error al cargar historial del chat:", e);
+      }
+    }
+    return [
+      {
+        id: 'welcome-1',
+        sender: 'bot',
+        text: getWelcomeMessageText(cleanUserName, bandDisplayName),
+        timestamp: new Date()
+      }
+    ];
+  });
+
+  // Re-sync messages when storageKey or active band changes
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed.map((m: any) => ({
+            ...m,
+            timestamp: m.timestamp ? new Date(m.timestamp) : new Date()
+          })));
+          return;
+        }
+      } catch (e) {
+        console.error("Error re-loading chat for band:", e);
+      }
+    }
+    setMessages([
+      {
+        id: `welcome-${Date.now()}`,
+        sender: 'bot',
+        text: getWelcomeMessageText(cleanUserName, bandDisplayName),
+        timestamp: new Date()
+      }
+    ]);
+  }, [storageKey, bandDisplayName]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(messages));
+    } catch (e) {
+      console.error("Error al guardar historial del chat:", e);
+    }
+  }, [messages, storageKey]);
  const [inputText, setInputText] = useState('');
  const [isLoading, setIsLoading] = useState(false);
 
@@ -95,6 +152,54 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  useEffect(() => {
  localStorage.setItem('bakandeya_agents_enabled', String(agentsEnabled));
  }, [agentsEnabled]);
+
+ const [autonomyConfig, setAutonomyConfig] = useState(() => {
+ try {
+ const saved = localStorage.getItem('bakandeya_agent_autonomy');
+ if (saved) return JSON.parse(saved);
+ } catch (e) {
+ console.error(e);
+ }
+ return {
+ dispatchLevel: 'draft_only',
+ negotiationDepth: 'filter_conditions',
+ minCacheThreshold: 300,
+ maxCacheThreshold: 800,
+ autoDeclineUnderMinCache: false,
+ notifyOnEveryProposal: true,
+ requireHumanForFinalSignOff: true
+ };
+ });
+
+ useEffect(() => {
+ const handleAutonomyChange = () => {
+ try {
+ const saved = localStorage.getItem('bakandeya_agent_autonomy');
+ if (saved) setAutonomyConfig(JSON.parse(saved));
+ } catch (e) {
+ console.error(e);
+ }
+ };
+ window.addEventListener('autonomy-settings-changed', handleAutonomyChange);
+ return () => window.removeEventListener('autonomy-settings-changed', handleAutonomyChange);
+ }, []);
+
+ useEffect(() => {
+   let isMounted = true;
+   api.getAutonomyConfig()
+     .then((cfg) => {
+       if (isMounted && cfg && cfg.dispatchLevel) {
+         setAutonomyConfig(cfg);
+         try {
+           localStorage.setItem('bakandeya_agent_autonomy', JSON.stringify(cfg));
+         } catch (e) {}
+       }
+     })
+     .catch((e) => {
+       console.warn("Notice fetching initial autonomy config for chat:", e);
+     });
+   return () => { isMounted = false; };
+ }, []);
 
  useEffect(() => {
  if (textareaRef.current) {
@@ -344,18 +449,22 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
 
  try {
  const token = localStorage.getItem('bakandeya_token');
+ const activeBandId = currentUser?.band_id || '';
  const response = await fetch('/api/chat', {
  method: 'POST',
  headers: { 
  'Content-Type': 'application/json',
  'Authorization': token ? `Bearer ${token}` : '',
- 'x-user-role': userRole || ''
+ 'x-user-role': userRole || '',
+ 'x-band-id': activeBandId
  },
  body: JSON.stringify({
  message: userMsgText,
  chatHistory: messages.slice(-8).map(m => ({ sender: m.sender, text: m.text })),
  userRole: userRole || 'member',
- agentsEnabled: agentsEnabled
+ agentsEnabled: agentsEnabled,
+ band_id: activeBandId,
+ autonomyConfig
  })
  });
 
@@ -476,11 +585,13 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  
  try {
  const token = localStorage.getItem('bakandeya_token');
+ const activeBandId = currentUser?.band_id || '';
  fetch('/api/bands', {
  method: 'POST',
  headers: {
  'Content-Type': 'application/json',
- ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+ ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+ ...(activeBandId ? { 'x-band-id': activeBandId } : {})
  },
  body: JSON.stringify(bandData)
  });
@@ -709,7 +820,10 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  headers: customHeaders,
  body: JSON.stringify({
  agentName: action.agentName,
- params: action.params
+ params: {
+ ...(action.params || {}),
+ autonomyConfig
+ }
  })
  });
 
@@ -832,11 +946,25 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  <h4 className={`text-xs font-display font-medium tracking-widest flex items-center gap-1.5 uppercase ${isStitchLight ? 'text-slate-800' : 'text-neutral-100'}`}>
  Mánager Virtual AI <span className={`w-1.5 h-1.5 rounded-full inline-block animate-pulse ${isStitchLight ? 'bg-indigo-600 shadow-[0_0_8px_rgba(79,70,229,0.8)]' : 'bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]'}`} />
  </h4>
- <span className="text-[9px] font-mono text-neutral-500">SYSTEM CORES ACTIVE // SHEETS INTEGRATION</span>
+ <span className="text-[9px] font-mono text-neutral-500">{bandDisplayName.toUpperCase()} // SHEETS INTEGRATION</span>
  </div>
  </div>
 
  <div className="flex items-center gap-3">
+ <div 
+ className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border font-semibold ${
+ isStitchLight 
+ ? 'bg-purple-50 text-purple-700 border-purple-200' 
+ : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+ }`}
+ title="Límites de autonomía y negociación configurados para el mánager y agentes AI"
+ >
+ <Sliders className="w-3 h-3 text-purple-400" />
+ <span>
+ Autonomía: {autonomyConfig.dispatchLevel === 'draft_only' ? 'Borrador' : autonomyConfig.dispatchLevel === 'scheduled_window' ? 'Ventana 3h' : 'Auto 1er Contacto'} • Min {autonomyConfig.minCacheThreshold || 300}€
+ </span>
+ </div>
+
  <button
  id="clear-chat-btn"
  onClick={() => {
@@ -844,13 +972,13 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  {
  id: 'welcome-1',
  sender: 'bot',
- text: '👋 **¡Buenas, equipo de Bakandeya!** He limpiado el hilo del chat.\n\n¿En qué os puedo ayudar para organizar los conciertos de la banda, el calendario de redes o revisar los correos para las salas hoy?',
+ text: `👋 **¡Buenas, ${cleanUserName}!** He limpiado el hilo del chat de **${bandDisplayName}**.\n\n¿En qué os puedo ayudar para organizar los conciertos de la banda, el calendario de redes o revisar los correos para las salas hoy?`,
  timestamp: new Date()
  }
  ];
  setMessages(resetMessages);
  try {
- localStorage.setItem('bakandeya_chat_messages', JSON.stringify(resetMessages));
+ localStorage.setItem(storageKey, JSON.stringify(resetMessages));
  } catch (e) {
  console.error(e);
  }

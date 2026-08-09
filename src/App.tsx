@@ -24,11 +24,12 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FontSelectorModal } from './components/FontSelectorModal';
 import { MetronomeModal } from './components/MetronomeModal';
+import { BandSwitcherModal } from './components/BandSwitcherModal';
 import { FontPresetKey, applyFontPreset, getStoredFontPreset } from './utils/typography';
 import { 
   Menu, Music, Sparkles, LogOut, ShieldAlert, Users, Shield, UserCheck,
   Table, FileCheck, CheckSquare, MessageSquareCode, RefreshCw, Clock,
-  Settings, Key, Github, X, CalendarRange, Bot, Guitar, Flame, Video, FileSpreadsheet, Coins, Disc3, Radio, Building2, Type, Truck, BookOpen, Heart
+  Settings, Key, Github, X, CalendarRange, Bot, Guitar, Flame, Video, FileSpreadsheet, Coins, Disc3, Radio, Building2, Type, Truck, BookOpen, Heart, ChevronDown
 } from 'lucide-react';
 
 export default function App() {
@@ -121,6 +122,7 @@ export default function App() {
   const [isFloatingChatOpen, setIsFloatingChatOpen] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [showMetronomeModal, setShowMetronomeModal] = useState(false);
+  const [showBandSwitcherModal, setShowBandSwitcherModal] = useState(false);
 
   // Redirect non-admins away from finanzas if they end up there
   useEffect(() => {
@@ -205,6 +207,42 @@ export default function App() {
  alert('¡Configuración de GitHub guardada con éxito! Ahora el chatbot y los disparadores usarán estas credenciales de forma segura.');
  };
 
+  const currentActiveBandId = currentUser?.band_id || 'band-bakandeya';
+  const cleanActiveBandId = currentActiveBandId.replace(/^(band|reg)-/, '');
+  const currentActiveBandName = currentUser?.bandName || currentUser?.name || 'BAKANDEYA';
+  const currentActiveBandLogo = (epkConfig?.logoUrl && epkConfig.logoUrl.trim().length > 0)
+    ? epkConfig.logoUrl
+    : ((currentUser as any)?.logoUrl || (currentUser as any)?.logo_url || (currentUser as any)?.imagen_url ||
+       (cleanActiveBandId === 'bakandeya' ? '/logo_bakandeya_bueno_sin_fondo.png' : ''));
+
+  const isSameBand = (id1?: string, id2?: string, name1?: string, name2?: string) => {
+    if (name1 && name2 && name1.trim().toLowerCase() === name2.trim().toLowerCase()) {
+      return true;
+    }
+    if (!id1 && !id2) return true;
+    if (!id1 || !id2) return false;
+    if (id1 === id2) return true;
+    const clean1 = id1.replace(/^(band|reg)-/, "").replace(/-\d+$/, "").trim().toLowerCase();
+    const clean2 = id2.replace(/^(band|reg)-/, "").replace(/-\d+$/, "").trim().toLowerCase();
+    if (clean1 === clean2) return true;
+    if (clean1 && clean2 && (clean1.includes(clean2) || clean2.includes(clean1))) return true;
+    return false;
+  };
+
+  const activeBandConcerts = React.useMemo(() => {
+    return concerts.filter(c => {
+      if (!c.band_id && !c.bandName) return isSameBand(currentActiveBandId, "band-bakandeya", "", currentActiveBandName);
+      return isSameBand(c.band_id, currentActiveBandId, c.bandName, currentActiveBandName);
+    });
+  }, [concerts, currentActiveBandId, currentActiveBandName]);
+
+  const activeBandRehearsals = React.useMemo(() => {
+    return rehearsals.filter(r => {
+      if (!r.band_id && !r.bandName) return isSameBand(currentActiveBandId, "band-bakandeya", "", currentActiveBandName);
+      return isSameBand(r.band_id, currentActiveBandId, r.bandName, currentActiveBandName);
+    });
+  }, [rehearsals, currentActiveBandId, currentActiveBandName]);
+
  // Fans Landing Route
  if (window.location.pathname !== '/' && window.location.pathname !== '') {
  return <FansLanding />;
@@ -220,11 +258,6 @@ export default function App() {
  );
  }
 
-  const currentActiveBandName = currentUser?.bandName || currentUser?.name || 'BAKANDEYA';
-  const currentActiveBandLogo = (currentUser?.band_id === 'band-bakandeya' || currentUser?.band_id === 'reg-bakandeya')
-    ? '/logo_bakandeya_bueno_sin_fondo.png'
-    : (epkConfig?.logoUrl || '');
-
  return (
  <div 
  className={`min-h-screen ${colors.bg} flex flex-col md:flex-row transition-colors duration-500 font-sans w-full max-w-[100vw] overflow-clip`}
@@ -234,28 +267,40 @@ export default function App() {
  <header className="md:hidden flex flex-col bg-[#121110] border-[#22211F] sticky top-0 z-30 shrink-0">
  {/* Top Brand & Menu Row */}
  <div className="flex items-center justify-between px-4 pt-3 pb-2">
- <div className="flex items-center gap-3">
- {currentActiveBandLogo ? (
- <img 
- src={currentActiveBandLogo} 
- alt="Logo" 
- className="w-12 h-12 object-contain p-1 bg-neutral-950/90 rounded-xl border border-amber-500/50 shadow-md shrink-0"
- referrerPolicy="no-referrer"
- />
- ) : (
- <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
- {currentActiveBandName[0]?.toUpperCase() || 'B'}
- </div>
- )}
- <div className="flex flex-col">
- <div className="flex items-center gap-2">
- <h1 className="text-sm font-bold font-display tracking-wider uppercase text-zinc-100 leading-none">
- {currentActiveBandName}
- </h1>
- <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncStatus === 'synced' ? 'bg-emerald-400/20' : syncStatus === 'error' ? 'bg-rose-500' : 'bg-zinc-400 animate-pulse'}`} />
- </div>
- <span className="text-[10px] text-[#9a9591] font-sans mt-0.5">Banda activa</span>
- </div>
+ <div 
+  onClick={() => setShowBandSwitcherModal(true)}
+  className="flex items-center gap-3 cursor-pointer group active:scale-95 transition-all p-1 -ml-1 rounded-xl hover:bg-neutral-900/60"
+  title="Toca para cambiar de banda (Estilo Netflix)"
+ >
+  <div className="relative shrink-0">
+   {currentActiveBandLogo ? (
+    <img 
+     src={currentActiveBandLogo} 
+     alt="Logo" 
+     className="w-12 h-12 object-contain p-1 bg-neutral-950/90 rounded-xl border border-amber-500/50 shadow-md shrink-0 group-hover:border-amber-400"
+     referrerPolicy="no-referrer"
+    />
+   ) : (
+    <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
+     {currentActiveBandName[0]?.toUpperCase() || 'B'}
+    </div>
+   )}
+   {/* Dropdown Chevron Badge Indicator on Logo */}
+   <div className="absolute -bottom-1 -right-1 bg-amber-500 text-black rounded-full p-0.5 border border-black shadow-md flex items-center justify-center group-hover:scale-110 transition-transform">
+    <ChevronDown className="w-3 h-3 stroke-[3]" />
+   </div>
+  </div>
+
+  <div className="flex flex-col">
+   <div className="flex items-center gap-1.5">
+    <h1 className="text-sm font-bold font-display tracking-wider uppercase text-zinc-100 group-hover:text-amber-400 transition-colors leading-none">
+     {currentActiveBandName}
+    </h1>
+    <ChevronDown className="w-3.5 h-3.5 text-amber-400 group-hover:translate-y-0.5 transition-transform" />
+    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncStatus === 'synced' ? 'bg-emerald-400/20' : syncStatus === 'error' ? 'bg-rose-500' : 'bg-zinc-400 animate-pulse'}`} />
+   </div>
+   <span className="text-[10px] text-amber-400/90 font-mono mt-0.5 font-bold">Cambiar de banda ▾</span>
+  </div>
  </div>
  <button
  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -284,9 +329,11 @@ export default function App() {
  { id: 'booking', label: 'Booking', icon: Building2, badge: leads.filter(l => !isMedio(l) && !isBanda(l)).length },
  { id: 'medios', label: 'Medios', icon: Radio, badge: leads.filter(l => isMedio(l)).length },
  { id: 'calendario', label: 'Calendario', icon: CalendarRange, badge: (() => {
- const today = new Date().toISOString().split('T')[0];
- return [...concerts, ...rehearsals].filter(e => (e as any).fecha >= today).length;
- })() },
+    const totalEvents = concerts.length + rehearsals.length;
+    const activeEvents = activeBandConcerts.length + activeBandRehearsals.length;
+    if (totalEvents === 0) return 0;
+    return `${activeEvents}/${totalEvents}`;
+  })() },
  { id: 'bandas', label: 'Bandas', icon: Users },
  { id: 'giras', label: 'Giras', icon: Truck },
  { id: 'epk', label: 'Dossier (EPK)', icon: BookOpen },
@@ -311,7 +358,7 @@ export default function App() {
  >
  <IconComp className="w-4 h-4 md:w-3.5 md:h-3.5 shrink-0" />
  <span>{item.label}</span>
- {item.badge !== undefined && item.badge > 0 && (
+ {item.badge !== undefined && item.badge !== 0 && item.badge !== "0" && (
  <span className={`text-xs md:text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
  isSelected ? 'bg-zinc-700 text-zinc-300' : 'bg-[#2b2927] text-zinc-400'
  }`}>
@@ -386,9 +433,11 @@ export default function App() {
  { id: 'medios', label: 'Medios y Prensa', icon: Radio, badge: leads.filter(l => isMedio(l)).length },
  { id: 'bandas', label: 'Bandas Amigas', icon: Users },
  { id: 'calendario', label: 'Calendario', icon: CalendarRange, badge: (() => {
- const today = new Date().toISOString().split('T')[0];
- return [...concerts, ...rehearsals].filter(e => (e as any).fecha >= today).length;
- })() },
+    const totalEvents = concerts.length + rehearsals.length;
+    const activeEvents = activeBandConcerts.length + activeBandRehearsals.length;
+    if (totalEvents === 0) return 0;
+    return `${activeEvents}/${totalEvents}`;
+  })() },
  { id: 'giras', label: 'Tour Manager', icon: Truck },
  { id: 'epk', label: 'Dossier (EPK)', icon: BookOpen },
  { id: 'fans', label: 'Base de Fans', icon: Heart },
@@ -450,40 +499,26 @@ export default function App() {
     </div>
    </div>
 
-   {/* Band Switcher Dropdown */}
-   {availableBands && availableBands.length > 1 && (
-    <div className="mt-2 pt-2 border-t border-[#22211F]/60 flex flex-col gap-1">
-     <label className="text-[9px] font-mono uppercase tracking-wider text-[#9a9591]">
-      Mis Bandas
-     </label>
-     <div className="relative">
-      <select
-       value={currentUser.band_id}
-       onChange={async (e) => {
-        const selectedBandId = e.target.value;
-        if (selectedBandId && selectedBandId !== currentUser.band_id) {
-         try {
-          await handleSwitchBand(selectedBandId);
-          setIsMobileMenuOpen(false);
-         } catch (err) {
-          console.error("Error switching band:", err);
-         }
-        }
-       }}
-       className="w-full bg-[#121110] text-zinc-300 text-xs px-2.5 py-1.5 rounded-lg border border-[#333130] focus:border-amber-500/50 focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
-      >
-       {availableBands.map((b) => (
-        <option key={`mob-switch-band-${b.band_id}`} value={b.band_id}>
-         {b.bandName}
-        </option>
-       ))}
-      </select>
-      <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-[#9a9591]">
-       <RefreshCw className="w-3 h-3 animate-pulse" />
-      </div>
+   {/* Band Switcher Button (Netflix Style) */}
+   <div className="mt-2 pt-2 border-t border-[#22211F]/60 flex flex-col gap-1">
+    <button
+     onClick={() => {
+       setShowBandSwitcherModal(true);
+       setIsMobileMenuOpen(false);
+     }}
+     className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 via-[#1e1d1b] to-[#141312] border border-amber-500/40 hover:border-amber-400 text-amber-300 transition-all cursor-pointer group active:scale-95 shadow-xs"
+    >
+     <div className="flex items-center gap-2">
+      <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
+      <span className="text-xs font-bold uppercase tracking-wider font-display text-zinc-100">
+       Cambiar de Banda
+      </span>
      </div>
-    </div>
-   )}
+     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+      Netflix Style ▾
+     </span>
+    </button>
+   </div>
   </div>
  )}
  <div className="flex items-center justify-between px-2">
@@ -515,32 +550,55 @@ export default function App() {
 
  <aside className="hidden md:flex w-[240px] shrink-0 bg-[#121110] border-[#22211F] flex-col h-screen sticky top-0 overflow-y-auto">
  
- {/* Brand Header */}
- <div className="p-6 flex flex-col gap-4 items-center text-center border-[#22211F]/50 bg-gradient-to-b from-[#1A1918] to-[#121110]">
- {currentActiveBandLogo ? (
- <img 
- src={currentActiveBandLogo} 
- alt="Logo" 
- className="w-40 h-40 xl:w-48 xl:h-48 object-cover rounded-2xl shadow-xl shadow-black/50 border-[#333130] shrink-0"
- referrerPolicy="no-referrer"
- />
- ) : (
- <div className="w-40 h-40 xl:w-48 xl:h-48 rounded-2xl shadow-xl shadow-black/50 border-[#333130] bg-[#1A1918] flex flex-col items-center justify-center text-amber-400 gap-2 p-4 shrink-0">
- <Guitar className="w-16 h-16 opacity-80" />
- <span className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-widest text-center">
- {currentActiveBandName}
- </span>
- </div>
- )}
- <div className="flex flex-col items-center">
- <h1 className="text-[22px] font-black font-display tracking-widest uppercase text-zinc-100 leading-none">
- {currentActiveBandName}
- </h1>
- <div className="flex items-center justify-center gap-2 mt-3 bg-[#1A1918] px-3 py-1.5 rounded-full border-[#333130] shadow-inner">
- <span className={`w-2 h-2 rounded-full shrink-0 shadow-[0_0_8px_currentColor] ${syncStatus === 'synced' ? 'bg-emerald-400/20 text-[#73c991]/20' : syncStatus === 'error' ? 'bg-rose-500/15 text-rose-400' : 'bg-zinc-400 text-zinc-400 animate-pulse'}`} />
- <span className="text-[10px] font-sans text-[#9a9591] uppercase tracking-wider font-bold">Banda activa</span>
- </div>
- </div>
+ {/* Brand Header (Clickable Netflix Style Switcher) */}
+ <div 
+  onClick={() => setShowBandSwitcherModal(true)}
+  className="p-5 flex flex-col gap-3 items-center text-center border-b border-[#22211F]/60 bg-gradient-to-b from-[#1c1a18] to-[#121110] cursor-pointer group transition-all duration-300 hover:bg-[#181716] relative"
+  title="Haz clic para cambiar de banda (Estilo Netflix)"
+ >
+  <div className="relative group/logo">
+  {currentActiveBandLogo ? (
+  <img 
+  src={currentActiveBandLogo} 
+  alt="Logo" 
+  className="w-36 h-36 xl:w-44 xl:h-44 object-contain p-2 bg-neutral-950/80 rounded-2xl shadow-xl shadow-black/60 border border-[#333130] group-hover:border-amber-400/90 group-hover:scale-105 transition-all duration-300 shrink-0"
+  referrerPolicy="no-referrer"
+  />
+  ) : (
+  <div className="w-36 h-36 xl:w-44 xl:h-44 rounded-2xl shadow-xl shadow-black/50 border border-[#333130] group-hover:border-amber-400 bg-[#1A1918] flex flex-col items-center justify-center text-amber-400 gap-2 p-4 shrink-0 group-hover:scale-105 transition-all duration-300">
+  <Guitar className="w-14 h-14 opacity-80 group-hover:scale-110 transition-transform" />
+  <span className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-widest text-center">
+  {currentActiveBandName}
+  </span>
+  </div>
+  )}
+  {/* Corner Dropdown Indicator Badge on Logo */}
+  <div className="absolute -bottom-1 -right-1 bg-amber-500 text-black px-2 py-0.5 rounded-lg border-2 border-[#121110] shadow-lg flex items-center gap-1 font-mono font-black text-[9px] uppercase tracking-wider group-hover:scale-110 transition-transform z-10">
+   <span>Cambiar</span>
+   <ChevronDown className="w-3 h-3 stroke-[3]" />
+  </div>
+
+  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 backdrop-blur-[1px] rounded-2xl flex items-center justify-center transition-opacity duration-200">
+  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-black bg-amber-400 px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1">
+    <RefreshCw className="w-3 h-3 animate-spin" /> Cambiar
+  </span>
+  </div>
+  </div>
+
+  <div className="flex flex-col items-center w-full">
+  <div className="flex items-center justify-center gap-1.5 w-full">
+   <h1 className="text-xl xl:text-2xl font-black font-display tracking-wider uppercase text-zinc-100 group-hover:text-amber-400 transition-colors leading-none line-clamp-1">
+   {currentActiveBandName}
+   </h1>
+   <ChevronDown className="w-5 h-5 text-amber-400 group-hover:translate-y-0.5 transition-transform shrink-0" />
+  </div>
+  <div className="flex items-center justify-center gap-1.5 mt-2 bg-[#1A1918] group-hover:bg-amber-500/10 px-3 py-1 rounded-full border border-[#333130] group-hover:border-amber-500/40 shadow-inner transition-colors">
+  <Sparkles className="w-3 h-3 text-amber-400" />
+  <span className="text-[10px] font-mono text-amber-300 group-hover:text-amber-200 uppercase tracking-wider font-bold">
+    Cambiar Banda ▾
+  </span>
+  </div>
+  </div>
  </div>
 
  {/* Metronome Pro Quick Launcher */}
@@ -585,9 +643,11 @@ export default function App() {
  { id: 'medios', label: 'Medios y Prensa', icon: Radio, badge: leads.filter(l => isMedio(l)).length },
  { id: 'bandas', label: 'Bandas Amigas', icon: Users },
  { id: 'calendario', label: 'Calendario', icon: CalendarRange, badge: (() => {
- const today = new Date().toISOString().split('T')[0];
- return [...concerts, ...rehearsals].filter(e => (e as any).fecha >= today).length;
- })() },
+    const totalEvents = concerts.length + rehearsals.length;
+    const activeEvents = activeBandConcerts.length + activeBandRehearsals.length;
+    if (totalEvents === 0) return 0;
+    return `${activeEvents}/${totalEvents}`;
+  })() },
  { id: 'giras', label: 'Tour Manager', icon: Truck },
  { id: 'epk', label: 'Dossier (EPK)', icon: BookOpen },
  { id: 'fans', label: 'Base de Fans', icon: Heart },
@@ -651,39 +711,23 @@ export default function App() {
     </div>
    </div>
 
-   {/* Band Switcher Dropdown */}
-   {availableBands && availableBands.length > 1 && (
-    <div className="mt-2 pt-2 border-t border-[#22211F]/60 flex flex-col gap-1">
-     <label className="text-[9px] font-mono uppercase tracking-wider text-[#9a9591]">
-      Mis Bandas
-     </label>
-     <div className="relative">
-      <select
-       value={currentUser.band_id}
-       onChange={async (e) => {
-        const selectedBandId = e.target.value;
-        if (selectedBandId && selectedBandId !== currentUser.band_id) {
-         try {
-          await handleSwitchBand(selectedBandId);
-         } catch (err) {
-          console.error("Error switching band:", err);
-         }
-        }
-       }}
-       className="w-full bg-[#121110] text-zinc-300 text-xs px-2.5 py-1.5 rounded-lg border border-[#333130] focus:border-amber-500/50 focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
-      >
-       {availableBands.map((b) => (
-        <option key={`switch-band-${b.band_id}`} value={b.band_id}>
-         {b.bandName}
-        </option>
-       ))}
-      </select>
-      <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-[#9a9591]">
-       <RefreshCw className="w-3 h-3 animate-pulse" />
-      </div>
+   {/* Band Switcher Button (Netflix Style) */}
+   <div className="mt-2 pt-2 border-t border-[#22211F]/60 flex flex-col gap-1">
+    <button
+     onClick={() => setShowBandSwitcherModal(true)}
+     className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 via-[#1e1d1b] to-[#141312] border border-amber-500/40 hover:border-amber-400 text-amber-300 transition-all cursor-pointer group active:scale-95 shadow-xs"
+    >
+     <div className="flex items-center gap-2">
+      <Sparkles className="w-3 h-3 text-amber-400 group-hover:rotate-12 transition-transform" />
+      <span className="text-xs font-bold uppercase tracking-wider font-display text-zinc-100">
+       Mis Bandas
+      </span>
      </div>
-    </div>
-   )}
+     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+      Netflix Style ▾
+     </span>
+    </button>
+   </div>
   </div>
  )}
 
@@ -752,7 +796,13 @@ export default function App() {
  rehearsals={rehearsals}
  currentUser={currentUser}
  bandName={currentActiveBandName}
+ currentBandId={currentUser?.band_id || 'band-bakandeya'}
+ availableBands={availableBands}
  onNavigate={handleNavigate}
+ epkConfig={epkConfig}
+ tours={tours}
+ fans={fans}
+ posts={posts}
  />
  )}
  {(currentView === 'booking' || currentView === 'medios') && (
@@ -774,6 +824,7 @@ export default function App() {
  leads={leads}
  onAddLead={handleAddLead}
  onUpdateLead={handleUpdateLead}
+ currentBandId={currentUser?.band_id || 'band-bakandeya'}
  />
  )}
  {currentView === 'calendario' && (
@@ -787,6 +838,11 @@ export default function App() {
  onAddConcert={handleAddConcert}
  initialSelectedEventId={bookingOptions.selectedEventId}
  initialSelectedDate={bookingOptions.selectedDate}
+ currentBandId={currentUser?.band_id || 'band-bakandeya'}
+ currentBandName={currentActiveBandName}
+ availableBands={availableBands}
+ bandUsers={bandUsers}
+ currentUser={currentUser}
  />
  )}
  {currentView === 'reels' && (
@@ -804,8 +860,8 @@ export default function App() {
  {currentView === 'repertorio' && (
  <RepertorioSetlists 
  colors={colors}
- concerts={concerts}
- rehearsals={rehearsals}
+ concerts={activeBandConcerts}
+ rehearsals={activeBandRehearsals}
  bandName={currentActiveBandName}
  onUpdateConcert={handleUpdateConcert}
  onUpdateRehearsal={handleUpdateRehearsal}
@@ -820,14 +876,15 @@ export default function App() {
               epkConfig={epkConfig} 
               onSave={handleUpdateEpkConfig}
               colors={colors} 
-              currentTheme={currentTheme} 
+              currentTheme={currentTheme}
+              currentUser={currentUser}
             />
           </ErrorBoundary>
         )}
         {currentView === 'fans' && (
           <FansPanel 
             fans={fans}
-            concerts={concerts}
+            concerts={activeBandConcerts}
             epkConfig={epkConfig}
             onAddFan={handleAddFan}
             onDeleteFan={handleDeleteFan}
@@ -840,7 +897,7 @@ export default function App() {
             <TourManager 
               colors={colors}
               tours={tours}
-              concerts={concerts}
+              concerts={activeBandConcerts}
               leads={leads}
               onAddLead={handleAddLead}
               onSaveTour={handleSaveTour}
@@ -853,7 +910,7 @@ export default function App() {
  <Finanzas 
  colors={colors}
  payments={payments}
- concerts={concerts}
+ concerts={activeBandConcerts}
  onAddPayment={handleAddPayment}
  onUpdatePayment={handleUpdatePayment}
  onUpdateConcert={handleUpdateConcert}
@@ -877,6 +934,7 @@ export default function App() {
         : 'hidden'
   }>
     <Chatbot
+      key={`${currentUser?.id || 'guest'}_${currentUser?.band_id || 'default'}`}
       colors={colors}
       leads={leads}
       rehearsals={rehearsals}
@@ -887,6 +945,8 @@ export default function App() {
       isFloating={currentView !== 'chat'}
       onClose={() => setIsFloatingChatOpen(false)}
       userRole={currentUser?.role}
+      currentUser={currentUser}
+      activeBandName={currentActiveBandName}
       onLoadingChange={setIsChatLoading}
     />
   </div>
@@ -1336,6 +1396,20 @@ export default function App() {
  onClose={() => setShowMetronomeModal(false)}
  songs={[]}
  colors={colors}
+ />
+
+ {/* Band Switcher Modal (Netflix Style) */}
+ <BandSwitcherModal
+  isOpen={showBandSwitcherModal}
+  onClose={() => setShowBandSwitcherModal(false)}
+  currentUser={currentUser}
+  availableBands={availableBands}
+  epkConfig={epkConfig}
+  onSwitchBand={async (bandId) => {
+    await handleSwitchBand(bandId);
+    await fetchState();
+  }}
+  onOpenRegisterBand={() => handleNavigate('bandas')}
  />
 
  </div>

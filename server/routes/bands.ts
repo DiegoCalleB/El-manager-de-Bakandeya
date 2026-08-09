@@ -12,12 +12,20 @@ router.get("/bands", requireAuth, async (req, res) => {
   saveState(state);
 
   const userBandId = (req as any).user?.band_id || 'band-bakandeya';
-  const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+  const cleanUser = userBandId.replace(/^(band|reg)-/, '');
+  const matchBand = (b: any) => {
+    if (!b) return false;
+    const bid = b.band_id || b.bandId;
+    if (bid) {
+      if (bid === userBandId) return true;
+      const cleanItem = bid.replace(/^(band|reg)-/, '');
+      return cleanItem === cleanUser;
+    }
+    return cleanUser === 'bakandeya';
+  };
 
   const allBands = state.bands || [];
-  const filtered = isBakandeyaOrAdmin
-    ? allBands
-    : allBands.filter((b: any) => b.band_id === userBandId || b.id === userBandId);
+  const filtered = allBands.filter(matchBand);
 
   res.json({ bands: filtered });
 });

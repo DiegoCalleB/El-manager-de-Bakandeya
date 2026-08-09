@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Lock, User, Eye, EyeOff, AlertCircle, Mail, Music, Check, ArrowRight, Zap, Star, Shield, Chrome } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, User, Eye, EyeOff, AlertCircle, Mail, Music, Check, ArrowRight, Zap, Star, Shield, Chrome, KeyRound, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { User as UserType } from '../types';
 
 interface LoginModalProps {
@@ -7,7 +7,7 @@ interface LoginModalProps {
   isStitchLight?: boolean;
 }
 
-type ViewState = 'login' | 'register' | 'plans' | 'activate';
+type ViewState = 'login' | 'register' | 'plans' | 'activate' | 'reset-password';
 
 export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [view, setView] = useState<ViewState>('login');
@@ -18,6 +18,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // --- Remember Me State ---
+  const [rememberMe, setRememberMe] = useState(() => {
+    return localStorage.getItem('bakandeya_remember_me') !== 'false';
+  });
+
+  // On mount, prefill username if stored
+  useEffect(() => {
+    const savedUser = localStorage.getItem('bakandeya_remembered_username');
+    if (savedUser) {
+      setUsername(savedUser);
+      setRememberMe(true);
+    }
+  }, []);
+
+  // --- Reset Password State ---
+  const [resetEmailOrUsername, setResetEmailOrUsername] = useState('');
+  const [resetStep, setResetStep] = useState<1 | 2>(1);
+  const [resetCode, setResetCode] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [showResetNewPassword, setShowResetNewPassword] = useState(false);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
+  const [resetMaskedEmail, setResetMaskedEmail] = useState<string | null>(null);
 
   // --- Register State ---
   const [regLeaderName, setRegLeaderName] = useState('');
@@ -53,7 +77,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         body: JSON.stringify({ email: activateEmail.trim() })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(data.error || 'No se encontró ninguna invitación');
@@ -93,7 +117,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(data.error || 'Error al completar el registro');
@@ -130,10 +154,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         body: JSON.stringify({ username: username.trim(), password })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(data.error || 'Fallo en la autenticación');
+      }
+
+      // Handle Remember Me preference
+      if (rememberMe) {
+        localStorage.setItem('bakandeya_remembered_username', username.trim());
+        localStorage.setItem('bakandeya_remember_me', 'true');
+      } else {
+        localStorage.removeItem('bakandeya_remembered_username');
+        localStorage.setItem('bakandeya_remember_me', 'false');
       }
 
       if (data.token) {
@@ -144,6 +177,91 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
       onLoginSuccess(data.user, data.token, data.availableBands);
     } catch (err: any) {
       setError(err.message || 'Error al conectar con el servidor.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Reset Password Handlers ---
+  const handleRequestReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmailOrUsername.trim()) {
+      setError('Por favor, indica tu correo o nombre de usuario.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setResetSuccessMsg(null);
+
+    try {
+      const response = await fetch('/api/auth/reset-password/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailOrUsername: resetEmailOrUsername.trim() })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo procesar la solicitud.');
+      }
+
+      setResetMaskedEmail(data.emailMasked);
+      if (data.code) {
+        setResetCode(data.code);
+      }
+      setResetSuccessMsg(data.message || 'Código de recuperación generado.');
+      setResetStep(2);
+    } catch (err: any) {
+      setError(err.message || 'Error al solicitar el restablecimiento');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetCode.trim()) {
+      setError('Por favor, ingresa el código de 6 dígitos.');
+      return;
+    }
+    if (!resetNewPassword || resetNewPassword.length < 6) {
+      setError('La nueva contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/auth/reset-password/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailOrUsername: resetEmailOrUsername.trim(),
+          code: resetCode.trim(),
+          newPassword: resetNewPassword
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al restablecer la contraseña.');
+      }
+
+      setUsername(resetEmailOrUsername.trim());
+      setPassword('');
+      setError(null);
+      setView('login');
+      setResetSuccessMsg('¡Contraseña restablecida con éxito! Ya puedes iniciar sesión.');
+    } catch (err: any) {
+      setError(err.message || 'Error al confirmar la nueva contraseña');
     } finally {
       setLoading(false);
     }
@@ -189,7 +307,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         })
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(data.error || 'Fallo en la creación de cuenta');
@@ -278,7 +396,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             LOGIN VIEW
             ========================================= */}
         {view === 'login' && (
-          <div className="w-full animate-in slide-in-from-bottom-4 duration-300">
+          <div className="w-full animate-in slide-in-from-bottom-4 duration-300 space-y-4">
+            {resetSuccessMsg && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-400 flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>{resetSuccessMsg}</span>
+              </div>
+            )}
+
             <form onSubmit={handleLoginSubmit} className="w-full space-y-3.5">
               <div className="relative flex items-center">
                 <Mail className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
@@ -308,6 +433,32 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                   className="absolute right-4 text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              {/* Recordar contraseña & Restablecer contraseña */}
+              <div className="flex items-center justify-between text-xs text-neutral-400 px-1 pt-0.5">
+                <label className="flex items-center gap-2 cursor-pointer select-none hover:text-neutral-200 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-neutral-700 bg-[#131317] text-[#f2ca50] focus:ring-[#f2ca50]/50 accent-[#f2ca50] cursor-pointer"
+                  />
+                  <span>Recordar contraseña</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setResetSuccessMsg(null);
+                    setResetStep(1);
+                    setResetEmailOrUsername(username || '');
+                    setView('reset-password');
+                  }}
+                  className="text-[#f2ca50] hover:underline font-medium cursor-pointer"
+                >
+                  ¿Olvidaste tu contraseña?
                 </button>
               </div>
 
@@ -363,6 +514,161 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                   Crea tu banda
                 </button>
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================
+            RESET PASSWORD VIEW
+            ========================================= */}
+        {view === 'reset-password' && (
+          <div className="w-full animate-in slide-in-from-bottom-4 duration-300 space-y-4">
+            <div className="flex items-center gap-2.5 mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setView('login');
+                }}
+                className="p-2 rounded-xl bg-[#131317] hover:bg-neutral-800 text-neutral-400 hover:text-neutral-100 transition-colors cursor-pointer shrink-0"
+                title="Volver al inicio de sesión"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div>
+                <h2 className="text-base font-bold text-neutral-100">Restablecer contraseña</h2>
+                <p className="text-xs text-neutral-400 leading-tight">
+                  {resetStep === 1 
+                    ? 'Introduce tu correo o usuario para recuperar tu acceso.'
+                    : `Introduce el código para ${resetMaskedEmail || 'tu cuenta'} y tu nueva contraseña.`}
+                </p>
+              </div>
+            </div>
+
+            {resetSuccessMsg && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-400 flex items-start gap-2.5 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                <div className="space-y-1">
+                  <p>{resetSuccessMsg}</p>
+                  {resetCode && (
+                    <p className="font-mono bg-emerald-950/60 text-emerald-300 px-2 py-1 rounded text-center font-bold tracking-widest border border-emerald-500/20 mt-1">
+                      Código de verificación: {resetCode}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {resetStep === 1 ? (
+              <form onSubmit={handleRequestReset} className="space-y-3.5">
+                <div className="relative flex items-center">
+                  <Mail className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={resetEmailOrUsername}
+                    onChange={(e) => setResetEmailOrUsername(e.target.value)}
+                    placeholder="Correo electrónico o Usuario"
+                    className="w-full pl-11 pr-4 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 px-4 mt-2 rounded-2xl bg-[#f2ca50] hover:bg-[#f5d778] text-neutral-950 font-bold text-sm tracking-wide transition-all shadow-[0_0_20px_rgba(242,202,80,0.15)] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-neutral-950 border-t-transparent rounded-full animate-spin" />
+                      <span>Generando código...</span>
+                    </span>
+                  ) : (
+                    <span>Continuar</span>
+                  )}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleConfirmReset} className="space-y-3.5">
+                <div className="relative flex items-center">
+                  <KeyRound className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    placeholder="Código de 6 dígitos"
+                    maxLength={6}
+                    className="w-full pl-11 pr-4 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal placeholder:text-neutral-500 outline-none transition-all shadow-inner"
+                    required
+                  />
+                </div>
+
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
+                  <input
+                    type={showResetNewPassword ? 'text' : 'password'}
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="Nueva contraseña (mín. 6 caracteres)"
+                    className="w-full pl-11 pr-11 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetNewPassword(!showResetNewPassword)}
+                    className="absolute right-4 text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer"
+                  >
+                    {showResetNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
+                  <input
+                    type={showResetNewPassword ? 'text' : 'password'}
+                    value={resetConfirmPassword}
+                    onChange={(e) => setResetConfirmPassword(e.target.value)}
+                    placeholder="Repite la nueva contraseña"
+                    className="w-full pl-11 pr-11 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 px-4 mt-2 rounded-2xl bg-[#f2ca50] hover:bg-[#f5d778] text-neutral-950 font-bold text-sm tracking-wide transition-all shadow-[0_0_20px_rgba(242,202,80,0.15)] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-neutral-950 border-t-transparent rounded-full animate-spin" />
+                      <span>Guardando contraseña...</span>
+                    </span>
+                  ) : (
+                    <span>Restablecer contraseña</span>
+                  )}
+                </button>
+
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setResetStep(1)}
+                    className="text-xs text-neutral-400 hover:text-[#f2ca50] hover:underline cursor-pointer"
+                  >
+                    ¿No te ha llegado el código? Pedir otro
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => setView('login')}
+                className="text-xs text-neutral-400 hover:text-[#f2ca50] hover:underline font-medium cursor-pointer"
+              >
+                Volver a Iniciar Sesión
+              </button>
             </div>
           </div>
         )}

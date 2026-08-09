@@ -8,11 +8,13 @@ import { uploadFileToServer, resolveAudioUrl } from '../utils/audioStorage';
 import { generateAccompanimentAudioBlob } from '../utils/accompanimentSynth';
 import WaveformTrack from './WaveformTrack';
 import { SongChordsViewerModal } from './SongChordsViewerModal';
+import { ShareModal } from './ShareModal';
+import { formatSongShareText, formatSongIdeaShareText } from '../utils/shareUtils';
 import { 
   X, Play, Pause, Mic, Upload, Volume2, VolumeX, MessageSquare, 
   ThumbsUp, Plus, Music, User, Sparkles, Trash2, Send, Disc,
   Layers, Sliders, Edit2, Check, Radio, Wand2, RefreshCw, FileText, Keyboard,
-  Square, Repeat, Flag, RotateCcw, Headphones, ShieldCheck, Filter
+  Square, Repeat, Flag, RotateCcw, Headphones, ShieldCheck, Filter, Share2
 } from 'lucide-react';
 
 
@@ -70,6 +72,38 @@ export default function SongStudioModal({
   const [activeSectionFilter, setActiveSectionFilter] = useState<string>('todas');
   const [showChordsModal, setShowChordsModal] = useState<boolean>(false);
   const [showCubaseHelp, setShowCubaseHelp] = useState<boolean>(false);
+  const [shareModalData, setShareModalData] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle?: string;
+    text: string;
+    itemType: 'song' | 'idea';
+  }>({
+    isOpen: false,
+    title: '',
+    text: '',
+    itemType: 'song'
+  });
+
+  const handleShareSong = () => {
+    setShareModalData({
+      isOpen: true,
+      title: song.titulo,
+      subtitle: 'Compartir canción por WhatsApp',
+      text: formatSongShareText(song, { includeChords: true, includeGuide: true }),
+      itemType: 'song'
+    });
+  };
+
+  const handleShareIdea = (idea: SongAudioIdea) => {
+    setShareModalData({
+      isOpen: true,
+      title: `${song.titulo} - Idea: ${idea.titulo}`,
+      subtitle: `Idea de audio (${idea.seccion}) de ${idea.subidoPor}`,
+      text: formatSongIdeaShareText(song, idea),
+      itemType: 'idea'
+    });
+  };
   const [playingIdeaId, setPlayingIdeaId] = useState<string | null>(null);
   const [currentTimeMap, setCurrentTimeMap] = useState<Record<string, number>>({});
   const [durationMap, setDurationMap] = useState<Record<string, number>>({});
@@ -1636,6 +1670,16 @@ export default function SongStudioModal({
 
                 <button
                   type="button"
+                  onClick={handleShareSong}
+                  className="px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm"
+                  title="Compartir tema completo por WhatsApp"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 fill-white/20" />
+                  <span>Compartir Tema</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setShowCubaseHelp(true)}
                   className="px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 shadow-sm"
                   title="Ver atajos de teclado tipo Cubase DAW (Espacio, 0, R, M, S, ←, →)"
@@ -2217,6 +2261,17 @@ export default function SongStudioModal({
                         <User className="w-3.5 h-3.5 text-indigo-400" />
                         <span>{idea.subidoPor} {idea.instrumento ? `(${idea.instrumento})` : ''}</span>
                         <span>• {idea.fecha}</span>
+
+                        {/* Share Idea Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleShareIdea(idea)}
+                          className="px-2 py-1 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer ml-1"
+                          title="Compartir esta idea de audio por WhatsApp"
+                        >
+                          <MessageSquare className="w-3 h-3 fill-white/20" />
+                          <span>WhatsApp</span>
+                        </button>
 
                         {/* Delete Idea Button */}
                         <button
@@ -3242,6 +3297,16 @@ export default function SongStudioModal({
           </div>
         </div>
       )}
+
+      {/* SHARE MODAL */}
+      <ShareModal
+        isOpen={shareModalData.isOpen}
+        onClose={() => setShareModalData(prev => ({ ...prev, isOpen: false }))}
+        title={shareModalData.title}
+        subtitle={shareModalData.subtitle}
+        initialText={shareModalData.text}
+        itemType={shareModalData.itemType}
+      />
     </div>
   );
 }

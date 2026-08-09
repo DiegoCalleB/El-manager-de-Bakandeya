@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import SongStudioModal from './SongStudioModal';
 import { SongChordsViewerModal } from './SongChordsViewerModal';
+import { ShareModal } from './ShareModal';
+import { formatSongShareText, formatSetlistShareText } from '../utils/shareUtils';
 import { ConfirmDeleteModal } from './repertorio/ConfirmDeleteModal';
 import { ConfirmDeleteAlbumModal, ConfirmDeleteAlbumData } from './repertorio/ConfirmDeleteAlbumModal';
 import { AssignSongsToAlbumModal } from './repertorio/AssignSongsToAlbumModal';
@@ -324,6 +326,40 @@ export default function RepertorioSetlists({
  });
 
  const activeSetlist = useMemo(() => setlists.find(s => s.id === activeSetlistId) || setlists[0] || null, [setlists, activeSetlistId]);
+
+ const [shareModalData, setShareModalData] = useState<{
+   isOpen: boolean;
+   title: string;
+   subtitle?: string;
+   text: string;
+   itemType: 'song' | 'setlist';
+ }>({
+   isOpen: false,
+   title: '',
+   text: '',
+   itemType: 'setlist'
+ });
+
+ const handleShareSetlist = (setlist: Setlist) => {
+   const songsMap: Record<string, Song> = Object.fromEntries(songs.map(s => [s.id, s]));
+   setShareModalData({
+     isOpen: true,
+     title: setlist.nombre,
+     subtitle: `Repertorio (${setlist.items.length} elementos) para WhatsApp`,
+     text: formatSetlistShareText(setlist, songsMap, bName),
+     itemType: 'setlist'
+   });
+ };
+
+ const handleShareSong = (song: Song) => {
+   setShareModalData({
+     isOpen: true,
+     title: song.titulo,
+     subtitle: 'Compartir canción por WhatsApp',
+     text: formatSongShareText(song, { includeChords: true, includeGuide: true }),
+     itemType: 'song'
+   });
+ };
 
  // Filter States for Catalog
   const [groupByAlbum, setGroupByAlbum] = useState(false);
@@ -1585,7 +1621,7 @@ export default function RepertorioSetlists({
  }`}
  >
  <Disc3 className="w-4 h-4" />
- <span>Discografía</span>
+ <span>Discografía ({albumsList.filter(a => a !== "todos").length})</span>
  </button>
 
  <button
@@ -1598,7 +1634,7 @@ export default function RepertorioSetlists({
  }`}
  >
  <Eye className="w-4 h-4" />
- <span>Modo Escenario</span>
+ <span>Modo Escenario ({activeSetlist ? activeSetlist.items.length : 0})</span>
  </button>
 
  <button
@@ -1738,6 +1774,15 @@ export default function RepertorioSetlists({
  </div>
 
  <div className="flex items-center gap-2 flex-wrap">
+ <button
+ onClick={() => handleShareSetlist(activeSetlist)}
+ className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm"
+ title="Compartir repertorio completo por WhatsApp"
+ >
+ <MessageSquare className="w-3.5 h-3.5 fill-white/20" />
+ <span>Compartir Repertorio</span>
+ </button>
+
  <button
  onClick={() => setAssigningSetlist(activeSetlist)}
  className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
@@ -2475,6 +2520,15 @@ export default function RepertorioSetlists({
 
  <button
  type="button"
+ onClick={() => handleShareSong(s)}
+ className="p-1.5 text-emerald-400 hover:text-emerald-300 rounded-lg hover:bg-emerald-500/20 transition cursor-pointer"
+ title="Compartir esta canción y ficha por WhatsApp"
+ >
+ <MessageSquare className="w-3.5 h-3.5 fill-emerald-400/20" />
+ </button>
+
+ <button
+ type="button"
  onClick={() => { setEditingSong(s); setShowSongModal(true); }}
  className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition"
  title="Editar Canción"
@@ -3114,6 +3168,16 @@ export default function RepertorioSetlists({
     onClose={() => setDeleteAlbumData(null)}
     onUnassignSongs={handleUnassignAlbumSongs}
     onDeleteAlbumAndSongs={handleDeleteAlbumAndSongs}
+  />
+
+  {/* SHARE MODAL */}
+  <ShareModal
+    isOpen={shareModalData.isOpen}
+    onClose={() => setShareModalData(prev => ({ ...prev, isOpen: false }))}
+    title={shareModalData.title}
+    subtitle={shareModalData.subtitle}
+    initialText={shareModalData.text}
+    itemType={shareModalData.itemType}
   />
 </div>
  );

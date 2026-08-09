@@ -19,12 +19,15 @@ router.get("/songs", requireAuth, (req, res) => {
   try {
     const state = loadState();
     const userBandId = (req as any).user?.band_id || 'band-bakandeya';
-    const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+    const matchBand = (s: any) => {
+      if (!s) return false;
+      const bid = s.band_id || s.bandId;
+      if (bid) return bid === userBandId;
+      return userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya';
+    };
 
     const allSongs = state.songs || [];
-    const filtered = isBakandeyaOrAdmin
-      ? allSongs
-      : allSongs.filter((s: Song) => (s as any).band_id === userBandId || (s as any).bandId === userBandId);
+    const filtered = allSongs.filter(matchBand);
 
     res.json({ success: true, songs: filtered });
   } catch (err: any) {
@@ -122,12 +125,15 @@ router.get("/setlists", requireAuth, (req, res) => {
   try {
     const state = loadState();
     const userBandId = (req as any).user?.band_id || 'band-bakandeya';
-    const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+    const matchBand = (sl: any) => {
+      if (!sl) return false;
+      const bid = sl.band_id || sl.bandId;
+      if (bid) return bid === userBandId;
+      return userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya';
+    };
 
     const allSetlists = state.setlists || [];
-    const filtered = isBakandeyaOrAdmin
-      ? allSetlists
-      : allSetlists.filter((sl: Setlist) => (sl as any).band_id === userBandId || (sl as any).bandId === userBandId);
+    const filtered = allSetlists.filter(matchBand);
 
     res.json({ success: true, setlists: filtered });
   } catch (err: any) {

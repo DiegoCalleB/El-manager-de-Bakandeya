@@ -1,11 +1,22 @@
 import express from "express";
 import { Lead } from "../../src/types.js";
 import { loadState, saveState, requireAuth } from "../state.js";
-import { getSheetsClient, appendLeadToSheet, verifyLeadStatusAndWrite, updateLeadInSheet, ensureSheetTabExists, DEFAULT_LEADS_HEADERS, leadToRowDynamic, getSheetId } from "../sheets.js";
+import { getSheetsClient, appendLeadToSheet, verifyLeadStatusAndWrite, updateLeadInSheet, ensureSheetTabExists, DEFAULT_LEADS_HEADERS, leadToRowDynamic, getSheetId, realignLeadsSheetHeadersAndData } from "../sheets.js";
 import { getAiClient, generateContentWithFallback } from "../ai.js";
 import { safeParseJson } from "../utils.js";
 
 const router = express.Router();
+
+// Re-align headers and columns in Google Sheets leads tab
+router.post("/leads/realign-headers", requireAuth, async (req, res) => {
+  try {
+    const result = await realignLeadsSheetHeadersAndData();
+    res.json(result);
+  } catch (error: any) {
+    console.error("Error in POST /api/leads/realign-headers:", error);
+    res.status(500).json({ success: false, error: error?.message || "Error al reordenar cabeceras en Google Sheets" });
+  }
+});
 
 // Update a single lead
 router.put("/leads/:id", requireAuth, async (req, res) => {
@@ -29,6 +40,10 @@ router.put("/leads/:id", requireAuth, async (req, res) => {
 router.post("/leads", requireAuth, async (req, res) => {
   try {
     const newLead: Lead = req.body;
+    const userBandId = (req as any).user?.band_id || 'band-bakandeya';
+    if (!(newLead as any).band_id) {
+      (newLead as any).band_id = userBandId;
+    }
     const state = loadState();
     state.leads.push(newLead);
     saveState(state);

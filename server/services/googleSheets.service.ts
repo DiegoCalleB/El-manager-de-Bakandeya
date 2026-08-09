@@ -87,6 +87,10 @@ export const googleSheetsService = {
   fetchEpkConfigs: sheetsRaw.fetchEpkConfigsFromSheet,
   updateEpk: sheetsRaw.updateEpkInSheet,
 
+  // Autonomy / Agent Settings
+  fetchAutonomyConfigs: sheetsRaw.fetchAutonomyConfigsFromSheet,
+  updateAutonomy: sheetsRaw.updateAutonomyInSheet,
+
   // Full Sync
   syncAllTabsWithBakandeya: sheetsRaw.syncAllTabsWithBakandeya
 };

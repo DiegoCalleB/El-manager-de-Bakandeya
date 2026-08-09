@@ -3,10 +3,8 @@ import { google } from "googleapis";
 import { Lead, EmailMessage, Concert, Payment, Rehearsal, SocialPost, SocialMetric, Song, Setlist, Fan } from "../src/types.js";
 
 export const DEFAULT_LEADS_HEADERS = [
-  "id", "nombre_sala", "ciudad", "region", "direccion", "aforo", "genero", "tipo",
-  "email_contacto", "telefono", "website", "instagram", "contacto_nombre",
-  "fuente", "estado", "pitch_generado", "fecha_envio", "fecha_ultima_respuesta",
-  "contexto_extra", "notas", "hilo_emails", "icono", "imagen_url", "band_id"
+  "id", "nombre_sala", "ciudad", "region", "aforo", "genero", "email_contacto", "fuente", "estado", "pitch_generado", "fecha_envio", "fecha_ultima_respuesta", "notas",
+  "direccion", "tipo", "telefono", "website", "instagram", "contacto_nombre", "contexto_extra", "hilo_emails", "icono", "imagen_url", "band_id"
 ];
 
 export function getColumnLetter(colIndex: number): string {
@@ -58,8 +56,37 @@ function normalizeLeadType(type: any): string {
   return 'sala';
 }
 
+export function isSpanishPostalCode(val: any): boolean {
+  if (!val) return false;
+  const s = String(val).trim().replace(/\D/g, '');
+  if (s.length !== 5) return false;
+  const num = parseInt(s, 10);
+  return num >= 1000 && num <= 52999;
+}
+
 export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>): Lead {
-  const getVal = (...colNames: string[]) => {
+  if (!Array.isArray(row) || row.length === 0) {
+    return {
+      id: `lead_${Math.random().toString(36).substring(2, 9)}`,
+      nombre_sala: '',
+      ciudad: '',
+      region: '',
+      aforo: 0,
+      genero: '',
+      tipo: 'sala',
+      email_contacto: '',
+      telefono: '',
+      website: '',
+      instagram: '',
+      fuente: '',
+      estado: 'nuevo',
+      pitch_generado: '',
+      notas: '',
+      hilo_emails: []
+    };
+  }
+
+  const getValByHeader = (...colNames: string[]) => {
     for (const name of colNames) {
       const idx = headerMap[name.toLowerCase()];
       if (idx !== undefined && idx < row.length && row[idx] !== undefined && row[idx] !== null && row[idx] !== "") {
@@ -69,30 +96,268 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
     return undefined;
   };
 
-  const idVal = String(getVal("id") || "");
-  const nombreSalaVal = String(getVal("nombre_sala", "nombre_medio", "medio", "nombre", "espacio", "sala", "medio_comunicacion") || "");
-  const ciudadVal = String(getVal("ciudad") || "");
-  const regionVal = String(getVal("region", "comunidad", "provincia") || "");
-  const direccionVal = String(getVal("direccion", "dir", "direccion_sala", "domicilio", "ubicacion") || "");
-  const aforoVal = Number(getVal("aforo", "capacidad")) || 0;
-  const generoVal = String(getVal("genero", "estilo") || "");
-  const tipoVal = normalizeLeadType(getVal("tipo", "tipo_medio", "categoria"));
-  const emailVal = String(getVal("email_contacto", "email", "correo", "mail", "contacto_email") || "");
-  const telVal = String(getVal("telefono", "tel", "celular", "movil", "móvil", "telefono_contacto") || "");
-  const webVal = String(getVal("website", "web", "url", "sitio_web", "link") || "");
-  const instaVal = String(getVal("instagram", "insta", "ig") || "");
-  const contactoNombreVal = getVal("contacto_nombre", "contacto", "persona_contacto", "persona") ? String(getVal("contacto_nombre", "contacto", "persona_contacto", "persona")) : undefined;
-  const fuenteVal = String(getVal("fuente", "origen", "canal") || "");
-  const estadoVal = normalizeLeadStatus(getVal("estado", "status"));
-  const pitchVal = String(getVal("pitch_generado", "pitch") || "");
-  const fechaEnvioVal = getVal("fecha_envio") ? String(getVal("fecha_envio")) : undefined;
-  const fechaUltimaRespVal = getVal("fecha_ultima_respuesta") ? String(getVal("fecha_ultima_respuesta")) : undefined;
-  const contextoExtraVal = getVal("contexto_extra") ? String(getVal("contexto_extra")) : undefined;
-  const notasVal = String(getVal("notas", "observaciones", "comentarios") || "");
-  const iconoVal = getVal("icono", "logo", "icon", "emoji") ? String(getVal("icono", "logo", "icon", "emoji")) : undefined;
-  const imagenUrlVal = getVal("imagen_url", "imagen", "photo_url", "foto", "avatar") ? String(getVal("imagen_url", "imagen", "photo_url", "foto", "avatar")) : undefined;
+  const strAt = (i: number) => String(row[i] ?? "").trim();
+  const validStatuses = ['nuevo', 'pendiente_aprobacion', 'esperando_respuesta', 'aprobado', 'interesado', 'no_interesado', 'negociando', 'sin_contacto', 'rechazado', 'contactado', 'por_aprobar', 'por_contactar'];
+  const isEmailStr = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && !s.startsWith('http') && !/\.(jpg|jpeg|png|webp)$/i.test(s);
+  const isStatusStr = (s: string) => validStatuses.includes(s.toLowerCase());
+  const isPhoneStr = (s: string) => /^(\+?\d{1,4}[-.\s]?)?(\(?\d{2,4}\)?[-.\s]?)?\d{3,4}[-.\s]?\d{3,4}$/.test(s) && !s.includes('@') && !s.startsWith('http') && s.replace(/\D/g, '').length >= 7;
+  const isWebUrl = (s: string) => (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('www.') || /\.(com|es|org|cat|net)\b/i.test(s)) && !s.includes('@') && !/\.(jpg|jpeg|png|webp|gif|svg)($|\?)/i.test(s);
+  const isImgUrl = (s: string) => (s.startsWith('http') || s.startsWith('/uploads/')) && (/\.(jpg|jpeg|png|webp|gif|svg)($|\?)/i.test(s) || s.includes('/storage/') || s.includes('/uploads/'));
+  const isIgHandle = (s: string) => s.startsWith('@') || s.includes('instagram.com/');
 
-  const hiloRaw = getVal("hilo_emails");
+  // Detect layout of the row
+  const col6IsEmail = isEmailStr(strAt(6));
+  const col8IsEmail = isEmailStr(strAt(8));
+  const col8IsStatus = isStatusStr(strAt(8));
+  const col14IsStatus = isStatusStr(strAt(14));
+
+  let layoutType: 'OLD_24' | 'NEW_13' | 'HEADER_MAP' = 'NEW_13';
+
+  if (col8IsEmail || col14IsStatus || (!col6IsEmail && col8IsEmail)) {
+    layoutType = 'OLD_24';
+  } else if (col6IsEmail || col8IsStatus) {
+    layoutType = 'NEW_13';
+  } else if (headerMap && Object.keys(headerMap).length > 0) {
+    const mappedEmailIdx = headerMap['email_contacto'] ?? headerMap['email'] ?? headerMap['correo'];
+    if (mappedEmailIdx !== undefined && mappedEmailIdx < row.length && isEmailStr(strAt(mappedEmailIdx))) {
+      layoutType = 'HEADER_MAP';
+    }
+  }
+
+  let idVal: string;
+  let nombreSalaVal: string;
+  let ciudadVal: string;
+  let regionVal: string;
+  let direccionVal: string | undefined;
+  let rawAforo: any;
+  let generoVal: string;
+  let tipoVal: string;
+  let emailVal: string;
+  let telVal: string;
+  let webVal: string;
+  let instaVal: string;
+  let contactoNombreVal: string | undefined;
+  let fuenteVal: string;
+  let estadoVal: any;
+  let pitchVal: string;
+  let fechaEnvioVal: string | undefined;
+  let fechaUltimaRespVal: string | undefined;
+  let contextoExtraVal: string | undefined;
+  let notasVal: string;
+  let hiloRaw: any;
+  let iconoVal: string | undefined;
+  let imagenUrlVal: string | undefined;
+  let bandIdVal: string | undefined;
+
+  if (layoutType === 'OLD_24') {
+    idVal = strAt(0);
+    nombreSalaVal = strAt(1);
+    ciudadVal = strAt(2);
+    regionVal = strAt(3);
+    direccionVal = strAt(4) || undefined;
+    rawAforo = row[5];
+    generoVal = strAt(6);
+    tipoVal = normalizeLeadType(row[7]);
+    emailVal = strAt(8);
+    telVal = strAt(9);
+    webVal = strAt(10);
+    instaVal = strAt(11);
+    contactoNombreVal = strAt(12) || undefined;
+    fuenteVal = strAt(13);
+    estadoVal = normalizeLeadStatus(row[14]);
+    pitchVal = strAt(15);
+    fechaEnvioVal = strAt(16) || undefined;
+    fechaUltimaRespVal = strAt(17) || undefined;
+    contextoExtraVal = strAt(18) || undefined;
+    notasVal = strAt(19);
+    hiloRaw = row[20];
+    iconoVal = strAt(21) || undefined;
+    imagenUrlVal = strAt(22) || undefined;
+    bandIdVal = strAt(23) || undefined;
+  } else if (layoutType === 'NEW_13') {
+    idVal = strAt(0);
+    nombreSalaVal = strAt(1);
+    ciudadVal = strAt(2);
+    regionVal = strAt(3);
+    rawAforo = row[4];
+    generoVal = strAt(5);
+    emailVal = strAt(6);
+    fuenteVal = strAt(7);
+    estadoVal = normalizeLeadStatus(row[8]);
+    pitchVal = strAt(9);
+    fechaEnvioVal = strAt(10) || undefined;
+    fechaUltimaRespVal = strAt(11) || undefined;
+    notasVal = strAt(12);
+    direccionVal = strAt(13) || undefined;
+    tipoVal = normalizeLeadType(row[14]);
+    telVal = strAt(15);
+    webVal = strAt(16);
+    instaVal = strAt(17);
+    contactoNombreVal = strAt(18) || undefined;
+    contextoExtraVal = strAt(19) || undefined;
+    hiloRaw = row[20];
+    iconoVal = strAt(21) || undefined;
+    imagenUrlVal = strAt(22) || undefined;
+    bandIdVal = strAt(23) || undefined;
+  } else {
+    idVal = strAt(0) || String(getValByHeader("id") || "");
+    nombreSalaVal = String(getValByHeader("nombre_sala", "nombre_medio", "medio", "nombre", "espacio", "sala", "medio_comunicacion") || "").trim();
+    ciudadVal = String(getValByHeader("ciudad") || "").trim();
+    regionVal = String(getValByHeader("region", "comunidad", "provincia") || "").trim();
+    direccionVal = getValByHeader("direccion", "dir", "direccion_sala", "domicilio", "ubicacion") ? String(getValByHeader("direccion", "dir", "direccion_sala", "domicilio", "ubicacion")).trim() : undefined;
+    rawAforo = getValByHeader("aforo", "capacidad");
+    generoVal = String(getValByHeader("genero", "estilo") || "").trim();
+    tipoVal = normalizeLeadType(getValByHeader("tipo", "tipo_medio", "categoria"));
+    emailVal = String(getValByHeader("email_contacto", "email", "correo", "mail", "contacto_email") || "").trim();
+    telVal = String(getValByHeader("telefono", "tel", "celular", "movil", "móvil", "telefono_contacto") || "").trim();
+    webVal = String(getValByHeader("website", "web", "url", "sitio_web", "link") || "").trim();
+    instaVal = String(getValByHeader("instagram", "insta", "ig") || "").trim();
+    contactoNombreVal = getValByHeader("contacto_nombre", "contacto", "persona_contacto", "persona") ? String(getValByHeader("contacto_nombre", "contacto", "persona_contacto", "persona")).trim() : undefined;
+    fuenteVal = String(getValByHeader("fuente", "origen", "canal") || "").trim();
+    estadoVal = normalizeLeadStatus(getValByHeader("estado", "status"));
+    pitchVal = String(getValByHeader("pitch_generado", "pitch") || "").trim();
+    fechaEnvioVal = getValByHeader("fecha_envio") ? String(getValByHeader("fecha_envio")).trim() : undefined;
+    fechaUltimaRespVal = getValByHeader("fecha_ultima_respuesta") ? String(getValByHeader("fecha_ultima_respuesta")).trim() : undefined;
+    contextoExtraVal = getValByHeader("contexto_extra") ? String(getValByHeader("contexto_extra")).trim() : undefined;
+    notasVal = String(getValByHeader("notas", "observaciones", "comentarios") || "").trim();
+    hiloRaw = getValByHeader("hilo_emails");
+    iconoVal = getValByHeader("icono", "logo", "icon", "emoji") ? String(getValByHeader("icono", "logo", "icon", "emoji")).trim() : undefined;
+    imagenUrlVal = getValByHeader("imagen_url", "imagen", "photo_url", "foto", "avatar") ? String(getValByHeader("imagen_url", "imagen", "photo_url", "foto", "avatar")).trim() : undefined;
+    bandIdVal = getValByHeader("band_id", "bandid") ? String(getValByHeader("band_id", "bandid")).trim() : undefined;
+  }
+
+  // Collect all non-empty cell strings for content sanitation
+  const allCells = row.map(c => String(c ?? "").trim()).filter(Boolean);
+
+  // SANITATION PASS:
+
+  // 1. AFORO / CAPACITY & POSTAL CODE DEDUCTION
+  let aforoVal = 0;
+  let cpFoundInAforo: string | undefined = undefined;
+
+  if (rawAforo !== undefined && rawAforo !== null && rawAforo !== "") {
+    const rawAforoStr = String(rawAforo).trim();
+    if (isSpanishPostalCode(rawAforoStr)) {
+      cpFoundInAforo = rawAforoStr.replace(/\D/g, '');
+      aforoVal = 0;
+    } else {
+      const numOnly = rawAforoStr.replace(/\D/g, '');
+      if (numOnly) {
+        const parsedNum = parseInt(numOnly, 10);
+        if (isSpanishPostalCode(parsedNum)) {
+          cpFoundInAforo = String(parsedNum).padStart(5, '0');
+          aforoVal = 0;
+        } else if (parsedNum >= 10 && parsedNum <= 20000) {
+          aforoVal = parsedNum;
+        }
+      }
+    }
+  }
+
+  // If postal code was found in rawAforo, preserve it in direccionVal
+  if (cpFoundInAforo) {
+    let currentDir = direccionVal || '';
+    if (!currentDir.includes(cpFoundInAforo)) {
+      direccionVal = currentDir ? `${currentDir}, CP ${cpFoundInAforo}` : `CP ${cpFoundInAforo}`;
+    }
+  }
+
+  // If aforoVal is 0, search all cells for a real capacity value (explicit pax or valid non-postal number)
+  if (aforoVal === 0) {
+    for (const cell of allCells) {
+      if (!cell || isEmailStr(cell) || isPhoneStr(cell) || isWebUrl(cell) || isImgUrl(cell) || isStatusStr(cell) || cell.startsWith('lead-') || cell.startsWith('scout-')) continue;
+
+      const paxMatch = cell.match(/\b(\d{2,5})\s*(pax|personas|aforo|capacidad)?\b/i);
+      if (paxMatch) {
+        const parsed = parseInt(paxMatch[1], 10);
+        if (!isSpanishPostalCode(parsed) && parsed >= 10 && parsed <= 20000) {
+          aforoVal = parsed;
+          break;
+        }
+      }
+    }
+  }
+
+  // 2. EMAIL SANITATION
+  if (!isEmailStr(emailVal)) {
+    const foundEmail = allCells.find(c => isEmailStr(c));
+    if (foundEmail) emailVal = foundEmail;
+    else emailVal = '';
+  }
+
+  // 3. STATUS SANITATION
+  if (!isStatusStr(estadoVal)) {
+    const foundStatus = allCells.find(c => isStatusStr(c));
+    if (foundStatus) {
+      estadoVal = normalizeLeadStatus(foundStatus);
+    } else {
+      estadoVal = 'nuevo';
+    }
+  }
+
+  // 4. PHONE SANITATION
+  if (!isPhoneStr(telVal)) {
+    const foundPhone = allCells.find(c => isPhoneStr(c) && c !== emailVal);
+    if (foundPhone) telVal = foundPhone;
+    else if (telVal === emailVal || isEmailStr(telVal) || isStatusStr(telVal)) telVal = '';
+  }
+
+  // 5. WEBSITE SANITATION
+  if (!isWebUrl(webVal)) {
+    const foundWeb = allCells.find(c => isWebUrl(c) && !isImgUrl(c));
+    if (foundWeb) webVal = foundWeb;
+    else if (webVal === emailVal || isEmailStr(webVal) || isStatusStr(webVal)) webVal = '';
+  }
+
+  // 6. INSTAGRAM SANITATION
+  if (!isIgHandle(instaVal)) {
+    const foundIg = allCells.find(c => isIgHandle(c));
+    if (foundIg) instaVal = foundIg;
+    else if (instaVal === emailVal || isEmailStr(instaVal) || isStatusStr(instaVal)) instaVal = '';
+  }
+
+  // 7. IMAGE URL SANITATION
+  if (!imagenUrlVal || !isImgUrl(imagenUrlVal)) {
+    const foundImg = allCells.find(c => isImgUrl(c));
+    if (foundImg) imagenUrlVal = foundImg;
+    else imagenUrlVal = undefined;
+  }
+
+  // 8. CITY & REGION SANITATION
+  if (!ciudadVal || isEmailStr(ciudadVal) || isWebUrl(ciudadVal) || isImgUrl(ciudadVal) || isStatusStr(ciudadVal) || isPhoneStr(ciudadVal) || isSpanishPostalCode(ciudadVal)) {
+    const foundLoc = allCells.find(c => c && c.length >= 3 && c.length <= 35 && !isEmailStr(c) && !isWebUrl(c) && !isImgUrl(c) && !isStatusStr(c) && !isPhoneStr(c) && !isSpanishPostalCode(c) && !c.startsWith('lead-') && !c.startsWith('scout-') && !/^\d+$/.test(c));
+    if (foundLoc) ciudadVal = foundLoc;
+    else ciudadVal = '';
+  }
+
+  // 9. NAME (nombre_sala) SANITATION
+  if (!nombreSalaVal || isEmailStr(nombreSalaVal) || isWebUrl(nombreSalaVal) || isImgUrl(nombreSalaVal) || isStatusStr(nombreSalaVal) || isPhoneStr(nombreSalaVal) || isSpanishPostalCode(nombreSalaVal) || /^\d+$/.test(nombreSalaVal)) {
+    const foundName = allCells.find(c => c && c.length >= 3 && c.length <= 80 && !isEmailStr(c) && !isWebUrl(c) && !isImgUrl(c) && !isStatusStr(c) && !isPhoneStr(c) && !isSpanishPostalCode(c) && !c.startsWith('lead-') && !c.startsWith('scout-') && !/^\d+$/.test(c) && c !== ciudadVal);
+    if (foundName) nombreSalaVal = foundName;
+    else if (!nombreSalaVal) nombreSalaVal = 'Espacio Sin Nombre';
+  }
+
+  // 10. TYPE SANITATION
+  if (!tipoVal || !['sala', 'medio', 'festival', 'discoteca'].includes(tipoVal)) {
+    const lowerName = (nombreSalaVal + " " + (generoVal || "")).toLowerCase();
+    if (lowerName.includes('radio') || lowerName.includes('prensa') || lowerName.includes('revista') || lowerName.includes('blog') || lowerName.includes('magazine') || lowerName.includes('fanzine') || lowerName.includes('medio') || lowerName.includes('podcast') || lowerName.includes('tv')) {
+      tipoVal = 'medio';
+    } else if (lowerName.includes('festival') || lowerName.includes('fest')) {
+      tipoVal = 'festival';
+    } else if (lowerName.includes('discoteca') || lowerName.includes('club')) {
+      tipoVal = 'discoteca';
+    } else {
+      tipoVal = 'sala';
+    }
+  }
+
+  // 11. ID SANITATION
+  if (!idVal || isEmailStr(idVal) || isStatusStr(idVal) || isPhoneStr(idVal) || isSpanishPostalCode(idVal)) {
+    const foundId = allCells.find(c => c.startsWith('lead-') || c.startsWith('scout-') || c.startsWith('med-'));
+    if (foundId) idVal = foundId;
+    else idVal = `lead_${Math.random().toString(36).substring(2, 9)}`;
+  }
+
   let hiloEmails: EmailMessage[] = [];
   if (hiloRaw && typeof hiloRaw === 'string' && !hiloRaw.startsWith("=")) {
     try {
@@ -107,7 +372,7 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
     nombre_sala: nombreSalaVal,
     ciudad: ciudadVal,
     region: regionVal,
-    direccion: direccionVal || undefined,
+    direccion: direccionVal,
     aforo: aforoVal,
     genero: generoVal,
     tipo: tipoVal,
@@ -116,7 +381,7 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
     website: webVal,
     instagram: instaVal,
     contacto_nombre: contactoNombreVal,
-    fuente: fuenteVal,
+    fuente: fuenteVal || 'manual',
     estado: estadoVal,
     pitch_generado: pitchVal,
     fecha_envio: fechaEnvioVal,
@@ -126,6 +391,7 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
     hilo_emails: hiloEmails,
     icono: iconoVal,
     imagen_url: imagenUrlVal,
+    band_id: bandIdVal
   };
 }
 
@@ -135,13 +401,14 @@ export function leadToRowDynamic(
   hilosSheetId: number | null = null,
   existingRow?: any[]
 ): any[] {
-  const rowLength = Math.max(headers.length, existingRow ? existingRow.length : 0);
+  const targetHeaders = (headers && headers.length >= 13) ? headers : DEFAULT_LEADS_HEADERS;
+  const rowLength = Math.max(targetHeaders.length, existingRow ? existingRow.length : 0);
   const row: any[] = new Array(rowLength).fill("");
 
-  // Copy existing row data first so unknown/custom columns added by Python are preserved
-  if (existingRow && Array.isArray(existingRow)) {
-    for (let i = 0; i < existingRow.length; i++) {
-      row[i] = existingRow[i];
+  // Only copy extra custom columns from existingRow beyond targetHeaders length
+  if (existingRow && Array.isArray(existingRow) && existingRow.length > targetHeaders.length) {
+    for (let i = targetHeaders.length; i < existingRow.length; i++) {
+      row[i] = existingRow[i] || "";
     }
   }
 
@@ -152,7 +419,7 @@ export function leadToRowDynamic(
     hiloVal = lead.hilo_emails ? JSON.stringify(lead.hilo_emails) : "[]";
   }
 
-  headers.forEach((h, idx) => {
+  targetHeaders.forEach((h, idx) => {
     if (!h) return;
     const key = String(h).trim().toLowerCase();
     switch (key) {
@@ -805,11 +1072,19 @@ export async function fetchLeadsFromSheet(localLeads: Lead[]): Promise<Lead[]> {
         range: "leads!A1:ZZ",
       });
       const rows = response.data?.values;
-      if (rows && rows.length > 1) {
-        const headers = rows[0];
+      if (rows && rows.length > 0) {
+        const headers = rows[0] || [];
         const headerMap = buildHeaderMap(headers);
         const dataRows = rows.slice(1);
         leadsFromSheet = dataRows.map(row => rowToLeadDynamic(row, headerMap));
+
+        // Always realign in background if rows exist, to guarantee Google Sheet columns match DEFAULT_LEADS_HEADERS canonical layout and cleaned values
+        if (dataRows.length > 0) {
+          console.log("[Google Sheets] Syncing & realigning 'leads' tab with sanitized columns...");
+          realignLeadsSheetHeadersAndData(sheets, spreadsheetId, leadsFromSheet).catch(err => {
+            console.warn("Auto realign background notice:", err);
+          });
+        }
       }
     } catch (e: any) {
       console.error("Error reading leads tab:", e?.message || e);
@@ -1128,6 +1403,74 @@ export async function ensureHeadersInSheet(
   } catch (error) {
     console.error(`Error ensuring headers in tab "${tabName}":`, error);
     return defaultHeaders;
+  }
+}
+
+export async function realignLeadsSheetHeadersAndData(
+  sheetsClient?: any,
+  targetSpreadsheetId?: string,
+  existingParsedLeads?: Lead[]
+): Promise<{ success: boolean; count: number; message: string }> {
+  const sheets = sheetsClient || getSheetsClient();
+  const spreadsheetId = targetSpreadsheetId || process.env.SPREADSHEET_ID;
+  if (!sheets || !spreadsheetId) {
+    return { success: false, count: 0, message: "Las credenciales de Google Sheets no están configuradas." };
+  }
+
+  try {
+    const tabName = "leads";
+    await ensureSheetTabExists(sheets, spreadsheetId, tabName);
+
+    let parsedLeads: Lead[] = existingParsedLeads || [];
+    if (!existingParsedLeads || existingParsedLeads.length === 0) {
+      const response = await getValuesCached(sheets, {
+        spreadsheetId,
+        range: `${tabName}!A1:ZZ`,
+      }, 100);
+
+      const rows = response.data?.values || [];
+      if (rows.length > 1) {
+        const currentHeaders = rows[0] || [];
+        const headerMap = buildHeaderMap(currentHeaders);
+        const dataRows = rows.slice(1);
+        parsedLeads = dataRows.map(r => rowToLeadDynamic(r, headerMap));
+      }
+    }
+
+    const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
+
+    const newFormattedRows = [
+      DEFAULT_LEADS_HEADERS,
+      ...parsedLeads.map(lead => leadToRowDynamic(lead, DEFAULT_LEADS_HEADERS, hilosSheetId))
+    ];
+
+    const endColLetter = getColumnLetter(DEFAULT_LEADS_HEADERS.length - 1);
+
+    // Clear existing range first to remove phantom/out-of-bounds leftover columns
+    try {
+      await sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range: `${tabName}!A1:ZZ${Math.max(parsedLeads.length + 20, 200)}`
+      });
+    } catch (_) {}
+
+    await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tabName}!A1:${endColLetter}${newFormattedRows.length}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: newFormattedRows }
+    }));
+
+    invalidateValuesCache(tabName);
+    console.log(`[Google Sheets] Successfully realigned ${parsedLeads.length} leads and headers in '${tabName}'.`);
+    return {
+      success: true,
+      count: parsedLeads.length,
+      message: `¡Cabeceras y ${parsedLeads.length} salas/medios alineados correctamente en la pestaña 'leads' de Google Sheets!`
+    };
+  } catch (err: any) {
+    console.error("Error realigning leads sheet headers:", err);
+    return { success: false, count: 0, message: err?.message || String(err) };
   }
 }
 
@@ -3001,7 +3344,9 @@ export function userToRow(u: any): any[] {
     u.instrument || "Músico",
     u.avatarColor || "#3b82f6",
     u.createdAt || new Date().toISOString(),
-    u.band_id || u.bandId || u.id || "band-1"
+    u.band_id || u.bandId || u.id || "band-1",
+    u.passwordHash || "",
+    u.salt || ""
   ];
 }
 
@@ -3016,7 +3361,9 @@ export function rowToUser(r: any[]): any {
     instrument: String(r[6] || "Músico"),
     avatarColor: String(r[7] || "#3b82f6"),
     createdAt: String(r[8] || ""),
-    band_id: String(r[9] || r[0] || "band-1")
+    band_id: String(r[9] || r[0] || "band-1"),
+    passwordHash: String(r[10] || ""),
+    salt: String(r[11] || "")
   };
 }
 
@@ -3192,14 +3539,14 @@ export async function ensureUsuariosSheet(sheets?: any, spreadsheetId?: string):
     
     const headers = [
       "id", "username", "name", "email", "role", "plan",
-      "instrument", "avatarColor", "createdAt", "band_id"
+      "instrument", "avatarColor", "createdAt", "band_id", "password_hash", "salt"
     ];
     
-    const res = await getValuesCached(s, { spreadsheetId: id, range: "usuarios!A1:J1" });
+    const res = await getValuesCached(s, { spreadsheetId: id, range: "usuarios!A1:L1" });
     if (!res?.data?.values || res.data.values.length === 0 || !res.data.values[0][0]) {
       await retrySheetsWrite(() => s.spreadsheets.values.update({
         spreadsheetId: id,
-        range: "usuarios!A1:J1",
+        range: "usuarios!A1:L1",
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [headers] }
       }));
@@ -3228,14 +3575,14 @@ export async function fetchUsersFromSheet(fallback: any[] = []): Promise<any[]> 
     await ensureUsuariosSheet(sheets, spreadsheetId);
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "usuarios!A2:J",
+      range: "usuarios!A2:L",
     });
     const rows = response?.data?.values;
     if (!rows || rows.length === 0) {
       if (fallback && fallback.length > 0) {
         await retrySheetsWrite(() => sheets.spreadsheets.values.append({
           spreadsheetId,
-          range: "usuarios!A:J",
+          range: "usuarios!A:L",
           valueInputOption: "USER_ENTERED",
           requestBody: { values: fallback.map(u => userToRow(u)) },
         }));
@@ -3261,7 +3608,7 @@ export async function appendUserToSheet(user: any) {
     await ensureUsuariosSheet(sheets, spreadsheetId);
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "usuarios!A:J",
+      range: "usuarios!A:L",
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [userToRow(user)] },
     });
@@ -3280,13 +3627,13 @@ export async function updateUserInSheet(user: any) {
     await ensureUsuariosSheet(sheets, spreadsheetId);
     const response = await getValuesCached(sheets, {
       spreadsheetId,
-      range: "usuarios!A2:J",
+      range: "usuarios!A2:L",
     });
     const rows = response.data.values || [];
     const rowIndex = rows.findIndex((row: any) => row[0] === user.id || row[1] === user.username);
 
     if (rowIndex !== -1) {
-      const range = `usuarios!A${rowIndex + 2}:J${rowIndex + 2}`;
+      const range = `usuarios!A${rowIndex + 2}:L${rowIndex + 2}`;
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range,
@@ -3458,10 +3805,16 @@ export async function fetchEpkConfigsFromSheet(fallbackMap: Record<string, any> 
     for (const r of rows) {
       if (r && r[0]) {
         const parsed = rowToEpkConfig(r);
-        result[parsed.bandId] = {
-          ...(result[parsed.bandId] || {}),
-          ...parsed.epk
-        };
+        const existingEpk = result[parsed.bandId] || {};
+        const mergedEpk: Record<string, any> = { ...existingEpk };
+        for (const [k, v] of Object.entries(parsed.epk)) {
+          if (v !== undefined && v !== null && v !== "") {
+            mergedEpk[k] = v;
+          } else if (mergedEpk[k] === undefined || mergedEpk[k] === null || mergedEpk[k] === "") {
+            mergedEpk[k] = v;
+          }
+        }
+        result[parsed.bandId] = mergedEpk;
       }
     }
     return result;
@@ -3508,6 +3861,162 @@ export async function updateEpkInSheet(bandId: string, epkConfig: any) {
     }
   } catch (error) {
     console.error("Error updating dossier_epk in sheet:", error);
+  }
+}
+
+export function autonomyConfigToRow(bandId: string, autonomy: any): any[] {
+  return [
+    bandId || "band-bakandeya",
+    autonomy.dispatchLevel || "draft_only",
+    autonomy.negotiationDepth || "filter_conditions",
+    autonomy.minCacheThreshold ?? 300,
+    autonomy.maxCacheThreshold ?? 800,
+    autonomy.autoDeclineUnderMinCache ? "true" : "false",
+    autonomy.notifyOnEveryProposal !== false ? "true" : "false",
+    autonomy.requireHumanForFinalSignOff !== false ? "true" : "false",
+    new Date().toISOString()
+  ];
+}
+
+export function rowToAutonomyConfig(r: any[]): { bandId: string; autonomy: any } {
+  return {
+    bandId: r[0] || "band-bakandeya",
+    autonomy: {
+      dispatchLevel: r[1] || "draft_only",
+      negotiationDepth: r[2] || "filter_conditions",
+      minCacheThreshold: r[3] ? parseInt(r[3], 10) : 300,
+      maxCacheThreshold: r[4] ? parseInt(r[4], 10) : 800,
+      autoDeclineUnderMinCache: String(r[5]).toLowerCase() === "true",
+      notifyOnEveryProposal: String(r[6]).toLowerCase() !== "false",
+      requireHumanForFinalSignOff: String(r[7]).toLowerCase() !== "false"
+    }
+  };
+}
+
+export async function ensureAutonomiaSheet(sheets?: any, spreadsheetId?: string): Promise<boolean> {
+  const s = sheets || getSheetsClient();
+  const id = spreadsheetId || getSpreadsheetId();
+  if (!s || !id) return false;
+
+  if (verifiedHeadersSet.has("config_autonomia")) return true;
+
+  try {
+    await ensureSheetTabExists(s, id, "config_autonomia");
+
+    const response = await getValuesCached(s, {
+      spreadsheetId: id,
+      range: "config_autonomia!A1:I1",
+    });
+
+    const rows = response?.data?.values;
+    if (!rows || rows.length === 0 || !rows[0] || rows[0].length === 0) {
+      const headers = [
+        "band_id", "modo_envio", "profundidad_negociacion", "cache_minimo", "cache_objetivo", "auto_rechazar_bajo_minimo", "notificar_propuestas", "requiere_firma_humana", "fecha_actualizacion"
+      ];
+      await retrySheetsWrite(() => s.spreadsheets.values.update({
+        spreadsheetId: id,
+        range: "config_autonomia!A1:I1",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [headers] }
+      }));
+    }
+    verifiedHeadersSet.add("config_autonomia");
+    return true;
+  } catch (err: any) {
+    const isQuota = err?.status === 429 || err?.code === 429 || String(err?.message || "").toLowerCase().includes("quota");
+    if (isQuota) {
+      console.warn("[ensureAutonomiaSheet] Quota limit hit for Google Sheets. Continuing gracefully.");
+      verifiedHeadersSet.add("config_autonomia");
+      return true;
+    } else {
+      console.warn("Notice ensuring config_autonomia sheet:", err?.message || err);
+    }
+    return false;
+  }
+}
+
+export async function fetchAutonomyConfigsFromSheet(fallbackMap: Record<string, any> = {}): Promise<Record<string, any>> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return fallbackMap;
+
+  try {
+    await ensureAutonomiaSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "config_autonomia!A2:I",
+    });
+    const rows = response?.data?.values;
+    if (!rows || rows.length === 0) {
+      if (fallbackMap && Object.keys(fallbackMap).length > 0) {
+        const rowsToWrite = Object.entries(fallbackMap).map(([bId, config]) => autonomyConfigToRow(bId, config));
+        await retrySheetsWrite(() => sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: "config_autonomia!A:I",
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: rowsToWrite },
+        }));
+        invalidateValuesCache("config_autonomia");
+      }
+      return fallbackMap;
+    }
+
+    const result: Record<string, any> = { ...fallbackMap };
+    for (const r of rows) {
+      if (r && r[0]) {
+        const parsed = rowToAutonomyConfig(r);
+        const existing = result[parsed.bandId] || {};
+        const merged: Record<string, any> = { ...existing };
+        for (const [k, v] of Object.entries(parsed.autonomy)) {
+          if (v !== undefined && v !== null && v !== "") {
+            merged[k] = v;
+          }
+        }
+        result[parsed.bandId] = merged;
+      }
+    }
+    return result;
+  } catch (err: any) {
+    console.warn("Notice reading config_autonomia from sheet:", err?.message || err);
+    return fallbackMap;
+  }
+}
+
+export async function updateAutonomyInSheet(bandId: string, autonomyConfig: any) {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSpreadsheetId();
+  if (!sheets || !spreadsheetId) return;
+
+  try {
+    await ensureAutonomiaSheet(sheets, spreadsheetId);
+    const response = await getValuesCached(sheets, {
+      spreadsheetId,
+      range: "config_autonomia!A2:I",
+    });
+    const rows = response.data.values || [];
+    const targetId = bandId || "band-bakandeya";
+    const rowIndex = rows.findIndex((row: any) => row[0] === targetId);
+
+    if (rowIndex !== -1) {
+      const range = `config_autonomia!A${rowIndex + 2}:I${rowIndex + 2}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [autonomyConfigToRow(targetId, autonomyConfig)] },
+      });
+      invalidateValuesCache("config_autonomia");
+    } else {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: "config_autonomia!A:I",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [autonomyConfigToRow(targetId, autonomyConfig)] },
+      });
+      invalidateValuesCache("config_autonomia");
+    }
+  } catch (error) {
+    console.error("Error updating config_autonomia in sheet:", error);
   }
 }
 
@@ -3712,6 +4221,18 @@ export async function syncAllTabsWithBakandeya(state: any) {
       await retrySheetsWrite(() => sheets.spreadsheets.values.update({
         spreadsheetId,
         range: "dossier_epk!A2:R",
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: rows }
+      }));
+    }
+
+    // 16. config_autonomia
+    if (state.autonomyConfigsByBand && Object.keys(state.autonomyConfigsByBand).length > 0) {
+      await ensureAutonomiaSheet(sheets, spreadsheetId);
+      const rows = Object.entries(state.autonomyConfigsByBand).map(([bId, cfg]: [string, any]) => autonomyConfigToRow(bId, cfg));
+      await retrySheetsWrite(() => sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: "config_autonomia!A2:I",
         valueInputOption: "USER_ENTERED",
         requestBody: { values: rows }
       }));

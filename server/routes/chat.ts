@@ -1,14 +1,14 @@
 import express from "express";
 import { KNOWN_LOCATIONS, CANONICAL_LOCATION_MAP, getRegionForCity } from "../../src/constants/regions.js";
 import { Lead, Rehearsal, Concert } from "../../src/types.js";
-import { loadState, getUserFromRequestLocal, getEpkConfigForBand, BAKANDEYA_BAND_ID } from "../state.js";
+import { loadState, getUserFromRequestLocal, getEpkConfigForBand, getAutonomyConfigForBand, BAKANDEYA_BAND_ID } from "../state.js";
 import { getAiClient, generateContentWithFallback } from "../ai.js";
 import { safeParseJson } from "../utils.js";
 
 const router = express.Router();
 
 router.post("/chat", async (req, res) => {
-  const { message, chatHistory, agentsEnabled: agentsEnabledBody } = req.body;
+  const { message, chatHistory, agentsEnabled: agentsEnabledBody, autonomyConfig } = req.body;
   const agentsEnabled = agentsEnabledBody !== false;
   const userReq = getUserFromRequestLocal(req);
   const userRole = userReq ? userReq.role : (req.body.userRole || "member");
@@ -112,6 +112,8 @@ router.post("/chat", async (req, res) => {
     }
 
     let paramText = "";
+    const activeBandName = userReq?.bandName || 'Bakandeya';
+
     if (agentName === "Scout Descubridor") {
       paramText = `\n\n**Parámetros detectados:**\n- Región: \`${triggerParams.region}\`\n- Tipo de espacio: \`${triggerParams.tipo}\` *(obligatorio, extraído de tu mensaje)*`;
     } else if (agentName === "Scout") {
@@ -119,7 +121,7 @@ router.post("/chat", async (req, res) => {
     }
 
     return res.json({
-      text: `🤖 **Disparador del Agente '${agentName}' Preparado**\n\nHe detectado que quieres ejecutar el agente **${agentName}** para gestionar tus tareas de booking de Bakandeya.${paramText}\n\n*Nota: La ejecución de agentes no requiere el uso de Inteligencia Artificial (Google Gemini) y se conecta directamente con tu repositorio de GitHub a través del workflow configurado.*`,
+      text: `🤖 **Disparador del Agente '${agentName}' Preparado**\n\nHe detectado que quieres ejecutar el agente **${agentName}** para gestionar tus tareas de booking de ${activeBandName}.${paramText}\n\n*Nota: La ejecución de agentes no requiere el uso de Inteligencia Artificial (Google Gemini) y se conecta directamente con tu repositorio de GitHub a través del workflow configurado.*`,
       proposedActions: [{
         type: "propose_agent_trigger",
         agentName: agentName,
@@ -168,7 +170,7 @@ router.post("/chat", async (req, res) => {
         const count = state.leads.filter((l: Lead) => l.genero.toLowerCase().includes("reggae") || l.genero.toLowerCase().includes("ska")).length;
         reply += `Tienes actualmente **${count} salas** especializadas en Ska/Reggae en la base de datos (por ejemplo, *Kafe Antzokia* en Bilbao, *Sala El Tren* en Granada y *Viña Rock*).`;
       } else {
-        reply += `Entendido. Como tu Manager Virtual de Bakandeya, monitorizo la hoja de cálculo y puedo disparar tus agentes. Tienes:\n- **${state.leads.length} salas** en total\n- **${state.rehearsals.filter((r: Rehearsal) => r.estado === 'programado').length} ensayos programados**\n- **${state.concerts.filter((c: Concert) => c.fecha >= '2026-07-09').length} próximos conciertos**\n\n¿Quieres que revisemos los correos de presentación, agendemos un ensayo o lancemos un agente como el **Scout**?`;
+        reply += `Entendido. Como tu Manager Virtual de ${userReq?.bandName || 'tu banda'}, monitorizo la hoja de cálculo y puedo disparar tus agentes. Tienes:\n- **${state.leads.length} salas** en total\n- **${state.rehearsals.filter((r: Rehearsal) => r.estado === 'programado').length} ensayos programados**\n- **${state.concerts.filter((c: Concert) => c.fecha >= '2026-07-09').length} próximos conciertos**\n\n¿Quieres que revisemos los correos de presentación, agendemos un ensayo o lancemos un agente como el **Scout**?`;
       }
       
       res.json({ text: reply, proposedActions });
@@ -177,8 +179,16 @@ router.post("/chat", async (req, res) => {
   }
 
   try {
+    const userBandId = userReq?.band_id || BAKANDEYA_BAND_ID;
+    const matchBand = (item: any) => {
+      if (!item) return false;
+      const bid = item.band_id || item.bandId;
+      if (bid) return bid === userBandId;
+      return userBandId === BAKANDEYA_BAND_ID || userBandId === 'reg-bakandeya';
+    };
+
     const stateSummary: any = {
-      leads: state.leads.map((l: Lead) => ({
+      leads: state.leads.filter(matchBand).map((l: Lead) => ({
         id: l.id,
         nombre_sala: l.nombre_sala,
         ciudad: l.ciudad,
@@ -198,7 +208,7 @@ router.post("/chat", async (req, res) => {
         fecha_ultima_respuesta: l.fecha_ultima_respuesta,
         hasPitch: !!l.pitch_generado
       })),
-      bands: (state.bands || []).map((b: any) => ({
+      bands: (state.bands || []).filter(matchBand).map((b: any) => ({
         id: b.id,
         nombre_banda: b.nombre_banda,
         estilo_musical: b.estilo_musical,
@@ -206,7 +216,7 @@ router.post("/chat", async (req, res) => {
         icono: b.icono,
         imagen_url: b.imagen_url
       })),
-      tours: (state.tours || []).map((t: any) => ({
+      tours: (state.tours || []).filter(matchBand).map((t: any) => ({
         id: t.id,
         nombre: t.nombre,
         vehiculo: t.vehiculo,
@@ -216,11 +226,11 @@ router.post("/chat", async (req, res) => {
         presupuestoLogistica: t.presupuestoLogistica,
         stops: t.stops
       })),
-      songs: (state.songs || []).map((s: any) => ({ id: s.id, titulo: s.titulo, estado: s.estado, duracion: s.duracion })),
-      setlists: (state.setlists || []).map((st: any) => ({ id: st.id, titulo: st.titulo, fecha: st.fecha, duracionTotal: st.duracionTotal })),
-      fansCount: (state.fans || []).length,
-      rehearsals: state.rehearsals,
-      concerts: state.concerts.map((c: Concert) => ({
+      songs: (state.songs || []).filter(matchBand).map((s: any) => ({ id: s.id, titulo: s.titulo, estado: s.estado, duracion: s.duracion })),
+      setlists: (state.setlists || []).filter(matchBand).map((st: any) => ({ id: st.id, titulo: st.titulo, fecha: st.fecha, duracionTotal: st.duracionTotal })),
+      fansCount: (state.fans || []).filter(matchBand).length,
+      rehearsals: (state.rehearsals || []).filter(matchBand),
+      concerts: (state.concerts || []).filter(matchBand).map((c: Concert) => ({
         id: c.id,
         fecha: c.fecha,
         ciudad: c.ciudad,
@@ -229,7 +239,7 @@ router.post("/chat", async (req, res) => {
         contrato_firmado: c.contrato_firmado,
         estado_pago: c.estado_pago
       })),
-      recentMessages: state.messages.slice(-5)
+      recentMessages: (state.messages || []).filter(matchBand).slice(-5)
     };
 
     const bandIdForEpk = userReq?.band_id || BAKANDEYA_BAND_ID;
@@ -240,18 +250,11 @@ router.post("/chat", async (req, res) => {
       stateSummary.payments = state.payments;
     }
 
-    const systemPrompt = `Eres el "Manager Virtual de Bakandeya", un asistente de Inteligencia Artificial para la banda de música española "Bakandeya".
-Tu labor es ayudar a los miembros de la banda a organizarse, consultar sus datos de Google Sheets de salas de conciertos, ver el calendario de ensayos, conciertos y resolver dudas en lenguaje natural.
+    const targetBandName = userReq?.bandName || epkConfigData?.nombre_banda || 'Bakandeya';
+    const cleanBandId = bandIdForEpk.replace(/^(band|reg)-/, '');
+    const isBakandeyaBand = cleanBandId === 'bakandeya' || targetBandName.toLowerCase().includes('bakandeya');
 
-DOSSIER OFICIAL & KIT DE PRENSA ALMACENADO (stateSummary.epkConfig):
-- Logo oficial: ${epkConfigData?.logoUrl || '/logo_bakandeya.jpg'}
-- Dossier PDF/Documento: ${epkConfigData?.dossierPdfUrl ? `${epkConfigData.dossierPdfName || 'Dossier PDF'} (${epkConfigData.dossierPdfUrl})` : (epkConfigData?.dossierDocumentUrl ? `${epkConfigData.dossierDocumentName || 'Documento'} (${epkConfigData.dossierDocumentUrl})` : 'No subido aún')}
-- Biografía oficial: ${epkConfigData?.biografia || 'Sin biografía'}
-- Información adicional/Texto extra de dossier: ${epkConfigData?.dossierTextoExtra || 'Sin notas adicionales'}
-- Rider técnico: ${epkConfigData?.riderTecnico || 'Sin rider'} ${epkConfigData?.riderPdfUrl ? `[PDF Rider: ${epkConfigData.riderPdfName || 'Rider.pdf'} (${epkConfigData.riderPdfUrl})]` : ''}
-- Contacto booking: ${JSON.stringify(epkConfigData?.contactoBooking || {})}
-- Redes sociales: ${JSON.stringify(epkConfigData?.enlacesRedes || {})}
-
+    const specificDossierBlock = isBakandeyaBand ? `
 DOSSIER COMPLETO E INFORMACIÓN INTERNA DE LA BANDA BAKANDEYA:
 1. ESTILO Y PROPUESTA MUSICAL:
 - Estilo: Electrónica-fusión / Electrobasureo (percusión reciclada). Mezcla electrónica analógica, reggae, balkan, klezmer, jazz, música oriental, clásico, DnB, techno.
@@ -264,12 +267,44 @@ DOSSIER COMPLETO E INFORMACIÓN INTERNA DE LA BANDA BAKANDEYA:
 - Raúl Pérez: Violinista mexicano, arreglista e intérprete, ex-Teatro de la Memoria, historiador, novelista ("La taberna de las ánimas").
 
 3. DEPARTAMENTOS INTERNOS DE GESTIÓN BAKANDEYA:
-- Community Manager (Redes): Edición/subida de vídeos y fotos (IG, TikTok, YT), algoritmos, análisis de viralización, respuesta de comentarios y DMs/filtrado de propuestas laborales.
-- Distribuidora: Mailing promocional y de búsqueda de fechas a Salas, Festivales, Teatros y profesionales. Listados organizados (trabajadas, objetivo, sin contestar).
-- Promoción de Medios: Contacto con periódicos, TV, radio, podcasts artísticos, YouTubers e influencers culturales.
-- Distribuidora Social: Contacto directo con personas de interés y propuestas de colaboración con otros grupos/artistas.
-- Biblioteca de Salas, Festivales y Teatros: Base de datos viva sincronizada con Google Sheets.
-- Análisis de Resultados: Conversión y métricas de seguimiento de campañas.
+- Community Manager (Redes), Distribuidora de Mailing, Promoción de Medios, Distribuidora Social, Biblioteca de Salas/Festivales y Análisis de Resultados.
+` : `
+INFORMACIÓN DE LA BANDA ${targetBandName.toUpperCase()}:
+- Nombre de la banda: ${targetBandName}
+- Biografía/Estilo: ${epkConfigData?.biografia || 'Sin biografía especificada aún'}
+- Contacto de Booking: ${epkConfigData?.contactoBooking?.email || userReq?.email || 'Sin email definido'} | Teléfono: ${epkConfigData?.contactoBooking?.telefono || 'Sin teléfono definido'}
+- Redes sociales y enlaces: ${JSON.stringify(epkConfigData?.enlacesRedes || {})}
+`;
+
+    const autonomy = autonomyConfig || getAutonomyConfigForBand(state, bandIdForEpk);
+
+    const autonomyPromptBlock = `
+CONFIGURACIÓN VIGENTE DE AUTONOMÍA Y NEGOCIACIÓN DEL MÁNAGER Y AGENTES AI:
+- Modo de Envío (Dispatch Level): ${autonomy.dispatchLevel === 'draft_only' ? 'SÓLO BORRADORES (Cualquier propuesta o correo redactado se guarda como borrador en "pendiente_aprobacion" para revisión humana obligatoria)' : autonomy.dispatchLevel === 'scheduled_window' ? 'VENTANA PROGRAMADA (Margen de 3h para revisión antes de salir)' : 'ENVÍO AUTÓNOMO DE PRIMER CONTACTO (El pitch inicial se aprueba si cumple criterios; negociaciones requieren validación)'}
+- Profundidad de Negociación: ${autonomy.negotiationDepth === 'outreach_only' ? 'SÓLO CONTACTO INICIAL / EPK (No negociar cachés ni condiciones en esta fase)' : autonomy.negotiationDepth === 'filter_conditions' ? 'FILTRADO DE CONDICIONES Y CACHÉ (Aceptar/proponer negociaciones solo si el caché está entre ' + (autonomy.minCacheThreshold || 300) + '€ y ' + (autonomy.maxCacheThreshold || 800) + '€)' : 'NEGOCIACIÓN AVANZADA Y RE-OFERTAS (Proponer contraofertas dentro del rango de ' + (autonomy.minCacheThreshold || 300) + '€ y ' + (autonomy.maxCacheThreshold || 800) + '€)'}
+- Caché Mínimo Aceptable: ${autonomy.minCacheThreshold || 300} €
+- Caché Objetivo / Máximo: ${autonomy.maxCacheThreshold || 800} €
+- Auto-rechazar ofertas por debajo de ${autonomy.minCacheThreshold || 300} €: ${autonomy.autoDeclineUnderMinCache ? 'SÍ (Rechazar cortesmente)' : 'NO (Avisar al mánager sin rechazar)'}
+- FIRMA Y CIERRE FINAL HUMANO: SIEMPRE OBLIGATORIO (No se cierra ningún trato ni se firma contrato sin aprobación directa del usuario).
+
+REGLA DE AUTONOMÍA: Cuando el usuario te pregunte sobre negociaciones, ofertas de salas, o te pida generar/enviar correos, DEBES TENER EN CUENTA ESTOS LÍMITES Y MENCIONARLOS SI CORRESPONDE.
+`;
+
+    const systemPrompt = `Eres el "Manager Virtual de ${targetBandName}", un asistente de Inteligencia Artificial para la banda de música "${targetBandName}".
+Tu labor es ayudar a los miembros de la banda a organizarse, consultar sus datos de Google Sheets de salas de conciertos, ver el calendario de ensayos, conciertos y resolver dudas en lenguaje natural.
+
+DOSSIER OFICIAL & KIT DE PRENSA ALMACENADO (stateSummary.epkConfig):
+- Logo oficial: ${epkConfigData?.logoUrl || '/logo_bakandeya_bueno_sin_fondo.png'}
+- Dossier PDF/Documento: ${epkConfigData?.dossierPdfUrl ? `${epkConfigData.dossierPdfName || 'Dossier PDF'} (${epkConfigData.dossierPdfUrl})` : (epkConfigData?.dossierDocumentUrl ? `${epkConfigData.dossierDocumentName || 'Documento'} (${epkConfigData.dossierDocumentUrl})` : 'No subido aún')}
+- Biografía oficial: ${epkConfigData?.biografia || 'Sin biografía'}
+- Información adicional/Texto extra de dossier: ${epkConfigData?.dossierTextoExtra || 'Sin notas adicionales'}
+- Rider técnico: ${epkConfigData?.riderTecnico || 'Sin rider'} ${epkConfigData?.riderPdfUrl ? `[PDF Rider: ${epkConfigData.riderPdfName || 'Rider.pdf'} (${epkConfigData.riderPdfUrl})]` : ''}
+- Contacto booking: ${JSON.stringify(epkConfigData?.contactoBooking || {})}
+- Redes sociales: ${JSON.stringify(epkConfigData?.enlacesRedes || {})}
+
+${specificDossierBlock}
+
+${autonomyPromptBlock}
 
 ${!isLeader ? `RESTRICCIÓN CRÍTICA DE FINANZAS:
 El usuario actual NO es un administrador de la banda (rol: miembro). Tiene ESTRICTAMENTE PROHIBIDO ver, consultar o solicitar información sobre finanzas, contabilidad, pagos, gastos, ingresos, balances, caja o cachés de conciertos. Si el usuario realiza cualquier pregunta sobre dinero, finanzas o partidas contables, DEBES RESPONDER ÚNICA Y EXCLUSIVAMENTE CON ESTE TEXTO EXACTO: "🔒 *El apartado y los datos de finanzas están restringidos únicamente a los administradores de la banda (José y Diego).*" SIN APORTAR NINGÚN DATO FINANCIERO.

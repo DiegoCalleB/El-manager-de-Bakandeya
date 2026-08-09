@@ -11,12 +11,20 @@ export const toursController = {
       saveState(state);
 
       const userBandId = (req as any).user?.band_id || 'band-bakandeya';
-      const isBakandeyaOrAdmin = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya' || (req as any).user?.role === 'admin';
+      const cleanUser = userBandId.replace(/^(band|reg)-/, '');
+      const matchBand = (t: any) => {
+        if (!t) return false;
+        const bid = t.band_id || t.bandId;
+        if (bid) {
+          if (bid === userBandId) return true;
+          const cleanItem = bid.replace(/^(band|reg)-/, '');
+          return cleanItem === cleanUser;
+        }
+        return cleanUser === 'bakandeya';
+      };
 
       const allTours = state.tours || [];
-      const filtered = isBakandeyaOrAdmin
-        ? allTours
-        : allTours.filter((t: Tour) => (t as any).band_id === userBandId || (t as any).bandId === userBandId || !(t as any).band_id);
+      const filtered = allTours.filter(matchBand);
 
       res.json({ tours: filtered });
     } catch (error: any) {

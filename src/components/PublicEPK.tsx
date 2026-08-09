@@ -23,9 +23,9 @@ export const PublicEPK: React.FC<PublicEPKProps> = ({ initialData }) => {
   useEffect(() => {
     if (!initialData) {
       fetch('/api/public/epk')
-        .then(res => res.json())
+        .then(res => (res.ok && res.headers.get('content-type')?.includes('application/json')) ? res.json().catch(() => null) : null)
         .then(data => {
-          setEpkData(data);
+          if (data) setEpkData(data);
           setLoading(false);
         })
         .catch(err => {

@@ -18,20 +18,31 @@ export function useAppData(isLoggedIn: boolean, bandId?: string) {
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('syncing');
 
+  const dedupeById = <T extends { id?: string }>(arr: T[] = []): T[] => {
+    const seen = new Set<string>();
+    return arr.filter(item => {
+      if (!item) return false;
+      if (!item.id) return true;
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  };
+
   const fetchState = useCallback(async (retryCount = 0) => {
     setSyncStatus('syncing');
     try {
       const data = await api.getState();
-      setLeads(data.leads || []);
-      setRehearsals(data.rehearsals || []);
-      setTours(data.tours || []);
-      setConcerts(data.concerts || []);
-      setPosts(data.posts || []);
-      setPayments(data.payments || []);
-      setMessages(data.messages || []);
-      setMetrics(data.metrics || []);
-      setBandUsers(data.users || []);
-      setFans(data.fans || []);
+      setLeads(dedupeById(data.leads || []));
+      setRehearsals(dedupeById(data.rehearsals || []));
+      setTours(dedupeById(data.tours || []));
+      setConcerts(dedupeById(data.concerts || []));
+      setPosts(dedupeById(data.posts || []));
+      setPayments(dedupeById(data.payments || []));
+      setMessages(dedupeById(data.messages || []));
+      setMetrics(dedupeById(data.metrics || []));
+      setBandUsers(dedupeById(data.users || []));
+      setFans(dedupeById(data.fans || []));
       setEpkConfig(data.epkConfig || {});
       setSyncStatus('synced');
     } catch (e) {

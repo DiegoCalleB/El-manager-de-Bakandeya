@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { Lead, LeadType, ThemeColors, SocialMetric, Concert, Rehearsal } from '../types';
+import { Lead, LeadType, ThemeColors, SocialMetric, Concert, Rehearsal, EPKConfig, Tour, Fan, SocialPost } from '../types';
 import DirectionsCard from './DirectionsCard';
 import { AddLeadModal } from './dashboard/AddLeadModal';
+import { ProfileCompletenessCard } from './dashboard/ProfileCompletenessCard';
+import { EmailTemplatesModal } from './dashboard/EmailTemplatesModal';
+import { AgentAutonomySettingsModal } from './dashboard/AgentAutonomySettingsModal';
 import { 
- Search, MapPin, Music, Globe, Phone, Instagram, 
+ Search, MapPin, Music, Mic, DoorClosed, Globe, Phone, Instagram, 
  Plus, X, Calendar, AlertCircle, Sparkles, Loader2, Check, RefreshCw, 
  Database, Bot, Activity, ArrowRight, CheckCircle2, Radio, Building2,
- Clock, CheckCircle, Hourglass, Send, Users, ShieldCheck, Play, Navigation
+ Clock, CheckCircle, Hourglass, Send, Users, ShieldCheck, Play, Navigation,
+ FileText, BookOpen, Disc3, Truck, Heart, Info, Copy, Sliders
 } from 'lucide-react';
 
 export type NavigationOptions = {
@@ -18,16 +22,22 @@ export type NavigationOptions = {
 };
 
 interface DashboardProps {
- leads: Lead[];
- colors: ThemeColors;
- onUpdateLead: (leadId: string, updatedFields: Partial<Lead>) => void;
- onAddLead: (lead: Lead) => void;
- metrics?: SocialMetric[];
- concerts?: Concert[];
- currentUser?: any;
- bandName?: string;
- rehearsals?: Rehearsal[];
- onNavigate?: (view: 'resumen' | 'booking' | 'medios' | 'calendario' | 'reels' | 'finanzas' | 'chat', options?: NavigationOptions) => void;
+  leads: Lead[];
+  colors: ThemeColors;
+  onUpdateLead: (leadId: string, updatedFields: Partial<Lead>) => void;
+  onAddLead: (lead: Lead) => void;
+  metrics?: SocialMetric[];
+  concerts?: Concert[];
+  currentUser?: any;
+  bandName?: string;
+  currentBandId?: string;
+  availableBands?: Array<{ band_id: string; bandName: string; name?: string }>;
+  rehearsals?: Rehearsal[];
+  epkConfig?: Partial<EPKConfig>;
+  tours?: Tour[];
+  fans?: Fan[];
+  posts?: SocialPost[];
+  onNavigate?: (view: any, options?: NavigationOptions) => void;
 }
 
 const isMedio = (l?: Lead | null) => {
@@ -58,6 +68,12 @@ export default function Dashboard({
  rehearsals = [], 
  currentUser,
  bandName,
+ currentBandId,
+ availableBands = [],
+ epkConfig,
+ tours = [],
+ fans = [],
+ posts = [],
  onNavigate 
 }: DashboardProps) {
  const [searchTerm, setSearchTerm] = useState('');
@@ -65,7 +81,12 @@ export default function Dashboard({
  const [genreFilter, setGenreFilter] = useState('todos');
  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+ const [isEmailTemplatesOpen, setIsEmailTemplatesOpen] = useState(false);
+ const [isAutonomyModalOpen, setIsAutonomyModalOpen] = useState(false);
  const [syncLoading, setSyncLoading] = useState(false);
+
+ // Band view filter state: 'active' (Solo la banda activa) vs 'all' (Todas las bandas asignadas)
+ const [agendaFilterMode, setAgendaFilterMode] = useState<'active' | 'all'>('active');
 
  // Scraper states
  const [isScraping, setIsScraping] = useState(false);
@@ -92,6 +113,17 @@ export default function Dashboard({
  const [newEmail, setNewEmail] = useState('');
  const [newInstagram, setNewInstagram] = useState('');
  const [newNotas, setNewNotas] = useState('');
+
+ const storedSongsCount = React.useMemo(() => {
+   try {
+     const raw = localStorage.getItem('bakandeya_songs');
+     if (!raw) return 0;
+     const parsed = JSON.parse(raw);
+     return Array.isArray(parsed) ? parsed.length : 0;
+   } catch {
+     return 0;
+   }
+ }, []);
 
  // Handle Sync simulation
  const handleForceSync = () => {
@@ -264,6 +296,37 @@ export default function Dashboard({
  const now = new Date();
  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
+ const activeBandId = currentBandId || currentUser?.band_id || 'band-bakandeya';
+ const activeBandName = bandName || currentUser?.bandName || 'Bakandeya';
+
+  const activeBandConcerts = React.useMemo(() => {
+    return concerts.filter(c => {
+      if (!c.band_id) return activeBandId === "band-bakandeya";
+      return c.band_id === activeBandId;
+    });
+  }, [concerts, activeBandId]);
+
+  const activeBandRehearsals = React.useMemo(() => {
+    return rehearsals.filter(r => {
+      if (!r.band_id) return activeBandId === "band-bakandeya";
+      return r.band_id === activeBandId;
+    });
+  }, [rehearsals, activeBandId]);
+
+
+ // Filter concerts & rehearsals based on agendaFilterMode
+ const filteredConcerts = concerts.filter(c => {
+ if (agendaFilterMode === 'all') return true;
+ if (!c.band_id) return activeBandId === 'band-bakandeya';
+ return c.band_id === activeBandId;
+ });
+
+ const filteredRehearsals = rehearsals.filter(r => {
+ if (agendaFilterMode === 'all') return true;
+ if (!r.band_id) return activeBandId === 'band-bakandeya';
+ return r.band_id === activeBandId;
+ });
+
  // Build upcoming agenda dates
  const upcomingEvents: Array<{
  id: string;
@@ -276,11 +339,12 @@ export default function Dashboard({
  locationQuery?: string;
  address?: string;
  badge: string;
+ bandName: string;
  details: string;
  }> = [];
 
  // Add concerts (ignoring past ones)
- concerts.forEach(c => {
+ filteredConcerts.forEach(c => {
  if (c.fecha && c.fecha < todayStr) return;
  const parts = c.fecha ? c.fecha.split('-') : [];
  const day = parts[2] || '15';
@@ -298,12 +362,13 @@ export default function Dashboard({
  locationQuery: c.direccion || `${c.sala}, ${c.ciudad}`,
  address: c.direccion,
  badge: c.contrato_firmado ? 'Contrato Firmado' : 'Confirmado',
+ bandName: c.bandName || activeBandName,
  details: `Caché: ${c.cache ? `${c.cache}€` : 'A convenir'} • Aforo: ${c.aforo_total || 500} pax`
  });
  });
 
  // Add rehearsals (ignoring past ones)
- rehearsals.forEach(r => {
+ filteredRehearsals.forEach(r => {
  if (r.fecha && r.fecha < todayStr) return;
  const parts = r.fecha ? r.fecha.split('-') : [];
  const day = parts[2] || '10';
@@ -313,17 +378,20 @@ export default function Dashboard({
  upcomingEvents.push({
  id: r.id,
  type: 'ensayo',
- title: r.lugar ? `Ensayo General en ${r.lugar}` : `Ensayo General ${currentUser?.bandName || ''}`,
+ title: r.lugar ? `Ensayo en ${r.lugar}` : `Ensayo General`,
  dateStr: r.fecha,
  day,
  month,
- location: r.lugar || 'Local de Jon',
- locationQuery: `${r.lugar || 'Local de Jon'}, Madrid`,
+ location: r.lugar || 'Local de Ensayo',
+ locationQuery: `${r.lugar || 'Local de Ensayo'}, Madrid`,
  address: undefined,
  badge: r.estado === 'completado' ? 'Completado' : 'Programado',
- details: `Horario: ${r.hora || '18:00'} • Asistentes: ${r.asistentes ? (Array.isArray(r.asistentes) ? r.asistentes.join(', ') : r.asistentes) : 'Jon, Jose, Elyar, Raúl'}`
+ bandName: r.bandName || activeBandName,
+ details: `Horario: ${r.hora || '18:00'} • Asistentes: ${r.asistentes ? (Array.isArray(r.asistentes) ? r.asistentes.join(', ') : r.asistentes) : 'Todos'}`
  });
  });
+
+ upcomingEvents.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
 
  // Fallback defaults if no rehearsals/concerts created yet
  if (upcomingEvents.length === 0 && (!currentUser || currentUser.band_id === 'band-bakandeya')) {
@@ -339,6 +407,7 @@ export default function Dashboard({
  locationQuery: 'Sala Apolo, Carrer Nou de la Rambla 113, Barcelona',
  address: 'Carrer Nou de la Rambla 113, Barcelona',
  badge: 'Confirmado',
+ bandName: activeBandName,
  details: 'Caché: 1.800€ • Aforo: 900 pax • Prueba de sonido: 18:00h'
  },
  {
@@ -352,6 +421,7 @@ export default function Dashboard({
  locationQuery: 'Rock Palace, Calle Vara de Rey 6, Madrid',
  address: 'Calle Vara de Rey 6, Madrid',
  badge: 'Programado',
+ bandName: activeBandName,
  details: 'Horario: 17:00 a 21:00 • Preparación de repertorio y beatbox'
  },
  {
@@ -365,6 +435,7 @@ export default function Dashboard({
  locationQuery: 'Anfiteatro de Granada, Paseo del Salón',
  address: 'Paseo del Salón, Granada',
  badge: 'En Negociación',
+ bandName: activeBandName,
  details: 'Caché: 3.500€ • Aforo: 1.200 pax • Escenario Principal'
  }
  );
@@ -384,8 +455,37 @@ export default function Dashboard({
       {/* HEADER / TITULO PRINCIPAL */}
       <div className="mb-8">
         <h1 className="text-4xl md:text-5xl font-display font-bold tracking-tight text-zinc-100 mb-2">Resumen</h1>
-        <p className="text-sm font-mono text-zinc-400 uppercase tracking-widest">Panel de Control General</p>
+        <p className="text-sm font-mono text-zinc-400 uppercase tracking-widest">Panel de Control General de {activeBandName}</p>
       </div>
+
+      {/* BARRA DE SALUD Y COMPLETITUD DEL PERFIL */}
+      <ProfileCompletenessCard 
+        epkConfig={epkConfig}
+        leads={leads}
+        concerts={concerts}
+        rehearsals={rehearsals}
+        metrics={metrics}
+        fans={fans}
+        tours={tours}
+        isStitchLight={isStitchLight}
+        bandName={activeBandName}
+        onNavigate={onNavigate}
+        onOpenAutonomyModal={() => setIsAutonomyModalOpen(true)}
+      />
+
+  {/* MODAL: PLANTILLAS Y EJEMPLOS REALES DE EMAIL */}
+  <EmailTemplatesModal
+  isOpen={isEmailTemplatesOpen}
+  onClose={() => setIsEmailTemplatesOpen(false)}
+  bandName={activeBandName}
+  />
+
+  {/* MODAL: CONFIGURACIÓN DE AUTONOMÍA Y NEGOCIACIÓN DE AGENTES AI */}
+  <AgentAutonomySettingsModal
+  isOpen={isAutonomyModalOpen}
+  onClose={() => setIsAutonomyModalOpen(false)}
+  bandName={activeBandName}
+  />
 
       {/* 0. SECCIÓN PRIORITARIA: CORREOS POR CONTESTAR Y ACCIONES URGENTES */}
  <div className={`p-5 rounded-2xl transition-all ${
@@ -455,7 +555,7 @@ export default function Dashboard({
  <div 
  key={lead.id} 
  onClick={() => onNavigate && onNavigate(isMedio(lead) ? 'medios' : 'booking', { statusFilter: normalizeStatus(lead.estado), selectedLeadId: lead.id })}
- className={`p-2.5 rounded-lg text-[10px] font-mono cursor-pointer hover:-[#10b981]/40 transition-all ${
+ className={`p-3 rounded-xl text-xs font-sans cursor-pointer hover:-[#10b981]/40 transition-all ${
  isStitchLight ? 'bg-[#10b981]/15' : 'bg-neutral-900'
  }`}
  >
@@ -468,7 +568,7 @@ export default function Dashboard({
  {lead.estado}
  </span>
  </div>
- <p className={`text-[10px] truncate mt-1 ${textSub}`}>
+ <p className="text-xs text-zinc-300 font-sans mt-1.5 leading-snug truncate">
  {lead.notas || 'Respuesta recibida interesándose en fecha. Requiere propuesta formal.'}
  </p>
  </div>
@@ -520,7 +620,7 @@ export default function Dashboard({
  <div 
  key={lead.id} 
  onClick={() => onNavigate && onNavigate(isMedio(lead) ? 'medios' : 'booking', { statusFilter: 'pendiente_aprobacion', selectedLeadId: lead.id })}
- className={`p-2.5 rounded-lg text-[10px] font-mono cursor-pointer hover:-[#d1b375]/40 transition-all ${
+ className={`p-3 rounded-xl text-xs font-sans cursor-pointer hover:-[#d1b375]/40 transition-all ${
  isStitchLight ? 'bg-[#d1b375]/15' : 'bg-neutral-900'
  }`}
  >
@@ -533,7 +633,7 @@ export default function Dashboard({
  Redactado
  </span>
  </div>
- <p className={`text-[10px] truncate mt-1 ${textSub}`}>
+ <p className="text-xs text-zinc-300 font-sans mt-1.5 leading-snug truncate">
  {lead.pitch_generado || 'Correo generado por el Agente Redactor listo para validación.'}
  </p>
  </div>
@@ -614,10 +714,72 @@ export default function Dashboard({
  </p>
  </div>
 
+ <div className="flex items-center gap-3 flex-wrap">
+ {/* Band Filter Mode Toggle */}
+  <div className={`w-full sm:w-auto flex items-center rounded-xl p-1 gap-1 border ${
+  isStitchLight ? 'bg-slate-100 border-slate-200' : 'bg-zinc-900/90 border-zinc-800'
+  }`}>
+  <button
+  id="dashboard-agenda-active-band-btn"
+  onClick={() => setAgendaFilterMode('active')}
+  className={`flex-1 sm:flex-initial px-2.5 py-1.5 text-[10px] font-mono font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap min-w-0 ${
+  agendaFilterMode === 'active'
+  ? isStitchLight ? 'bg-sky-500 text-white shadow-xs' : 'bg-[#d1b375] text-stone-950 font-black shadow-xs'
+  : 'text-neutral-400 hover:text-neutral-200'
+  }`}
+  title={`Ver solo eventos de ${activeBandName}`}
+  >
+  <Music className="w-3 h-3 shrink-0" />
+  <span className="truncate max-w-[90px] sm:max-w-none">{activeBandName}</span>
+   <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold shrink-0 ${
+     agendaFilterMode === 'active' ? 'bg-black/20 text-stone-950' : 'bg-black/30 dark:bg-white/10 text-neutral-300'
+   }`}>
+     <span className="inline-flex items-center gap-0.5 text-emerald-400 font-extrabold" title={`${activeBandConcerts.length} directos públicos`}>
+       <Mic className="w-2.5 h-2.5" />
+       {activeBandConcerts.length}
+     </span>
+     <span className="opacity-30">•</span>
+     <span className="inline-flex items-center gap-0.5 text-purple-400 font-extrabold" title={`${activeBandRehearsals.length} ensayos`}>
+       <DoorClosed className="w-2.5 h-2.5" />
+       {activeBandRehearsals.length}
+     </span>
+   </span>
+  </button>
+
+  <button
+  id="dashboard-agenda-all-bands-btn"
+  onClick={() => setAgendaFilterMode('all')}
+  className={`flex-1 sm:flex-initial px-2.5 py-1.5 text-[10px] font-mono font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap min-w-0 ${
+  agendaFilterMode === 'all'
+  ? isStitchLight ? 'bg-sky-500 text-white shadow-xs' : 'bg-[#d1b375] text-stone-950 font-black shadow-xs'
+  : 'text-neutral-400 hover:text-neutral-200'
+  }`}
+  title="Ver eventos de todos los grupos asignados"
+  >
+  <Users className="w-3 h-3 shrink-0" />
+  <span className="truncate">Todas</span>
+   <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold shrink-0 ${
+     agendaFilterMode === 'all' ? 'bg-black/20 text-stone-950' : 'bg-black/30 dark:bg-white/10 text-neutral-300'
+   }`}>
+     <span className="inline-flex items-center gap-0.5 text-emerald-400 font-extrabold" title={`${concerts.length} directos totales`}>
+       <Mic className="w-2.5 h-2.5" />
+       {concerts.length}
+     </span>
+     <span className="opacity-30">•</span>
+     <span className="inline-flex items-center gap-0.5 text-purple-400 font-extrabold" title={`${rehearsals.length} ensayos totales`}>
+       <DoorClosed className="w-2.5 h-2.5" />
+       {rehearsals.length}
+     </span>
+   </span>
+  </button>
+  </div>
+
+  
+
  <button
  id="dashboard-btn-full-agenda"
  onClick={() => onNavigate && onNavigate('calendario')}
- className={`px-2 py-1 font-mono text-[10px] font-bold rounded-lg transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+ className={`px-2.5 py-1.5 font-mono text-[10px] font-bold rounded-lg transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
  isStitchLight 
  ? 'bg-sky-500/15 hover:bg-sky-500/15 text-sky-400' 
  : 'bg-zinc-800/50 hover:bg-zinc-800 text-zinc-100'
@@ -626,6 +788,7 @@ export default function Dashboard({
  <span>Ver Agenda Completa</span>
  <ArrowRight className="w-3.5 h-3.5" />
  </button>
+ </div>
  </div>
 
  {/* List of upcoming events */}
@@ -641,24 +804,27 @@ export default function Dashboard({
  <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 shadow-sm ${
  isStitchLight ? 'bg-white text-slate-800' : 'bg-[#1c1b1b] text-neutral-100'
  }`}>
- <span className={`text-sm font-mono font-black leading-none ${isStitchLight ? 'text-sky-400' : 'text-zinc-100'}`}>
+ <span className={`text-lg font-mono font-black leading-none ${isStitchLight ? 'text-sky-500' : 'text-amber-400'}`}>
  {item.day}
  </span>
- <span className={`text-[10px] font-mono font-bold uppercase tracking-widest mt-0.5 ${textMuted}`}>
+ <span className={`text-xs font-mono font-extrabold uppercase tracking-widest mt-0.5 ${isStitchLight ? 'text-slate-600' : 'text-amber-300'}`}>
  {item.month}
  </span>
  </div>
 
  <div className="min-w-0 flex-1">
- <div className="flex items-center gap-2 flex-wrap">
- <span className={`text-[10px] px-2 py-1 rounded font-mono font-bold uppercase tracking-wider ${
+ <div className="flex items-center gap-1.5 flex-wrap">
+ <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase tracking-wider ${
  item.type === 'concierto'
- ? isStitchLight ? 'bg-sky-500/15 text-sky-400' : 'bg-zinc-800/50 text-zinc-100'
- : isStitchLight ? (isStitchLight ? 'bg-emerald-100 text-emerald-700' : 'bg-[#10b981]/15 text-[#10b981]') : (isStitchLight ? 'bg-emerald-100 text-emerald-700' : 'bg-[#10b981]/15 text-[#10b981]')
+ ? isStitchLight ? 'bg-sky-500/15 text-sky-400' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+ : isStitchLight ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
  }`}>
  {item.type}
  </span>
- <span className={`text-[10px] font-mono text-[10px] ${textMuted}`}>
+ <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-zinc-800/80 text-amber-200 border border-amber-500/30 truncate max-w-[120px]" title={item.bandName}>
+ {item.bandName}
+ </span>
+ <span className={`text-[10px] font-mono ${textMuted}`}>
  • {item.badge}
  </span>
  </div>
@@ -667,7 +833,7 @@ export default function Dashboard({
  {item.title}
  </h4>
 
- <p className={`text-[10px] font-mono mt-1 flex items-center gap-1 ${textSub}`}>
+ <p className="text-xs sm:text-sm font-semibold mt-1 flex items-center gap-1 text-zinc-200">
  <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
  <span className="truncate">{item.location}</span>
  </p>
@@ -685,7 +851,7 @@ export default function Dashboard({
  </div>
  )}
 
- <div className={`mt-2 pt-2 text-[10px] font-mono flex items-center justify-between ${
+ <div className={`mt-2 pt-2 text-xs font-mono font-medium flex items-center justify-between text-zinc-300 ${
  isStitchLight ? '-slate-200 text-slate-500' : '-neutral-800 text-neutral-400'
  }`}>
  <span className="truncate">{item.details}</span>
@@ -694,6 +860,172 @@ export default function Dashboard({
  </div>
  ))}
  </div>
+ </div>
+
+ {/* 1.5 SECCIÓN: ESTADO DE MÓDULOS CLAVE DE LA BANDA */}
+ <div className="space-y-3">
+   <div className="flex items-center justify-between">
+     <h3 className={`text-sm font-bold font-display uppercase tracking-wider ${isStitchLight ? 'text-slate-900' : 'text-neutral-100'}`}>
+       Módulos & Herramientas de la Banda
+     </h3>
+     <span className="text-[10px] font-mono text-neutral-400">Estado dinámico según tus datos</span>
+   </div>
+
+   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+     {/* Dossier & EPK Card */}
+     {(() => {
+       const hasBioLogo = Boolean(epkConfig?.biografia && (epkConfig?.logoUrl || (epkConfig?.bandPhotos && epkConfig.bandPhotos.length > 0)));
+       const hasDossierPdf = Boolean(epkConfig?.dossierPdfUrl || epkConfig?.dossierDocumentUrl);
+       const hasRiderPdf = Boolean(epkConfig?.riderPdfUrl || (epkConfig?.riderTecnico && epkConfig.riderTecnico.trim().length > 40));
+       const itemsReadyCount = [hasBioLogo, hasDossierPdf, hasRiderPdf].filter(Boolean).length;
+
+       return (
+         <div 
+           onClick={() => onNavigate && onNavigate('epk')}
+           className={`${colors.card} p-4 rounded-xl flex flex-col justify-between transition-all hover:scale-[1.02] cursor-pointer group`}
+         >
+           <div className="space-y-2">
+             <div className="flex items-center justify-between">
+               <span className="text-[10px] font-mono uppercase tracking-widest font-bold text-amber-400 flex items-center gap-1">
+                 <FileText className="w-3.5 h-3.5" /> EPK & Dossier
+               </span>
+               <span className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold ${
+                 itemsReadyCount === 3 
+                   ? 'bg-emerald-500/15 text-emerald-300' 
+                   : itemsReadyCount > 0 
+                     ? 'bg-amber-500/15 text-amber-300' 
+                     : 'bg-rose-500/15 text-rose-300'
+               }`}>
+                 {itemsReadyCount === 3 ? '100% Completo' : `${itemsReadyCount}/3 Listo`}
+               </span>
+             </div>
+
+             <div>
+               <h4 className="text-sm font-bold text-zinc-100 font-display">Dossier & Rider Técnico</h4>
+               <div className="text-[10px] font-sans mt-1.5 space-y-1">
+                 <div className="flex items-center justify-between">
+                   <span className="text-neutral-400">Bio y Logo:</span>
+                   <span className={`font-mono font-bold ${hasBioLogo ? 'text-emerald-400' : 'text-amber-400'}`}>
+                     {hasBioLogo ? '✓ Listo' : 'Pendiente'}
+                   </span>
+                 </div>
+                 <div className="flex items-center justify-between">
+                   <span className="text-neutral-400">Dossier PDF:</span>
+                   <span className={`font-mono font-bold ${hasDossierPdf ? 'text-emerald-400' : 'text-rose-400'}`}>
+                     {hasDossierPdf ? '✓ Subido' : 'No subido'}
+                   </span>
+                 </div>
+                 <div className="flex items-center justify-between">
+                   <span className="text-neutral-400">Rider Técnico:</span>
+                   <span className={`font-mono font-bold ${hasRiderPdf ? 'text-emerald-400' : 'text-rose-400'}`}>
+                     {hasRiderPdf ? '✓ Subido' : 'No subido'}
+                   </span>
+                 </div>
+               </div>
+             </div>
+           </div>
+
+           <div className="mt-3 pt-2 border-t border-neutral-800 flex items-center justify-between text-[10px] font-mono font-bold text-amber-400 group-hover:translate-x-0.5 transition-transform">
+             <span>{itemsReadyCount === 3 ? 'Gestionar EPK' : 'Adjuntar Archivos'}</span>
+             <ArrowRight className="w-3.5 h-3.5" />
+           </div>
+         </div>
+       );
+     })()}
+
+     {/* Discografía & Repertorio Card */}
+     <div 
+       onClick={() => onNavigate && onNavigate('repertorio')}
+       className={`${colors.card} p-4 rounded-xl flex flex-col justify-between transition-all hover:scale-[1.02] cursor-pointer group`}
+     >
+       <div className="space-y-2">
+         <div className="flex items-center justify-between">
+           <span className="text-[10px] font-mono uppercase tracking-widest font-bold text-purple-400 flex items-center gap-1">
+             <Disc3 className="w-3.5 h-3.5" /> Repertorio
+           </span>
+           <span className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold ${
+             storedSongsCount > 0 ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'
+           }`}>
+             {storedSongsCount > 0 ? `${storedSongsCount} Temas` : 'Sin canciones'}
+           </span>
+         </div>
+
+         <div>
+           <h4 className="text-sm font-bold text-zinc-100 font-display">Catálogo & Setlists</h4>
+           <p className="text-[10px] text-neutral-400 font-sans mt-0.5">
+             {storedSongsCount > 0 ? `${storedSongsCount} canciones registradas para auto-generar setlists.` : 'Carga tu lista de temas para armar setlists automáticos.'}
+           </p>
+         </div>
+       </div>
+
+       <div className="mt-3 pt-2 border-t border-neutral-800 flex items-center justify-between text-[10px] font-mono font-bold text-purple-400 group-hover:translate-x-0.5 transition-transform">
+         <span>{storedSongsCount > 0 ? 'Ver Repertorio' : 'Añadir Canciones'}</span>
+         <ArrowRight className="w-3.5 h-3.5" />
+       </div>
+     </div>
+
+     {/* Fans & Captura Card */}
+     <div 
+       onClick={() => onNavigate && onNavigate('fans')}
+       className={`${colors.card} p-4 rounded-xl flex flex-col justify-between transition-all hover:scale-[1.02] cursor-pointer group`}
+     >
+       <div className="space-y-2">
+         <div className="flex items-center justify-between">
+           <span className="text-[10px] font-mono uppercase tracking-widest font-bold text-rose-400 flex items-center gap-1">
+             <Heart className="w-3.5 h-3.5" /> Comunidad Fans
+           </span>
+           <span className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold ${
+             fans.length > 0 ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'
+           }`}>
+             {fans.length} Fans
+           </span>
+         </div>
+
+         <div>
+           <h4 className="text-sm font-bold text-zinc-100 font-display">Captura & Fidelización</h4>
+           <p className="text-[10px] text-neutral-400 font-sans mt-0.5">
+             {fans.length > 0 ? 'Base de datos propia para promocionar tus conciertos.' : 'Configura una descarga gratuita para captar emails en directo.'}
+           </p>
+         </div>
+       </div>
+
+       <div className="mt-3 pt-2 border-t border-neutral-800 flex items-center justify-between text-[10px] font-mono font-bold text-rose-400 group-hover:translate-x-0.5 transition-transform">
+         <span>{fans.length > 0 ? 'Ver Audiencia' : 'Configurar Captura'}</span>
+         <ArrowRight className="w-3.5 h-3.5" />
+       </div>
+     </div>
+
+     {/* Métricas Social & Audiencia Card */}
+     <div 
+       onClick={() => onNavigate && onNavigate('reels')}
+       className={`${colors.card} p-4 rounded-xl flex flex-col justify-between transition-all hover:scale-[1.02] cursor-pointer group`}
+     >
+       <div className="space-y-2">
+         <div className="flex items-center justify-between">
+           <span className="text-[10px] font-mono uppercase tracking-widest font-bold text-sky-400 flex items-center gap-1">
+             <Activity className="w-3.5 h-3.5" /> Métricas
+           </span>
+           <span className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold ${
+             metrics.length > 0 ? 'bg-emerald-500/15 text-emerald-300' : 'bg-sky-500/15 text-sky-300'
+           }`}>
+             {metrics.length > 0 ? 'Registradas' : 'Pendiente'}
+           </span>
+         </div>
+
+         <div>
+           <h4 className="text-sm font-bold text-zinc-100 font-display">Audiencia & Caché</h4>
+           <p className="text-[10px] text-neutral-400 font-sans mt-0.5">
+             {metrics.length > 0 ? 'Datos sociales activos para negociar caché con salas.' : 'Registra tus escuchas y seguidores para respaldar caché.'}
+           </p>
+         </div>
+       </div>
+
+       <div className="mt-3 pt-2 border-t border-neutral-800 flex items-center justify-between text-[10px] font-mono font-bold text-sky-400 group-hover:translate-x-0.5 transition-transform">
+         <span>{metrics.length > 0 ? 'Ver Métricas' : 'Registrar Audiencia'}</span>
+         <ArrowRight className="w-3.5 h-3.5" />
+       </div>
+     </div>
+   </div>
  </div>
 
  {/* 2. SECCIÓN: EMBUDO OPERATIVO DE BOOKING (MÉTRICAS CLAVE REALES) */}
@@ -822,7 +1154,7 @@ export default function Dashboard({
  <span className={`text-[10px] font-mono ${textMuted}`}>{currentUser?.bandName || 'Bakandeya'} Virtual Manager</span>
  </div>
 
- <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[10px] font-mono">
+ <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-[10px] font-mono">
  <button
  id="quick-act-scout"
  onClick={() => onNavigate && onNavigate('chat')}
@@ -837,6 +1169,38 @@ export default function Dashboard({
  <span>Lanzar Scout AI</span>
  </div>
  <span className={`text-[10px] ${textSub}`}>Buscar salas en nueva ciudad o provincia</span>
+ </button>
+
+ <button
+ id="quick-act-autonomy"
+ onClick={() => setIsAutonomyModalOpen(true)}
+ className={`p-3 rounded-xl text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+ isStitchLight 
+ ? 'bg-purple-500/15 text-purple-600' 
+ : 'bg-[#1A1918] hover:bg-neutral-800/80 text-neutral-200'
+ }`}
+ >
+ <div className="flex items-center gap-1.5 text-purple-400 font-bold">
+ <Sliders className="w-4 h-4" />
+ <span>Autonomía AI</span>
+ </div>
+ <span className={`text-[10px] ${textSub}`}>Configurar límites de envío y negociación</span>
+ </button>
+
+ <button
+ id="quick-act-templates"
+ onClick={() => setIsEmailTemplatesOpen(true)}
+ className={`p-3 rounded-xl text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+ isStitchLight 
+ ? 'bg-amber-500/15 text-amber-600' 
+ : 'bg-[#1A1918] hover:bg-neutral-800/80 text-neutral-200'
+ }`}
+ >
+ <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+ <FileText className="w-4 h-4" />
+ <span>Plantillas Email</span>
+ </div>
+ <span className={`text-[10px] ${textSub}`}>Ver ejemplos reales de pitch y respuestas</span>
  </button>
 
  <button
@@ -997,10 +1361,10 @@ export default function Dashboard({
  }`}
  >
  <div className="min-w-0 flex-1">
- <h4 className={`text-[10px] font-bold font-display truncate ${
+ <h4 className={`text-xs sm:text-sm font-bold font-display tracking-wide truncate ${
  selectedLead?.id === lead.id && isStitchLight ? 'text-sky-400 font-extrabold' : textTitle
  }`}>{lead.nombre_sala}</h4>
- <div className={`flex gap-3 text-[10px] font-mono mt-1 flex-wrap ${textSub}`}>
+ <div className={`flex gap-3 text-xs font-mono mt-1 flex-wrap text-zinc-300`}>
  <span>{lead.ciudad} ({lead.region || 'N/A'})</span>
  <span>Aforo: {lead.aforo || 'Desconocido'} pax</span>
  <span className={isStitchLight ? 'text-sky-400 font-bold' : 'text-zinc-100/80'}>{lead.genero}</span>
@@ -1034,7 +1398,7 @@ export default function Dashboard({
  <div className={` pb-3  flex justify-between items-start`}>
  <div>
  <span className={`text-[10px] font-mono uppercase tracking-widest font-bold ${isStitchLight ? 'text-sky-400' : 'text-[#ffb596]'}`}>Ficha de la Sala</span>
- <h3 className={`text-sm font-bold font-display tracking-wide mt-1 ${textTitle}`}>{selectedLead.nombre_sala}</h3>
+ <h3 className="text-base sm:text-lg font-bold font-display tracking-wide mt-1 text-zinc-100">{selectedLead.nombre_sala}</h3>
  <p className={`text-[10px] font-mono mt-0.5 ${textSub}`}>{selectedLead.ciudad} • {selectedLead.region}</p>
  </div>
  {onNavigate && (

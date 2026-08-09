@@ -90,6 +90,7 @@ export interface Lead {
 export interface Rehearsal {
   id: string;
   band_id?: string;
+  bandName?: string;
   fecha: string;
   hora: string;
   lugar: string;
@@ -97,6 +98,9 @@ export interface Rehearsal {
   notas: string;
   estado: 'programado' | 'cancelado' | 'completado';
   setlistId?: string;
+  convocatoria_tipo?: 'completa' | 'parcial';
+  convocados_ids?: string[];
+  convocados_nombres?: string[];
 }
 
 export interface ConcertExpenseBreakdown {
@@ -111,6 +115,7 @@ export interface ConcertExpenseBreakdown {
 export interface Concert {
   id: string;
   band_id?: string;
+  bandName?: string;
   fecha: string;
   ciudad: string;
   sala: string;
@@ -125,6 +130,9 @@ export interface Concert {
   setlistId?: string;
   gastosDetalle?: ConcertExpenseBreakdown;
   gastosEstimadosTipicos?: number;
+  convocatoria_tipo?: 'completa' | 'parcial';
+  convocados_ids?: string[];
+  convocados_nombres?: string[];
 }
 
 export interface EPKConfig {
@@ -221,6 +229,7 @@ export interface User {
   role: UserRole;
   plan?: 'emergente' | 'profesional' | 'manager360';
   bandName?: string;
+  band_id?: string;
   email?: string;
   instrument?: string;
   avatarColor?: string;

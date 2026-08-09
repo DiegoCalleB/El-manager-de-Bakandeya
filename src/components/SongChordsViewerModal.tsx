@@ -19,9 +19,13 @@ import {
   Wand2,
   Copy,
   Check,
-  ListMusic
+  ListMusic,
+  Share2,
+  MessageSquare
 } from 'lucide-react';
 import { Song, SongSubstituteGuide } from '../types';
+import { ShareModal } from './ShareModal';
+import { formatSongShareText } from '../utils/shareUtils';
 import {
   processChordText,
   extractUniqueChords,
@@ -65,6 +69,7 @@ export function SongChordsViewerModal({
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState<boolean>(false);
+  const [showShareModal, setShowShareModal] = useState<boolean>(false);
 
   // Auto-scroll timer effect
   useEffect(() => {
@@ -214,6 +219,17 @@ export function SongChordsViewerModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Share WhatsApp / Apps Button */}
+            <button
+              type="button"
+              onClick={() => setShowShareModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-lg shadow-emerald-950/50"
+              title="Compartir canción y acordes por WhatsApp o App"
+            >
+              <MessageSquare className="w-4 h-4 fill-white/20" />
+              <span>Compartir</span>
+            </button>
+
             {/* AI Generate Button Header */}
             <button
               type="button"
@@ -650,6 +666,16 @@ export function SongChordsViewerModal({
           )}
         </div>
       </div>
+
+      {/* SHARE MODAL FOR WHATSAPP / APPS */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        title={song.titulo}
+        subtitle="Canción y cifrado para WhatsApp"
+        initialText={formatSongShareText(song, { includeChords: true, includeGuide: true })}
+        itemType="song"
+      />
     </div>
   );
 }

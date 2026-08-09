@@ -16,3 +16,15 @@ export function apiFetch(url: string, options: RequestInit = {}): Promise<Respon
     headers,
   });
 }
+
+export async function safeJsonFetch<T = any>(res: Response, fallbackValue: T = {} as T): Promise<T> {
+  const contentType = res.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await res.text().catch(() => '');
+    if (!res.ok) {
+      throw new Error(`Error ${res.status}: ${text.slice(0, 100) || res.statusText}`);
+    }
+    return fallbackValue;
+  }
+  return res.json().catch(() => fallbackValue);
+}

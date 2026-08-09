@@ -1,7 +1,71 @@
 import express from "express";
 import crypto from "crypto";
 import { ACTIVE_SESSIONS, verifyPassword, hashPassword, getSafeUsers } from "../auth.js";
-import { loadState, saveState, requireAuth, requireLeader } from "../state.js";
+import { loadState, saveState, requireAuth, requireLeader, getEpkConfigForBand, BAKANDEYA_BAND_ID, getUserFromRequestLocal } from "../state.js";
+
+export function buildAvailableBandsForUser(state: any, targetUser: any): any[] {
+  if (!targetUser) return [];
+  if (!state.userBands) state.userBands = [];
+  const userBandsList = state.userBands.filter((ub: any) => ub.user_id === targetUser.id);
+  const availableBands: any[] = [];
+  const seenBandIds = new Set<string>();
+
+  const getLogoForBand = (bandId: string, defaultName: string) => {
+    const epk = getEpkConfigForBand(state, bandId, defaultName);
+    if (epk?.logoUrl && epk.logoUrl.trim().length > 0) return epk.logoUrl;
+    const bandInfo = (state.registeredBands || []).find((b: any) => b.band_id === bandId || b.id === bandId);
+    if (bandInfo?.logo_url && bandInfo.logo_url.trim().length > 0) return bandInfo.logo_url;
+    if (bandInfo?.imagen_url && bandInfo.imagen_url.trim().length > 0) return bandInfo.imagen_url;
+    if (bandId === 'band-bakandeya' || bandId === 'reg-bakandeya' || bandId === BAKANDEYA_BAND_ID) return '/logo_bakandeya_bueno_sin_fondo.png';
+    return '';
+  };
+
+  userBandsList.forEach((ub: any) => {
+    const bandInfo = (state.registeredBands || []).find((b: any) => b.band_id === ub.band_id || b.id === ub.band_id);
+    const bandName = bandInfo?.nombre_banda || targetUser.bandName || "Banda";
+    seenBandIds.add(ub.band_id);
+    availableBands.push({
+      band_id: ub.band_id,
+      bandName,
+      role: ub.role || "member",
+      userId: targetUser.id,
+      logoUrl: getLogoForBand(ub.band_id, bandName)
+    });
+  });
+
+  const userEmail = targetUser.email?.toLowerCase() || targetUser.username?.toLowerCase() || "";
+  const registeredBandsForUser = (state.registeredBands || []).filter(
+    (b: any) => b.user_id === targetUser.id || (b.email && b.email.toLowerCase() === userEmail)
+  );
+  registeredBandsForUser.forEach((b: any) => {
+    if (b.band_id && !seenBandIds.has(b.band_id)) {
+      seenBandIds.add(b.band_id);
+      const bName = b.nombre_banda || "Banda";
+      availableBands.push({
+        band_id: b.band_id,
+        bandName: bName,
+        role: "leader",
+        userId: targetUser.id,
+        logoUrl: getLogoForBand(b.band_id, bName)
+      });
+    }
+  });
+
+  const currentBid = targetUser.band_id || BAKANDEYA_BAND_ID;
+  if (!seenBandIds.has(currentBid)) {
+    seenBandIds.add(currentBid);
+    const bName = targetUser.bandName || targetUser.name || "BAKANDEYA";
+    availableBands.push({
+      band_id: currentBid,
+      bandName: bName,
+      role: targetUser.role || "leader",
+      userId: targetUser.id,
+      logoUrl: getLogoForBand(currentBid, bName)
+    });
+  }
+
+  return availableBands;
+}
 import { loginRateLimiter } from "../middleware/rateLimiter.js";
 import { googleSheetsService } from "../services/googleSheets.service.js";
 import { generateUniqueSlugId, slugify } from "../utils/slug.js";
@@ -166,41 +230,7 @@ router.post("/auth/register", async (req, res) => {
   }
 
   // Calculate availableBands dynamically
-  const userEmail = userToUse.email?.toLowerCase() || userToUse.username.toLowerCase();
-  const registeredBandsForUser = (state.registeredBands || []).filter(
-    (b: any) => b.user_id === userToUse.id || b.email?.toLowerCase() === userEmail
-  );
-
-  const legacyBands = state.users
-    .filter((u: any) => u.email?.toLowerCase() === userEmail || u.username.toLowerCase() === userEmail)
-    .map((u: any) => ({
-      band_id: u.band_id,
-      bandName: u.bandName || u.name,
-      role: u.role || "leader",
-      userId: u.id
-    }));
-
-  const seenBandIds = new Set<string>();
-  const availableBands: any[] = [];
-
-  registeredBandsForUser.forEach((b: any) => {
-    if (b.band_id && !seenBandIds.has(b.band_id)) {
-      seenBandIds.add(b.band_id);
-      availableBands.push({
-        band_id: b.band_id,
-        bandName: b.nombre_banda || b.bandName || b.name || "Banda",
-        role: "leader",
-        userId: userToUse.id
-      });
-    }
-  });
-
-  legacyBands.forEach((lb: any) => {
-    if (lb.band_id && !seenBandIds.has(lb.band_id)) {
-      seenBandIds.add(lb.band_id);
-      availableBands.push(lb);
-    }
-  });
+  const availableBands = buildAvailableBandsForUser(state, userToUse);
 
   const { passwordHash, salt: _, ...safeUser } = userToUse;
   res.status(201).json({ token, user: safeUser, availableBands, multipleBands: availableBands.length > 1 });
@@ -381,7 +411,7 @@ router.post("/auth/activate-member", async (req, res) => {
 });
 
 // Login
-router.post("/auth/login", loginRateLimiter, (req, res) => {
+router.post("/auth/login", loginRateLimiter, async (req, res) => {
   const { username, password, band_id } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: "Usuario y contraseña son requeridos" });
@@ -390,9 +420,28 @@ router.post("/auth/login", loginRateLimiter, (req, res) => {
   const state = loadState();
   const cleanInput = username.trim().toLowerCase();
 
+  // Sync users from Google Sheets tab 'usuarios' to support persistent logins across serverless restarts
+  try {
+    const sheetUsers = await googleSheetsService.fetchUsers(state.users || []);
+    if (sheetUsers && sheetUsers.length > 0) {
+      sheetUsers.forEach((su: any) => {
+        const idx = state.users.findIndex((u: any) => u.id === su.id || (u.username && u.username.toLowerCase() === su.username?.toLowerCase()));
+        if (idx !== -1) {
+          if (su.passwordHash) state.users[idx].passwordHash = su.passwordHash;
+          if (su.salt) state.users[idx].salt = su.salt;
+        } else {
+          state.users.push(su);
+        }
+      });
+      saveState(state);
+    }
+  } catch (err) {
+    // Continue with memory state if sheets call fails or is not configured
+  }
+
   // Find all user records matching this username or email
   const matchingUsers = state.users.filter(
-    (u: any) => u.username.toLowerCase() === cleanInput || u.email?.toLowerCase() === cleanInput
+    (u: any) => (u.username && u.username.toLowerCase() === cleanInput) || (u.email && u.email.toLowerCase() === cleanInput)
   );
 
   if (matchingUsers.length === 0) {
@@ -432,97 +481,149 @@ router.post("/auth/login", loginRateLimiter, (req, res) => {
   saveState(state);
 
   // Recalculate availableBands
-  if (!state.userBands) state.userBands = [];
-  const userBandsList = state.userBands.filter((ub: any) => ub.user_id === selectedUser.id);
-  const availableBands: any[] = [];
-  const seenBandIds = new Set<string>();
-
-  userBandsList.forEach((ub: any) => {
-    const bandInfo = (state.registeredBands || []).find((b: any) => b.band_id === ub.band_id);
-    const bandName = bandInfo?.nombre_banda || selectedUser.bandName || "Banda";
-    seenBandIds.add(ub.band_id);
-    availableBands.push({
-      band_id: ub.band_id,
-      bandName,
-      role: ub.role || "member",
-      userId: selectedUser.id
-    });
-  });
-
-  // Fallback for legacy / unmatched bands in registeredBands just in case
-  const userEmail = selectedUser.email?.toLowerCase() || selectedUser.username.toLowerCase();
-  const registeredBandsForUser = (state.registeredBands || []).filter(
-    (b: any) => b.user_id === selectedUser.id || b.email?.toLowerCase() === userEmail
-  );
-  registeredBandsForUser.forEach((b: any) => {
-    if (b.band_id && !seenBandIds.has(b.band_id)) {
-      seenBandIds.add(b.band_id);
-      availableBands.push({
-        band_id: b.band_id,
-        bandName: b.nombre_banda || "Banda",
-        role: "leader",
-        userId: selectedUser.id
-      });
-    }
-  });
+  const availableBands = buildAvailableBandsForUser(state, selectedUser);
 
   const { passwordHash, salt, ...safeUser } = selectedUser;
   res.json({ token, user: safeUser, availableBands, multipleBands: availableBands.length > 1 });
 });
 
+// Request password reset code
+router.post("/auth/reset-password/request", loginRateLimiter, async (req, res) => {
+  const { emailOrUsername } = req.body;
+  if (!emailOrUsername || !emailOrUsername.trim()) {
+    return res.status(400).json({ error: "Indica tu correo electrónico o nombre de usuario" });
+  }
+
+  const state = loadState();
+  const cleanInput = emailOrUsername.trim().toLowerCase();
+
+  const user = (state.users || []).find(
+    (u: any) => u.username.toLowerCase() === cleanInput || u.email?.toLowerCase() === cleanInput
+  );
+
+  if (!user) {
+    return res.status(404).json({ error: "No se encontró ningún usuario con ese correo o usuario." });
+  }
+
+  // Generate 6 digit code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 15 * 60 * 1000; // 15 mins
+
+  // Store reset code on user object(s) with matching email/username
+  (state.users || []).forEach((u: any) => {
+    if (u.username.toLowerCase() === cleanInput || u.email?.toLowerCase() === cleanInput) {
+      u.resetCode = code;
+      u.resetCodeExpires = expiresAt;
+    }
+  });
+
+  saveState(state);
+
+  // Mask email for privacy display
+  const userEmail = user.email || user.username;
+  const parts = userEmail.split("@");
+  let maskedEmail = userEmail;
+  if (parts.length === 2) {
+    const name = parts[0];
+    const domain = parts[1];
+    const maskedName = name.length > 2 ? `${name[0]}***${name[name.length - 1]}` : `${name[0]}***`;
+    maskedEmail = `${maskedName}@${domain}`;
+  }
+
+  return res.json({
+    success: true,
+    message: `Código de verificación generado para ${maskedEmail}`,
+    emailMasked: maskedEmail,
+    code
+  });
+});
+
+// Confirm password reset with code and new password
+router.post("/auth/reset-password/confirm", loginRateLimiter, async (req, res) => {
+  const { emailOrUsername, code, newPassword } = req.body;
+
+  if (!emailOrUsername || !code || !newPassword) {
+    return res.status(400).json({ error: "Todos los campos son obligatorios." });
+  }
+
+  if (newPassword.trim().length < 6) {
+    return res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres." });
+  }
+
+  const state = loadState();
+  const cleanInput = emailOrUsername.trim().toLowerCase();
+  const cleanCode = String(code).trim();
+
+  const matchingUsers = (state.users || []).filter(
+    (u: any) => u.username.toLowerCase() === cleanInput || u.email?.toLowerCase() === cleanInput
+  );
+
+  if (matchingUsers.length === 0) {
+    return res.status(404).json({ error: "Usuario no encontrado." });
+  }
+
+  const validUser = matchingUsers.find((u: any) => u.resetCode && String(u.resetCode) === cleanCode && u.resetCodeExpires > Date.now());
+
+  if (!validUser) {
+    return res.status(400).json({ error: "El código de verificación es incorrecto o ha caducado. Solicita un nuevo código." });
+  }
+
+  // Hash new password
+  const { hash, salt } = hashPassword(newPassword.trim());
+
+  // Update password for all user records sharing this email/username
+  matchingUsers.forEach((u: any) => {
+    u.passwordHash = hash;
+    u.salt = salt;
+    delete u.resetCode;
+    delete u.resetCodeExpires;
+  });
+
+  saveState(state);
+
+  return res.json({
+    success: true,
+    message: "Contraseña restablecida con éxito. Ya puedes iniciar sesión con tu nueva contraseña."
+  });
+});
+
 // Verify current session
 router.get("/auth/me", (req, res) => {
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.headers["x-auth-token"] as string || req.query.token as string);
+  let token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.headers["x-auth-token"] as string || req.query.token as string);
+
+  if (!token && req.headers.cookie) {
+    const match = req.headers.cookie.match(/bakandeya_token=([^;]+)/);
+    if (match) token = match[1];
+  }
 
   const state = loadState();
-  const session = (token && ACTIVE_SESSIONS[token]) || (token && state.sessions && state.sessions[token]);
+  let session = (token && ACTIVE_SESSIONS[token]) || (token && state.sessions && state.sessions[token]);
+  let user = session ? state.users.find((u: any) => u.id === session.userId) : null;
 
-  if (!token || !session) {
+  // Session fallback / recovery if token was missing or memory session was cleared
+  if (!user) {
+    const fallbackUser = getUserFromRequestLocal(req);
+    if (fallbackUser) {
+      user = state.users.find((u: any) => u.id === fallbackUser.id) || fallbackUser;
+      const effectiveToken = token || `session-${Date.now()}`;
+      token = effectiveToken;
+      session = { userId: user.id, createdAt: Date.now() };
+      ACTIVE_SESSIONS[token] = session;
+      if (!state.sessions) state.sessions = {};
+      state.sessions[token] = session;
+      saveState(state);
+    }
+  }
+
+  if (!user) {
     return res.status(401).json({ error: "Sesión no válida o expirada" });
   }
 
-  if (token) ACTIVE_SESSIONS[token] = session;
-  const user = state.users.find((u: any) => u.id === session.userId);
-
-  if (!user) {
-    return res.status(404).json({ error: "Usuario no encontrado" });
-  }
+  if (token && session) ACTIVE_SESSIONS[token] = session;
 
   // Recalculate availableBands
-  if (!state.userBands) state.userBands = [];
-  const userBandsList = state.userBands.filter((ub: any) => ub.user_id === user.id);
-  const availableBands: any[] = [];
-  const seenBandIds = new Set<string>();
-
-  userBandsList.forEach((ub: any) => {
-    const bandInfo = (state.registeredBands || []).find((b: any) => b.band_id === ub.band_id);
-    const bandName = bandInfo?.nombre_banda || user.bandName || "Banda";
-    seenBandIds.add(ub.band_id);
-    availableBands.push({
-      band_id: ub.band_id,
-      bandName,
-      role: ub.role || "member",
-      userId: user.id
-    });
-  });
-
-  // Fallback for legacy / unmatched bands in registeredBands just in case
-  const userEmail = user.email?.toLowerCase() || user.username.toLowerCase();
-  const registeredBandsForUser = (state.registeredBands || []).filter(
-    (b: any) => b.user_id === user.id || b.email?.toLowerCase() === userEmail
-  );
-  registeredBandsForUser.forEach((b: any) => {
-    if (b.band_id && !seenBandIds.has(b.band_id)) {
-      seenBandIds.add(b.band_id);
-      availableBands.push({
-        band_id: b.band_id,
-        bandName: b.nombre_banda || "Banda",
-        role: "leader",
-        userId: user.id
-      });
-    }
-  });
+  const availableBands = buildAvailableBandsForUser(state, user);
 
   const { passwordHash, salt, ...safeUser } = user;
   res.json({ user: safeUser, availableBands, multipleBands: availableBands.length > 1 });
@@ -531,18 +632,33 @@ router.get("/auth/me", (req, res) => {
 // Switch Active Band
 router.post("/auth/switch-band", (req, res) => {
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.headers["x-auth-token"] as string || req.query.token as string);
+  let token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.headers["x-auth-token"] as string || req.query.token as string);
 
-  const state = loadState();
-  const session = (token && ACTIVE_SESSIONS[token]) || (token && state.sessions && state.sessions[token]);
-
-  if (!token || !session) {
-    return res.status(401).json({ error: "Sesión no válida o expirada" });
+  if (!token && req.headers.cookie) {
+    const match = req.headers.cookie.match(/bakandeya_token=([^;]+)/);
+    if (match) token = match[1];
   }
 
-  const currentUser = state.users.find((u: any) => u.id === session.userId);
+  const state = loadState();
+  let session = (token && ACTIVE_SESSIONS[token]) || (token && state.sessions && state.sessions[token]);
+  let currentUser = session ? state.users.find((u: any) => u.id === session.userId) : null;
+
+  // Session fallback / recovery
   if (!currentUser) {
-    return res.status(404).json({ error: "Usuario no encontrado" });
+    const fallbackUser = getUserFromRequestLocal(req);
+    if (fallbackUser) {
+      currentUser = state.users.find((u: any) => u.id === fallbackUser.id) || fallbackUser;
+      const effectiveToken = token || `session-${Date.now()}`;
+      token = effectiveToken;
+      session = { userId: currentUser.id, createdAt: Date.now() };
+      ACTIVE_SESSIONS[token] = session;
+      if (!state.sessions) state.sessions = {};
+      state.sessions[token] = session;
+    }
+  }
+
+  if (!currentUser) {
+    return res.status(401).json({ error: "Sesión no válida o expirada" });
   }
 
   const { band_id } = req.body;
@@ -551,24 +667,30 @@ router.post("/auth/switch-band", (req, res) => {
   }
 
   const userEmail = currentUser.email?.toLowerCase() || currentUser.username.toLowerCase();
+  const cleanTargetBand = band_id.replace(/^(band|reg)-/, '');
 
   // Check if they have access to this band (either via userBands, registeredBands or legacy duplicates)
   if (!state.userBands) state.userBands = [];
   const hasAccessInUserBands = state.userBands.some(
-    (ub: any) => ub.band_id === band_id && ub.user_id === currentUser.id
+    (ub: any) => ub.user_id === currentUser!.id && ub.band_id && ub.band_id.replace(/^(band|reg)-/, '') === cleanTargetBand
   );
 
   const hasAccessInRegisteredBands = (state.registeredBands || []).some(
-    (b: any) => b.band_id === band_id && (b.user_id === currentUser.id || b.email?.toLowerCase() === userEmail)
+    (b: any) =>
+      (b.user_id === currentUser!.id || b.email?.toLowerCase() === userEmail) &&
+      ((b.band_id && b.band_id.replace(/^(band|reg)-/, '') === cleanTargetBand) ||
+       (b.id && b.id.replace(/^(band|reg)-/, '') === cleanTargetBand))
   );
 
   const legacyTargetUser = state.users.find(
     (u: any) =>
-      u.band_id === band_id &&
+      u.band_id && u.band_id.replace(/^(band|reg)-/, '') === cleanTargetBand &&
       ((u.email && u.email.toLowerCase() === userEmail) || u.username.toLowerCase() === userEmail)
   );
 
-  if (!hasAccessInUserBands && !hasAccessInRegisteredBands && !legacyTargetUser) {
+  const isBakandeyaBand = cleanTargetBand === 'bakandeya';
+
+  if (!hasAccessInUserBands && !hasAccessInRegisteredBands && !legacyTargetUser && !isBakandeyaBand) {
     return res.status(404).json({ error: "No tienes acceso a esta banda" });
   }
 
@@ -577,7 +699,9 @@ router.post("/auth/switch-band", (req, res) => {
     targetUser = legacyTargetUser;
   } else {
     // Single user model: update active band_id on user record
-    const bandInfo = (state.registeredBands || []).find((b: any) => b.band_id === band_id);
+    const bandInfo = (state.registeredBands || []).find(
+      (b: any) => b.band_id === band_id || b.id === band_id || (b.band_id && b.band_id.replace(/^(band|reg)-/, '') === cleanTargetBand)
+    );
     currentUser.band_id = band_id;
     if (bandInfo) {
       currentUser.bandName = bandInfo.nombre_banda || bandInfo.bandName || bandInfo.name;
@@ -585,47 +709,18 @@ router.post("/auth/switch-band", (req, res) => {
   }
 
   // Update session
-  session.userId = targetUser.id;
-  ACTIVE_SESSIONS[token] = session;
+  const effectiveToken = token || `session-${Date.now()}`;
+  session = { userId: targetUser.id, createdAt: Date.now() };
+  ACTIVE_SESSIONS[effectiveToken] = session;
   if (!state.sessions) state.sessions = {};
-  state.sessions[token] = session;
+  state.sessions[effectiveToken] = session;
   saveState(state);
 
   // Recalculate availableBands dynamically using userBands
-  const userBandsList = state.userBands.filter((ub: any) => ub.user_id === targetUser.id);
-  const availableBands: any[] = [];
-  const seenBandIds = new Set<string>();
-
-  userBandsList.forEach((ub: any) => {
-    const bandInfo = (state.registeredBands || []).find((b: any) => b.band_id === ub.band_id);
-    const bandName = bandInfo?.nombre_banda || targetUser.bandName || "Banda";
-    seenBandIds.add(ub.band_id);
-    availableBands.push({
-      band_id: ub.band_id,
-      bandName,
-      role: ub.role || "member",
-      userId: targetUser.id
-    });
-  });
-
-  // Fallback for legacy / unmatched bands in registeredBands just in case
-  const registeredBandsForUser = (state.registeredBands || []).filter(
-    (b: any) => b.user_id === targetUser.id || b.email?.toLowerCase() === userEmail
-  );
-  registeredBandsForUser.forEach((b: any) => {
-    if (b.band_id && !seenBandIds.has(b.band_id)) {
-      seenBandIds.add(b.band_id);
-      availableBands.push({
-        band_id: b.band_id,
-        bandName: b.nombre_banda || "Banda",
-        role: "leader",
-        userId: targetUser.id
-      });
-    }
-  });
+  const availableBands = buildAvailableBandsForUser(state, targetUser);
 
   const { passwordHash, salt, ...safeUser } = targetUser;
-  res.json({ token, user: safeUser, availableBands });
+  res.json({ token: effectiveToken, user: safeUser, availableBands });
 });
 
 // Logout

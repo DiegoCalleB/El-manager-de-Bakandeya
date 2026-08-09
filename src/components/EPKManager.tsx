@@ -5,8 +5,9 @@ import {
   FileDown, Trash2, Loader2, Bot, Info, Download
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
-import { EPKConfig, Song } from '../types';
+import { EPKConfig, Song, User } from '../types';
 import { uploadFileToServer } from '../utils/audioStorage';
+import { api } from '../services/api';
 
 interface EPKManagerProps {
   epkConfig?: EPKConfig;
@@ -14,6 +15,7 @@ interface EPKManagerProps {
   onSave?: (newConfig: EPKConfig) => void;
   colors?: any;
   currentTheme?: any;
+  currentUser?: User;
 }
 
 const DEFAULT_EPK_CONFIG: EPKConfig = {
@@ -40,12 +42,24 @@ const DEFAULT_EPK_CONFIG: EPKConfig = {
 export const EPKManager: React.FC<EPKManagerProps> = ({ 
   epkConfig, 
   songs = [], 
-  onSave 
+  onSave,
+  currentUser
 }) => {
+  const activeBandId = currentUser?.band_id || 'band-bakandeya';
   const [config, setConfig] = useState<EPKConfig>(() => ({
     ...DEFAULT_EPK_CONFIG,
     ...(epkConfig || {})
   }));
+
+  React.useEffect(() => {
+    if (epkConfig) {
+      setConfig(prev => ({
+        ...prev,
+        ...epkConfig
+      }));
+    }
+  }, [epkConfig]);
+
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [copiedPublicUrl, setCopiedPublicUrl] = useState(false);
   const [activeTab, setActiveTab] = useState<'editor' | 'qr'>('editor');
@@ -59,21 +73,11 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
 
   const handleSave = async () => {
     try {
-      // Trigger parent handler if available
       if (onSave) {
         onSave(config);
       }
       
-      // Also directly trigger API save for reliability
-      const token = localStorage.getItem('token');
-      await fetch('/api/epk', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(config)
-      });
+      await api.updateEpkConfig(config);
 
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3500);
@@ -90,15 +94,21 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
     setIsUploadingLogo(true);
     setUploadError(null);
     try {
-      const url = await uploadFileToServer(file, { bandId: 'bakandeya', category: 'logo' });
-      setConfig(prev => ({ ...prev, logoUrl: url }));
+      const url = await uploadFileToServer(file, { bandId: activeBandId, category: 'logo' });
+      const updated = { ...config, logoUrl: url };
+      setConfig(updated);
+      if (onSave) onSave(updated);
+      await api.updateEpkConfig(updated);
     } catch (err: any) {
       console.error("Error uploading logo:", err);
-      // Fallback local reader
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         if (ev.target?.result) {
-          setConfig(prev => ({ ...prev, logoUrl: ev.target!.result as string }));
+          const url = ev.target!.result as string;
+          const updated = { ...config, logoUrl: url };
+          setConfig(updated);
+          if (onSave) onSave(updated);
+          await api.updateEpkConfig(updated);
         }
       };
       reader.readAsDataURL(file);
@@ -114,22 +124,28 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
     setIsUploadingDossier(true);
     setUploadError(null);
     try {
-      const url = await uploadFileToServer(file, { bandId: 'bakandeya', category: 'dossier' });
-      setConfig(prev => ({ 
-        ...prev, 
+      const url = await uploadFileToServer(file, { bandId: activeBandId, category: 'dossier' });
+      const updated = { 
+        ...config, 
         dossierPdfUrl: url,
         dossierPdfName: file.name
-      }));
+      };
+      setConfig(updated);
+      if (onSave) onSave(updated);
+      await api.updateEpkConfig(updated);
     } catch (err: any) {
       console.error("Error uploading dossier:", err);
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         if (ev.target?.result) {
-          setConfig(prev => ({ 
-            ...prev, 
+          const updated = { 
+            ...config, 
             dossierPdfUrl: ev.target!.result as string,
             dossierPdfName: file.name
-          }));
+          };
+          setConfig(updated);
+          if (onSave) onSave(updated);
+          await api.updateEpkConfig(updated);
         }
       };
       reader.readAsDataURL(file);
@@ -145,22 +161,28 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
     setIsUploadingRider(true);
     setUploadError(null);
     try {
-      const url = await uploadFileToServer(file, { bandId: 'bakandeya', category: 'rider' });
-      setConfig(prev => ({ 
-        ...prev, 
+      const url = await uploadFileToServer(file, { bandId: activeBandId, category: 'rider' });
+      const updated = { 
+        ...config, 
         riderPdfUrl: url,
         riderPdfName: file.name
-      }));
+      };
+      setConfig(updated);
+      if (onSave) onSave(updated);
+      await api.updateEpkConfig(updated);
     } catch (err: any) {
       console.error("Error uploading rider:", err);
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         if (ev.target?.result) {
-          setConfig(prev => ({ 
-            ...prev, 
+          const updated = { 
+            ...config, 
             riderPdfUrl: ev.target!.result as string,
             riderPdfName: file.name
-          }));
+          };
+          setConfig(updated);
+          if (onSave) onSave(updated);
+          await api.updateEpkConfig(updated);
         }
       };
       reader.readAsDataURL(file);

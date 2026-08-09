@@ -63,6 +63,16 @@ const DEFAULT_EPK_CONFIG = {
   ciudadesConfig: ["Madrid", "Sevilla", "Barcelona", "Málaga", "Valencia", "Granada", "Cádiz"]
 };
 
+export const DEFAULT_AUTONOMY_CONFIG = {
+  dispatchLevel: 'draft_only',
+  negotiationDepth: 'filter_conditions',
+  minCacheThreshold: 300,
+  maxCacheThreshold: 800,
+  autoDeclineUnderMinCache: false,
+  notifyOnEveryProposal: true,
+  requireHumanForFinalSignOff: true
+};
+
 const INITIAL_FANS = [
   {
     id: "fan-1",
@@ -150,23 +160,31 @@ export function ensureBakandeyaBandId(state: any): boolean {
           changed = true;
         }
       } else {
-        // Find matching registered band
-        const regBand = state.registeredBands?.find((b: any) =>
-          (u.email && b.email?.toLowerCase() === u.email?.toLowerCase()) || b.nombre_banda === u.name || b.nombre_banda === u.bandName
-        );
-        if (regBand && regBand.band_id) {
-          if (!regBand.user_id || regBand.user_id.startsWith("user-17")) {
-            regBand.user_id = u.id;
+        // Find matching registered bands for this user
+        const uEmail = u.email?.toLowerCase();
+        const matchingBands = state.registeredBands?.filter((b: any) =>
+          (uEmail && b.email?.toLowerCase() === uEmail) || b.nombre_banda === u.name || b.nombre_banda === u.bandName
+        ) || [];
+
+        // Ensure user_id is linked on matching registered bands
+        matchingBands.forEach((b: any) => {
+          if (!b.user_id || b.user_id.startsWith("user-17")) {
+            b.user_id = u.id;
             changed = true;
           }
-          if (u.band_id !== regBand.band_id) {
-            u.band_id = regBand.band_id;
-            changed = true;
-          }
-          if (regBand.nombre_banda && u.bandName !== regBand.nombre_banda) {
-            u.bandName = regBand.nombre_banda;
-            changed = true;
-          }
+        });
+
+        const currentBandValid = matchingBands.some((b: any) => b.band_id === u.band_id) ||
+          state.userBands?.some((ub: any) => ub.user_id === u.id && ub.band_id === u.band_id);
+
+        if (!currentBandValid && matchingBands.length > 0) {
+          const nameMatchedBand = matchingBands.find((b: any) =>
+            b.nombre_banda && (b.nombre_banda.toLowerCase() === u.name?.toLowerCase() || b.nombre_banda.toLowerCase() === u.bandName?.toLowerCase())
+          );
+          const targetBandObj = nameMatchedBand || matchingBands[0];
+          u.band_id = targetBandObj.band_id;
+          if (targetBandObj.nombre_banda) u.bandName = targetBandObj.nombre_banda;
+          changed = true;
         } else if (!u.band_id || u.band_id.startsWith('user-')) {
           u.band_id = `band-${slugify(u.bandName || u.name || u.id.replace('user-', ''))}`;
           changed = true;
@@ -478,14 +496,75 @@ export function getEpkConfigForBand(state: any, bandId: string, bandName: string
   if (!state.epkConfigsByBand) {
     state.epkConfigsByBand = {};
   }
-  if (!state.epkConfigsByBand[bandId]) {
-    if (bandId === BAKANDEYA_BAND_ID || bandId === 'reg-bakandeya') {
-      state.epkConfigsByBand[bandId] = state.epkConfig || DEFAULT_EPK_CONFIG;
+  const cleanId = (bandId || 'bakandeya').replace(/^(band|reg)-/, '');
+  const possibleKeys = [
+    bandId,
+    cleanId,
+    `band-${cleanId}`,
+    `reg-${cleanId}`
+  ].filter(Boolean);
+
+  let existing = possibleKeys
+    .map(k => state.epkConfigsByBand[k])
+    .find(cfg => cfg && (cfg.logoUrl || cfg.biografia || cfg.nombre_banda));
+
+  if (!existing) {
+    if (cleanId === 'bakandeya') {
+      existing = state.epkConfig || DEFAULT_EPK_CONFIG;
     } else {
-      state.epkConfigsByBand[bandId] = getDefaultEpkConfig(bandName, email);
+      existing = getDefaultEpkConfig(bandName, email);
     }
   }
-  return state.epkConfigsByBand[bandId];
+
+  // Ensure logoUrl fallback if missing or empty
+  if (!existing.logoUrl || existing.logoUrl.trim() === '') {
+    const regBand = (state.registeredBands || []).find((b: any) =>
+      b.band_id === bandId || b.id === bandId ||
+      (b.band_id && b.band_id.replace(/^(band|reg)-/, '') === cleanId) ||
+      (b.id && b.id.replace(/^(band|reg)-/, '') === cleanId)
+    );
+    if (regBand?.logo_url && regBand.logo_url.trim().length > 0) {
+      existing.logoUrl = regBand.logo_url;
+    } else if (regBand?.imagen_url && regBand.imagen_url.trim().length > 0) {
+      existing.logoUrl = regBand.imagen_url;
+    } else if (cleanId === 'bakandeya') {
+      existing.logoUrl = '/logo_bakandeya_bueno_sin_fondo.png';
+    }
+  }
+
+  // Populate all key variations so any future lookup with band-*, reg-*, or raw cleanId gets the same object
+  for (const k of possibleKeys) {
+    state.epkConfigsByBand[k] = existing;
+  }
+
+  return existing;
+}
+
+export function getAutonomyConfigForBand(state: any, bandId: string): any {
+  if (!state.autonomyConfigsByBand) {
+    state.autonomyConfigsByBand = {};
+  }
+  const cleanId = (bandId || 'bakandeya').replace(/^(band|reg)-/, '');
+  const possibleKeys = [
+    bandId,
+    cleanId,
+    `band-${cleanId}`,
+    `reg-${cleanId}`
+  ].filter(Boolean);
+
+  let existing = possibleKeys
+    .map(k => state.autonomyConfigsByBand[k])
+    .find(cfg => cfg && cfg.dispatchLevel);
+
+  if (!existing) {
+    existing = { ...DEFAULT_AUTONOMY_CONFIG };
+  }
+
+  for (const k of possibleKeys) {
+    state.autonomyConfigsByBand[k] = existing;
+  }
+
+  return existing;
 }
 
 export function loadState(): any {
@@ -495,6 +574,13 @@ export function loadState(): any {
       const state = JSON.parse(content);
       
       let changed = false;
+
+      if (!state.autonomyConfigsByBand) {
+        state.autonomyConfigsByBand = {
+          [BAKANDEYA_BAND_ID]: DEFAULT_AUTONOMY_CONFIG
+        };
+        changed = true;
+      }
 
       if (!state.epkConfig) {
         state.epkConfig = DEFAULT_EPK_CONFIG;

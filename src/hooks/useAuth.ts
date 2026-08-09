@@ -88,20 +88,25 @@ export function useAuth() {
   }, []);
 
   const handleSwitchBand = useCallback(async (band_id: string) => {
+    const tokenToUse = authToken || localStorage.getItem('bakandeya_token');
     const response = await fetch('/api/auth/switch-band', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+        ...(tokenToUse ? { 'Authorization': `Bearer ${tokenToUse}` } : {})
       },
       body: JSON.stringify({ band_id })
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(data.error || 'Error al cambiar de banda');
     }
 
+    if (data.token) {
+      setAuthToken(data.token);
+      localStorage.setItem('bakandeya_token', data.token);
+    }
     if (data.user) {
       setCurrentUser(data.user);
       localStorage.setItem('bakandeya_user', JSON.stringify(data.user));

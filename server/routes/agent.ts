@@ -1,7 +1,7 @@
 import express from "express";
 import { getRegionForCity } from "../../src/constants/regions.js";
 import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES } from "../../src/db_seed.js";
-import { loadState, saveState, requireAuth, requireLeader, requireCronOrAuth } from "../state.js";
+import { loadState, saveState, requireAuth, requireLeader, requireCronOrAuth, getAutonomyConfigForBand } from "../state.js";
 import { parsePrivateKey } from "../sheets.js";
 
 const router = express.Router();
@@ -182,13 +182,28 @@ router.post("/trigger-agent", requireCronOrAuth, async (req, res) => {
       extraArgs = parts.join(" ");
 
     } else {
-      const ignoredKeys = new Set(["workflowFile", "ref", "agent", "agentName", "agent_name", "spreadsheet_id", "spreadsheetId", "spreadsheet", "ciudad"]);
+      const ignoredKeys = new Set(["workflowFile", "ref", "agent", "agentName", "agent_name", "spreadsheet_id", "spreadsheetId", "spreadsheet", "ciudad", "autonomyConfig"]);
       const keys = Object.keys(finalParams).filter(k => !ignoredKeys.has(k));
       extraArgs = keys.map(k => {
         const cleanVal = String(finalParams[k]).replace(/['"\r\n]/g, "").trim();
         return `--${k} "${cleanVal}"`;
       }).join(" ");
     }
+
+    const state = loadState();
+    const user = (req as any).user;
+    const bandId = user?.band_id || "band-bakandeya";
+    const autonomy = finalParams.autonomyConfig || getAutonomyConfigForBand(state, bandId);
+
+    const autonomyParts = [
+      `--dispatch-level "${autonomy.dispatchLevel || 'draft_only'}"`,
+      `--negotiation-depth "${autonomy.negotiationDepth || 'filter_conditions'}"`,
+      `--min-cache ${autonomy.minCacheThreshold ?? 300}`,
+      `--max-cache ${autonomy.maxCacheThreshold ?? 800}`,
+      `--auto-decline ${autonomy.autoDeclineUnderMinCache ? 'true' : 'false'}`
+    ];
+
+    extraArgs = extraArgs ? `${extraArgs} ${autonomyParts.join(" ")}` : autonomyParts.join(" ");
 
     const workflowCandidates = [
       params?.workflowFile,

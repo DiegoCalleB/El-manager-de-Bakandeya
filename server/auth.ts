@@ -40,8 +40,8 @@ export function getSafeUsers(users: any[]) {
   });
 }
 
-// Extract user & role from incoming request
-export function getUserFromRequest(req: express.Request, loadStateFn: () => any): { id: string; role: string; username: string; email?: string; name?: string; bandName?: string; band_id?: string } | null {
+// Extract user & role from incoming request with multi-band isolation validation
+export function getUserFromRequest(req: express.Request, loadStateFn: () => any): { id: string; role: string; username: string; email?: string; name?: string; bandName?: string; band_id?: string; allowedBandIds?: string[] } | null {
   const authHeader = req.headers.authorization;
   let token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : (req.headers["x-auth-token"] as string || req.query.token as string);
 
@@ -51,31 +51,88 @@ export function getUserFromRequest(req: express.Request, loadStateFn: () => any)
   }
 
   const state = loadStateFn ? loadStateFn() : null;
+  let foundUser: any = null;
 
   if (token) {
     const session = ACTIVE_SESSIONS[token] || (state?.sessions && state.sessions[token]);
     if (session) {
       ACTIVE_SESSIONS[token] = session;
-      const user = state?.users?.find((u: any) => u.id === session.userId);
-      if (user) {
-        const band_id = user.band_id || 'band-bakandeya';
-        const userBand = state?.userBands?.find((ub: any) => ub.user_id === user.id && ub.band_id === band_id);
-        const role = userBand?.role || user.role || 'member';
-        return { id: user.id, role, username: user.username, email: user.email, name: user.name || user.bandName, band_id };
-      }
+      foundUser = state?.users?.find((u: any) => u.id === session.userId);
     }
   }
 
   // Fallback: Default to leader user in single-tenant applet context so background actions succeed
-  if (state?.users && state.users.length > 0) {
-    const defaultUser = state.users.find((u: any) => u.role === 'leader') || state.users[0];
-    const band_id = defaultUser.band_id || 'band-bakandeya';
-    const userBand = state?.userBands?.find((ub: any) => ub.user_id === defaultUser.id && ub.band_id === band_id);
-    const role = userBand?.role || defaultUser.role || 'leader';
-    return { id: defaultUser.id, role, username: defaultUser.username, email: defaultUser.email, name: defaultUser.name || defaultUser.bandName, band_id };
+  if (!foundUser && state?.users && state.users.length > 0) {
+    foundUser = state.users.find((u: any) => u.role === 'leader') || state.users[0];
   }
 
-  return null;
+  if (!foundUser) return null;
+
+  // Determine all allowed band IDs for this user
+  const allowedBandIds = new Set<string>();
+  if (foundUser.band_id) allowedBandIds.add(foundUser.band_id);
+
+  if (state?.userBands) {
+    state.userBands.forEach((ub: any) => {
+      if (ub.user_id === foundUser.id && ub.band_id) {
+        allowedBandIds.add(ub.band_id);
+      }
+    });
+  }
+
+  if (state?.registeredBands) {
+    const userEmail = (foundUser.email || foundUser.username || "").toLowerCase();
+    state.registeredBands.forEach((rb: any) => {
+      if ((rb.user_id === foundUser.id || (rb.email && rb.email.toLowerCase() === userEmail)) && rb.band_id) {
+        allowedBandIds.add(rb.band_id);
+      }
+    });
+  }
+
+  if (allowedBandIds.size === 0) {
+    allowedBandIds.add('band-bakandeya');
+  }
+
+  // Check requested active band from headers / query / body
+  const requestedBandId = (
+    req.headers['x-band-id'] ||
+    req.headers['x-active-band-id'] ||
+    req.query.band_id ||
+    req.body?.band_id
+  ) as string | undefined;
+
+  let activeBandId = foundUser.band_id || 'band-bakandeya';
+
+  // Allow active band override ONLY if user belongs to requested band or is admin/leader
+  if (requestedBandId && typeof requestedBandId === 'string' && requestedBandId.trim()) {
+    const cleanRequested = requestedBandId.trim();
+    if (allowedBandIds.has(cleanRequested) || foundUser.role === 'admin' || foundUser.role === 'leader') {
+      activeBandId = cleanRequested;
+    }
+  }
+
+  // Determine user's role for this active band
+  const userBand = state?.userBands?.find((ub: any) => ub.user_id === foundUser.id && ub.band_id === activeBandId);
+  const role = userBand?.role || foundUser.role || 'member';
+
+  // Retrieve band name for this active band
+  let activeBandName = foundUser.bandName;
+  const bandObj = state?.registeredBands?.find((rb: any) => rb.band_id === activeBandId || rb.id === activeBandId) ||
+                  state?.bands?.find((b: any) => b.band_id === activeBandId || b.id === activeBandId);
+  if (bandObj?.nombre_banda) {
+    activeBandName = bandObj.nombre_banda;
+  }
+
+  return {
+    id: foundUser.id,
+    role,
+    username: foundUser.username,
+    email: foundUser.email,
+    name: foundUser.name || activeBandName || foundUser.bandName,
+    bandName: activeBandName,
+    band_id: activeBandId,
+    allowedBandIds: Array.from(allowedBandIds)
+  };
 }
 
 // Middleware: Requires valid authenticated user

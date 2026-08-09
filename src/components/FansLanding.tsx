@@ -25,7 +25,7 @@ export const FansLanding: React.FC = () => {
   useEffect(() => {
     // Fetch official band logo from public EPK endpoint
     fetch('/api/public/epk')
-      .then(res => res.json())
+      .then(res => (res.ok && res.headers.get('content-type')?.includes('application/json')) ? res.json().catch(() => null) : null)
       .then(data => {
         if (data?.epkConfig?.logoUrl) {
           setLogoUrl(data.epkConfig.logoUrl);
