@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { Guitar, Check, Plus, Sparkles, X, Shield, ArrowRight, Loader2 } from 'lucide-react';
+import { Guitar, Check, Plus, Sparkles, X, Shield, ArrowRight, Loader2, Camera, Upload } from 'lucide-react';
 import { User } from '../types';
+import { cleanBandId, isSameBandId } from '../utils/bandUtils';
+import { uploadFileToServer } from '../utils/audioStorage';
+import { getAuthHeaders } from '../services/api';
 
 interface BandSwitcherModalProps {
   isOpen: boolean;
@@ -10,6 +13,8 @@ interface BandSwitcherModalProps {
   onSwitchBand: (bandId: string) => Promise<any>;
   onOpenRegisterBand?: () => void;
   epkConfig?: any;
+  onUpdateEpkConfig?: (config: any) => Promise<any> | void;
+  onRefreshData?: () => void;
 }
 
 export const BandSwitcherModal: React.FC<BandSwitcherModalProps> = ({
@@ -20,45 +25,97 @@ export const BandSwitcherModal: React.FC<BandSwitcherModalProps> = ({
   onSwitchBand,
   onOpenRegisterBand,
   epkConfig,
+  onUpdateEpkConfig,
+  onRefreshData,
 }) => {
   const [switchingBandId, setSwitchingBandId] = useState<string | null>(null);
+  const [uploadingBandId, setUploadingBandId] = useState<string | null>(null);
+  const [customLogos, setCustomLogos] = useState<Record<string, string>>({});
+  const [failedLogos, setFailedLogos] = useState<Set<string>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const currentActiveBandId = currentUser?.band_id || 'band-bakandeya';
+  const activeClean = cleanBandId(currentActiveBandId);
 
-  // Ensure unique list of bands
+  const handleUploadLogo = async (bandId: string, file: File) => {
+    setUploadingBandId(bandId);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const uploadedUrl = await uploadFileToServer(file, { bandId, category: 'logo' });
+      const clean = cleanBandId(bandId);
+
+      // Persist to EPK endpoint
+      const authHeaders = getAuthHeaders() as Record<string, string>;
+      await fetch('/api/epk', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+          'x-band-id': bandId
+        },
+        body: JSON.stringify({
+          bandId,
+          logoUrl: uploadedUrl
+        })
+      });
+
+      setCustomLogos(prev => ({ ...prev, [clean]: uploadedUrl }));
+
+      if (isSameBandId(bandId, currentActiveBandId) && onUpdateEpkConfig) {
+        await onUpdateEpkConfig({ ...epkConfig, logoUrl: uploadedUrl });
+      }
+
+      if (onRefreshData) {
+        onRefreshData();
+      }
+
+      setSuccessMessage('¡Logo actualizado correctamente!');
+    } catch (err: any) {
+      console.error('Error uploading logo in BandSwitcherModal:', err);
+      setErrorMessage('Error al subir el logo. Inténtalo de nuevo.');
+    } finally {
+      setUploadingBandId(null);
+    }
+  };
+
+  // Ensure unique list of bands mapped by clean band ID
   const bandListMap = new Map<string, { band_id: string; bandName: string; role?: string; logoUrl?: string }>();
   
   if (availableBands && availableBands.length > 0) {
     availableBands.forEach((b) => {
       const bid = b.band_id;
       if (bid) {
-        let logo = b.logoUrl || (b as any).logo_url || (b as any).imagen_url || '';
-        if (bid === currentActiveBandId && epkConfig?.logoUrl) {
+        const clean = cleanBandId(bid);
+        let logo = customLogos[clean] || b.logoUrl || (b as any).logo_url || (b as any).imagen_url || '';
+        if (isSameBandId(bid, currentActiveBandId) && epkConfig?.logoUrl && !customLogos[clean]) {
           logo = epkConfig.logoUrl;
         }
-        if (!logo && (bid === 'band-bakandeya' || bid === 'reg-bakandeya')) {
+        if (!logo && clean === 'bakandeya') {
           logo = '/logo_bakandeya_bueno_sin_fondo.png';
         }
-        bandListMap.set(bid, {
-          band_id: bid,
-          bandName: b.bandName || 'Banda',
-          role: b.role || 'member',
-          logoUrl: logo
-        });
+        if (!bandListMap.has(clean)) {
+          bandListMap.set(clean, {
+            band_id: bid,
+            bandName: b.bandName || 'Banda',
+            role: b.role || 'member',
+            logoUrl: logo
+          });
+        }
       }
     });
   }
 
   // Ensure active band is present
-  if (!bandListMap.has(currentActiveBandId)) {
-    let logo = epkConfig?.logoUrl || '';
-    if (!logo && (currentActiveBandId === 'band-bakandeya' || currentActiveBandId === 'reg-bakandeya')) {
+  if (!bandListMap.has(activeClean)) {
+    let logo = customLogos[activeClean] || epkConfig?.logoUrl || '';
+    if (!logo && activeClean === 'bakandeya') {
       logo = '/logo_bakandeya_bueno_sin_fondo.png';
     }
-    bandListMap.set(currentActiveBandId, {
+    bandListMap.set(activeClean, {
       band_id: currentActiveBandId,
       bandName: currentUser?.bandName || currentUser?.name || 'BAKANDEYA',
       role: currentUser?.role || 'leader',
@@ -69,7 +126,7 @@ export const BandSwitcherModal: React.FC<BandSwitcherModalProps> = ({
   const uniqueBands = Array.from(bandListMap.values());
 
   const handleSelectBand = async (bandId: string) => {
-    if (bandId === currentActiveBandId) {
+    if (isSameBandId(bandId, currentActiveBandId)) {
       onClose();
       return;
     }
@@ -79,10 +136,8 @@ export const BandSwitcherModal: React.FC<BandSwitcherModalProps> = ({
 
     try {
       await onSwitchBand(bandId);
-      setTimeout(() => {
-        setSwitchingBandId(null);
-        onClose();
-      }, 400);
+      setSwitchingBandId(null);
+      onClose();
     } catch (err: any) {
       console.error('Error switching band:', err);
       setErrorMessage(err.message || 'Error al cambiar de banda');
@@ -127,16 +182,24 @@ export const BandSwitcherModal: React.FC<BandSwitcherModalProps> = ({
           </div>
         )}
 
+        {successMessage && (
+          <div className="mb-6 p-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs rounded-xl font-medium flex items-center justify-center gap-2">
+            <Check className="w-4 h-4 text-emerald-400" />
+            <span>{successMessage}</span>
+          </div>
+        )}
+
         {/* Band Cards Grid (Netflix Style) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 md:gap-6 justify-center items-stretch max-h-[60vh] overflow-y-auto p-2 no-scrollbar">
           {uniqueBands.map((band) => {
-            const isActive = band.band_id === currentActiveBandId;
+            const isActive = isSameBandId(band.band_id, currentActiveBandId);
             const isSwitching = switchingBandId === band.band_id;
+            const isUploadingThis = uploadingBandId === band.band_id;
 
             return (
               <div
                 key={`netflix-band-${band.band_id}`}
-                onClick={() => !switchingBandId && handleSelectBand(band.band_id)}
+                onClick={() => !switchingBandId && !isUploadingThis && handleSelectBand(band.band_id)}
                 className={`group relative flex flex-col items-center p-5 rounded-2xl border transition-all duration-300 cursor-pointer select-none ${
                   isActive
                     ? 'bg-gradient-to-b from-amber-500/20 to-[#1a1918] border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.25)] scale-[1.02]'
@@ -145,18 +208,38 @@ export const BandSwitcherModal: React.FC<BandSwitcherModalProps> = ({
               >
                 {/* Active Indicator Badge */}
                 {isActive && (
-                  <div className="absolute top-3 right-3 bg-amber-500 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
+                  <div className="absolute top-3 right-3 bg-amber-500 text-black text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md z-10">
                     <Check className="w-3 h-3 stroke-[3]" />
                     <span className="hidden sm:inline">Activa</span>
                   </div>
                 )}
 
+                {/* Edit Logo Camera Button (Netflix Style Avatar Editing) */}
+                <label
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-3 left-3 z-20 p-1.5 rounded-xl bg-black/80 hover:bg-amber-500 text-amber-400 hover:text-black border border-amber-500/40 shadow-md transition-all cursor-pointer hover:scale-110 active:scale-95"
+                  title="Modificar Logo de esta Banda"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={!!uploadingBandId}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleUploadLogo(band.band_id, file);
+                    }}
+                  />
+                </label>
+
                 {/* Avatar / Logo Container */}
                 <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-2xl overflow-hidden bg-neutral-950 border border-[#333130] group-hover:border-amber-400 transition-all flex items-center justify-center p-2 shadow-lg mb-3 shrink-0">
-                  {band.logoUrl ? (
+                  {band.logoUrl && !failedLogos.has(band.band_id) ? (
                     <img
                       src={band.logoUrl}
                       alt={band.bandName}
+                      onError={() => setFailedLogos(prev => new Set(prev).add(band.band_id))}
                       className="w-full h-full object-contain filter drop-shadow-md group-hover:scale-110 transition-transform duration-300"
                       referrerPolicy="no-referrer"
                     />
@@ -169,10 +252,13 @@ export const BandSwitcherModal: React.FC<BandSwitcherModalProps> = ({
                     </div>
                   )}
 
-                  {/* Switching Spinner Overlay */}
-                  {isSwitching && (
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center text-amber-400">
+                  {/* Switching or Uploading Spinner Overlay */}
+                  {(isSwitching || isUploadingThis) && (
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-xs flex flex-col items-center justify-center text-amber-400 gap-1 z-30">
                       <Loader2 className="w-8 h-8 animate-spin" />
+                      {isUploadingThis && (
+                        <span className="text-[9px] font-mono text-amber-300 uppercase">Subiendo</span>
+                      )}
                     </div>
                   )}
                 </div>

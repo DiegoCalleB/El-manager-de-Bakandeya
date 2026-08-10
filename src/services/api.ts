@@ -12,8 +12,8 @@ export class ApiError extends Error {
   }
 }
 
-function getAuthHeaders(): HeadersInit {
-  const token = localStorage.getItem('bakandeya_token');
+export function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('bakandeya_token') || localStorage.getItem('token');
   let activeBandId = '';
   try {
     const userStr = localStorage.getItem('bakandeya_user');
@@ -67,8 +67,8 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   // Authentication
-  async verifyMe(): Promise<{ user: User; availableBands?: any[]; multipleBands?: boolean }> {
-    return request<{ user: User; availableBands?: any[]; multipleBands?: boolean }>('/api/auth/me');
+  async verifyMe(): Promise<{ user: User; token?: string; availableBands?: any[]; multipleBands?: boolean }> {
+    return request<{ user: User; token?: string; availableBands?: any[]; multipleBands?: boolean }>('/api/auth/me');
   },
 
   async logout(token: string): Promise<void> {
@@ -242,6 +242,15 @@ export const api = {
     return request(`/api/tours/${id}`, {
       method: 'DELETE'
     });
+  },
+
+  // Bands
+  async getBands(): Promise<{ bands: any[] }> {
+    return request<{ bands: any[] }>('/api/bands');
+  },
+
+  async getRegisteredBands(): Promise<{ registeredBands: any[] }> {
+    return request<{ registeredBands: any[] }>('/api/registered-bands');
   },
 
   // Fans

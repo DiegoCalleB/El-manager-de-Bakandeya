@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Lead, LeadStatus, Rehearsal, Concert, SocialPost, Payment, Message, ThemeName, ThemeColors, SocialMetric, User, Fan } from './types';
 import { THEMES } from './utils/theme';
 import { useAuth } from './hooks/useAuth';
@@ -121,6 +121,11 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFloatingChatOpen, setIsFloatingChatOpen] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const handleChatLoadingChange = useCallback((loading: boolean) => {
+    setTimeout(() => {
+      setIsChatLoading(loading);
+    }, 0);
+  }, []);
   const [showMetronomeModal, setShowMetronomeModal] = useState(false);
   const [showBandSwitcherModal, setShowBandSwitcherModal] = useState(false);
 
@@ -133,7 +138,7 @@ export default function App() {
 
   // Active Theme State
   const [currentTheme, setCurrentTheme] = useState<ThemeName>(() => {
-    return (localStorage.getItem('bakandeya_theme') as ThemeName) || 'indie_velvet';
+    return (localStorage.getItem('bakandeya_theme') as ThemeName) || 'stitch_light';
   });
 
   // Active Font State
@@ -285,10 +290,7 @@ export default function App() {
      {currentActiveBandName[0]?.toUpperCase() || 'B'}
     </div>
    )}
-   {/* Dropdown Chevron Badge Indicator on Logo */}
-   <div className="absolute -bottom-1 -right-1 bg-amber-500 text-black rounded-full p-0.5 border border-black shadow-md flex items-center justify-center group-hover:scale-110 transition-transform">
-    <ChevronDown className="w-3 h-3 stroke-[3]" />
-   </div>
+
   </div>
 
   <div className="flex flex-col">
@@ -299,7 +301,6 @@ export default function App() {
     <ChevronDown className="w-3.5 h-3.5 text-amber-400 group-hover:translate-y-0.5 transition-transform" />
     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncStatus === 'synced' ? 'bg-emerald-400/20' : syncStatus === 'error' ? 'bg-rose-500' : 'bg-zinc-400 animate-pulse'}`} />
    </div>
-   <span className="text-[10px] text-amber-400/90 font-mono mt-0.5 font-bold">Cambiar de banda ▾</span>
   </div>
  </div>
  <button
@@ -350,17 +351,17 @@ export default function App() {
  <button
  key={`top-tab-${item.id}`}
  onClick={() => handleNavigate(item.id as any)}
- className={`flex items-center gap-2 px-3.5 py-2 md:px-3 md:py-1.5 rounded-full text-sm md:text-xs font-semibold md:font-normal font-sans whitespace-nowrap shrink-0 transition-all cursor-pointer active:scale-95 ${
+ className={`flex items-center gap-2 px-3.5 py-2 md:px-3 md:py-1.5 rounded-full text-sm md:text-xs font-semibold md:font-normal font-sans whitespace-nowrap shrink-0 transition-all duration-200 cursor-pointer active:scale-95 ${
  isSelected
- ? 'bg-zinc-800 text-zinc-100 border-zinc-700 font-bold shadow-xs'
- : 'bg-[#1A1918] text-neutral-300 border-[#22211F] hover:bg-[#22211F] hover:text-white'
+ ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold shadow-xs'
+ : 'bg-[#1A1918] text-neutral-300 border border-[#22211F] hover:bg-[#22211F] hover:text-white'
  }`}
  >
- <IconComp className="w-4 h-4 md:w-3.5 md:h-3.5 shrink-0" />
+ <IconComp className={`w-4 h-4 md:w-3.5 md:h-3.5 shrink-0 transition-transform ${isSelected ? 'text-amber-400 scale-110' : 'text-neutral-400'}`} />
  <span>{item.label}</span>
  {item.badge !== undefined && item.badge !== 0 && item.badge !== "0" && (
- <span className={`text-xs md:text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
- isSelected ? 'bg-zinc-700 text-zinc-300' : 'bg-[#2b2927] text-zinc-400'
+ <span className={`text-xs md:text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+ isSelected ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-[#2b2927] text-zinc-400'
  }`}>
  {item.badge}
  </span>
@@ -499,26 +500,7 @@ export default function App() {
     </div>
    </div>
 
-   {/* Band Switcher Button (Netflix Style) */}
-   <div className="mt-2 pt-2 border-t border-[#22211F]/60 flex flex-col gap-1">
-    <button
-     onClick={() => {
-       setShowBandSwitcherModal(true);
-       setIsMobileMenuOpen(false);
-     }}
-     className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 via-[#1e1d1b] to-[#141312] border border-amber-500/40 hover:border-amber-400 text-amber-300 transition-all cursor-pointer group active:scale-95 shadow-xs"
-    >
-     <div className="flex items-center gap-2">
-      <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
-      <span className="text-xs font-bold uppercase tracking-wider font-display text-zinc-100">
-       Cambiar de Banda
-      </span>
-     </div>
-     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-      Netflix Style ▾
-     </span>
-    </button>
-   </div>
+
   </div>
  )}
  <div className="flex items-center justify-between px-2">
@@ -572,17 +554,6 @@ export default function App() {
   </span>
   </div>
   )}
-  {/* Corner Dropdown Indicator Badge on Logo */}
-  <div className="absolute -bottom-1 -right-1 bg-amber-500 text-black px-2 py-0.5 rounded-lg border-2 border-[#121110] shadow-lg flex items-center gap-1 font-mono font-black text-[9px] uppercase tracking-wider group-hover:scale-110 transition-transform z-10">
-   <span>Cambiar</span>
-   <ChevronDown className="w-3 h-3 stroke-[3]" />
-  </div>
-
-  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 backdrop-blur-[1px] rounded-2xl flex items-center justify-center transition-opacity duration-200">
-  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-black bg-amber-400 px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1">
-    <RefreshCw className="w-3 h-3 animate-spin" /> Cambiar
-  </span>
-  </div>
   </div>
 
   <div className="flex flex-col items-center w-full">
@@ -592,12 +563,7 @@ export default function App() {
    </h1>
    <ChevronDown className="w-5 h-5 text-amber-400 group-hover:translate-y-0.5 transition-transform shrink-0" />
   </div>
-  <div className="flex items-center justify-center gap-1.5 mt-2 bg-[#1A1918] group-hover:bg-amber-500/10 px-3 py-1 rounded-full border border-[#333130] group-hover:border-amber-500/40 shadow-inner transition-colors">
-  <Sparkles className="w-3 h-3 text-amber-400" />
-  <span className="text-[10px] font-mono text-amber-300 group-hover:text-amber-200 uppercase tracking-wider font-bold">
-    Cambiar Banda ▾
-  </span>
-  </div>
+
   </div>
  </div>
 
@@ -665,19 +631,19 @@ export default function App() {
  id={`nav-btn-${item.id}`}
  key={item.id}
  onClick={() => handleNavigate(item.id as any)}
- className={`flex items-center justify-between py-2.5 px-3 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
+ className={`flex items-center justify-between py-2.5 px-3 rounded-xl text-[13px] font-sans transition-all duration-200 cursor-pointer active:scale-95 ${
  isSelected 
- ? 'bg-zinc-800/80 text-zinc-100 font-bold border-zinc-700'
- : 'text-neutral-300 hover:bg-[#22211f] hover:text-white'
+ ? 'bg-amber-500/15 text-amber-300 font-bold border border-amber-500/35 shadow-xs'
+ : 'text-neutral-300 hover:bg-[#22211f] hover:text-white hover:translate-x-0.5'
  }`}
  >
  <div className="flex items-center gap-3">
- <IconComp className="w-4 h-4 shrink-0" />
+ <IconComp className={`w-4 h-4 shrink-0 transition-transform duration-200 ${isSelected ? 'text-amber-400 scale-110' : 'text-neutral-400'}`} />
  <span className="whitespace-nowrap">{item.label}</span>
  </div>
  {item.badge !== undefined && (
- <span className={`text-[10px] px-1.5 py-0.5 rounded font-sans font-bold ${
- isSelected ? 'text-zinc-300' : 'text-neutral-400'
+ <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold transition-colors ${
+ isSelected ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-neutral-800 text-neutral-400'
  }`}>
  {item.badge}
  </span>
@@ -711,23 +677,7 @@ export default function App() {
     </div>
    </div>
 
-   {/* Band Switcher Button (Netflix Style) */}
-   <div className="mt-2 pt-2 border-t border-[#22211F]/60 flex flex-col gap-1">
-    <button
-     onClick={() => setShowBandSwitcherModal(true)}
-     className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 via-[#1e1d1b] to-[#141312] border border-amber-500/40 hover:border-amber-400 text-amber-300 transition-all cursor-pointer group active:scale-95 shadow-xs"
-    >
-     <div className="flex items-center gap-2">
-      <Sparkles className="w-3 h-3 text-amber-400 group-hover:rotate-12 transition-transform" />
-      <span className="text-xs font-bold uppercase tracking-wider font-display text-zinc-100">
-       Mis Bandas
-      </span>
-     </div>
-     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-      Netflix Style ▾
-     </span>
-    </button>
-   </div>
+
   </div>
  )}
 
@@ -777,7 +727,7 @@ export default function App() {
  )}
 
  {/* Dynamic Views */}
- <div className="flex-1 h-full min-h-[500px] flex flex-col">
+ <div key={currentView} className="flex-1 h-full min-h-[500px] flex flex-col animate-fade-in">
  {isLoading ? (
  <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
  <RefreshCw className="w-8 h-8 animate-spin text-[#f2ca50]" />
@@ -925,31 +875,28 @@ export default function App() {
  </div>
  )
  )}
-  {/* Persistent Single Chatbot Instance */}
-  <div className={
-    currentView === 'chat'
-      ? 'w-full h-[calc(100vh-140px)] min-h-[600px] block'
-      : isFloatingChatOpen
-        ? 'fixed bottom-20 right-4 sm:right-6 w-[92vw] sm:w-[420px] max-w-[440px] z-50 shadow-2xl animate-in slide-in-from-bottom-5 duration-200 block'
-        : 'hidden'
-  }>
-    <Chatbot
-      key={`${currentUser?.id || 'guest'}_${currentUser?.band_id || 'default'}`}
-      colors={colors}
-      leads={leads}
-      rehearsals={rehearsals}
-      concerts={concerts}
-      onUpdateLead={handleUpdateLead}
-      onAddRehearsal={handleAddRehearsal}
-      onAddConcert={handleAddConcert}
-      isFloating={currentView !== 'chat'}
-      onClose={() => setIsFloatingChatOpen(false)}
-      userRole={currentUser?.role}
-      currentUser={currentUser}
-      activeBandName={currentActiveBandName}
-      onLoadingChange={setIsChatLoading}
-    />
-  </div>
+  {/* Full View Chatbot Instance */}
+  {currentView === 'chat' && (
+    <div className="w-full h-[calc(100vh-140px)] min-h-[600px] block">
+      <Chatbot
+        key={`main_${currentUser?.id || 'guest'}_${currentUser?.band_id || 'default'}`}
+        colors={colors}
+        leads={leads}
+        rehearsals={rehearsals}
+        concerts={concerts}
+        epkConfig={epkConfig}
+        onUpdateLead={handleUpdateLead}
+        onCreateLead={handleAddLead}
+        onAddRehearsal={handleAddRehearsal}
+        onAddConcert={handleAddConcert}
+        isFloating={false}
+        userRole={currentUser?.role}
+        currentUser={currentUser}
+        activeBandName={currentActiveBandName}
+        onLoadingChange={handleChatLoadingChange}
+      />
+    </div>
+  )}
  </>
  )}
  </div>
@@ -1340,6 +1287,10 @@ export default function App() {
  onThemeChange={handleThemeChange}
  currentFont={currentFont}
  onFontChange={handleFontChange}
+ epkConfig={epkConfig}
+ onUpdateEpkConfig={handleUpdateEpkConfig}
+ activeBandName={currentActiveBandName}
+ onRefreshData={fetchState}
  />
  )}
 
@@ -1353,6 +1304,34 @@ export default function App() {
  handleFontChange(f);
  }}
  />
+ )}
+
+ {/* Floating Chatbot Overlay */}
+ {currentView !== 'chat' && (
+   <div
+     className={`fixed bottom-20 right-4 sm:right-6 w-[92vw] sm:w-[420px] max-w-[440px] h-[580px] max-h-[80vh] z-[9999] shadow-2xl transition-all duration-200 ${
+       isFloatingChatOpen ? 'block animate-in slide-in-from-bottom-5' : 'hidden'
+     }`}
+   >
+     <Chatbot
+       key={`floating_${currentUser?.id || 'guest'}_${currentUser?.band_id || 'default'}`}
+       colors={colors}
+       leads={leads}
+       rehearsals={rehearsals}
+       concerts={concerts}
+       epkConfig={epkConfig}
+       onUpdateLead={handleUpdateLead}
+       onCreateLead={handleAddLead}
+       onAddRehearsal={handleAddRehearsal}
+       onAddConcert={handleAddConcert}
+       isFloating={true}
+       onClose={() => setIsFloatingChatOpen(false)}
+       userRole={currentUser?.role}
+       currentUser={currentUser}
+       activeBandName={currentActiveBandName}
+       onLoadingChange={handleChatLoadingChange}
+     />
+   </div>
  )}
 
  {/* Floating Chatbot Trigger Button */}
@@ -1405,6 +1384,8 @@ export default function App() {
   currentUser={currentUser}
   availableBands={availableBands}
   epkConfig={epkConfig}
+  onUpdateEpkConfig={handleUpdateEpkConfig}
+  onRefreshData={fetchState}
   onSwitchBand={async (bandId) => {
     await handleSwitchBand(bandId);
     await fetchState();

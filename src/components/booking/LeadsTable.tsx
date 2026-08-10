@@ -1,6 +1,10 @@
 import React from 'react';
 import { Lead, LeadStatus } from '../../types';
 import { LeadHealthBadge } from './LeadHealthBadge';
+import { VerifiedBadge } from '../common/VerifiedBadge';
+import { ReliabilityBadge } from '../common/ReliabilityBadge';
+import { FavoriteButton } from '../common/FavoriteButton';
+import { isLeadVerificado } from '../../utils/leadReliability';
 import { MessageCircle, PhoneCall, CheckCircle2, Eye, Sparkles } from 'lucide-react';
 
 interface LeadsTableProps {
@@ -86,17 +90,28 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({
                   )}
 
                   <div className="flex flex-col min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className="font-display font-bold text-base sm:text-lg tracking-wide text-zinc-50 truncate flex-1 min-w-0">
-                        {lead.nombre_sala}
-                      </h4>
-                      <span
-                        className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-sans font-medium shrink-0 ${getStatusBadgeClass(
-                          lead.estado
-                        )}`}
-                      >
-                        {getStatusLabel(lead.estado)}
-                      </span>
+                    <div className="flex items-start justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <h4 className="font-display font-bold text-base sm:text-lg tracking-wide text-zinc-50 truncate">
+                          {lead.nombre_sala}
+                        </h4>
+                        <VerifiedBadge isVerified={isLeadVerificado(lead)} size="sm" />
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <FavoriteButton 
+                          isFavorite={!!lead.es_favorito}
+                          onToggle={(newVal) => onUpdateLead(lead.id, { es_favorito: newVal })}
+                          size="sm"
+                        />
+                        <span
+                          className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-sans font-medium shrink-0 ${getStatusBadgeClass(
+                            lead.estado
+                          )}`}
+                        >
+                          {getStatusLabel(lead.estado)}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5 text-xs font-sans text-zinc-300 font-medium mt-1">
@@ -107,9 +122,10 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({
                       <span className="text-zinc-400">{lead.genero || 'Variado'}</span>
                     </div>
 
-                    {/* Temperature Badge */}
-                    <div className="mt-2">
+                    {/* Quality Badges */}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                       <LeadHealthBadge lead={lead} showDescription={true} size="sm" />
+                      <ReliabilityBadge item={lead} size="sm" />
                     </div>
                   </div>
                 </div>
@@ -185,9 +201,11 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({
           <table className="w-full text-left border-collapse min-w-[950px]">
             <thead>
               <tr className="border-b border-zinc-800 text-[10px] font-mono uppercase tracking-wider text-zinc-400 bg-black/40">
+                <th className="py-3.5 px-3 w-10 text-center whitespace-nowrap">Fav</th>
                 <th className="py-3.5 px-4 min-w-[220px] whitespace-nowrap">
                   {sectionTab === 'medios' ? 'Medio / Contacto' : sectionTab === 'grupos' ? 'Banda / Management' : 'Espacio / Sala'}
                 </th>
+                <th className="py-3.5 px-4 min-w-[120px] whitespace-nowrap">Fiabilidad</th>
                 <th className="py-3.5 px-4 min-w-[120px] whitespace-nowrap">Salud / Temp</th>
                 <th className="py-3.5 px-4 min-w-[110px] whitespace-nowrap">Ciudad</th>
                 <th className="py-3.5 px-4 min-w-[90px] whitespace-nowrap">Aforo</th>
@@ -209,6 +227,14 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({
                       isSelected ? 'bg-[#1A1918]' : 'hover:bg-zinc-900/60'
                     }`}
                   >
+                    <td className="py-3.5 px-3 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+                      <FavoriteButton 
+                        isFavorite={!!lead.es_favorito}
+                        onToggle={(newVal) => onUpdateLead(lead.id, { es_favorito: newVal })}
+                        size="sm"
+                      />
+                    </td>
+
                     <td className="py-3.5 px-4 min-w-[220px] align-middle">
                       <div className="flex items-center gap-2.5 min-w-0">
                         {lead.imagen_url ? (
@@ -230,14 +256,21 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({
                           </span>
                         )}
                         <div className="min-w-0 flex-1">
-                          <span className="truncate font-bold text-xs sm:text-sm text-zinc-100 block max-w-[180px]" title={lead.nombre_sala}>
-                            {lead.nombre_sala}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate font-bold text-xs sm:text-sm text-zinc-100 block max-w-[160px]" title={lead.nombre_sala}>
+                              {lead.nombre_sala}
+                            </span>
+                            <VerifiedBadge isVerified={isLeadVerificado(lead)} size="sm" />
+                          </div>
                           <span className="text-[10px] text-zinc-400 font-sans font-normal truncate block">
                             {lead.genero || 'Sin género'}
                           </span>
                         </div>
                       </div>
+                    </td>
+
+                    <td className="py-3.5 px-4 min-w-[120px] whitespace-nowrap align-middle">
+                      <ReliabilityBadge item={lead} size="sm" />
                     </td>
 
                     <td className="py-3.5 px-4 min-w-[120px] whitespace-nowrap align-middle">

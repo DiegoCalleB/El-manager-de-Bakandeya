@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { Lead, LeadStatus, InteractionLog } from '../../types';
 import { LeadHealthBadge } from './LeadHealthBadge';
+import { VerifiedBadge } from '../common/VerifiedBadge';
+import { ReliabilityBadge } from '../common/ReliabilityBadge';
+import { FavoriteButton } from '../common/FavoriteButton';
+import { isLeadVerificado } from '../../utils/leadReliability';
 import DirectionsCard from '../DirectionsCard';
 import {
   Edit3,
@@ -171,9 +175,12 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
               </div>
             )}
             <div>
-              <h3 className="text-xl sm:text-2xl font-bold font-display tracking-tight text-zinc-50">
-                {selectedLead.nombre_sala}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xl sm:text-2xl font-bold font-display tracking-tight text-zinc-50">
+                  {selectedLead.nombre_sala}
+                </h3>
+                <VerifiedBadge isVerified={isLeadVerificado(selectedLead)} size="md" showLabel={true} />
+              </div>
               <p className="text-xs sm:text-sm font-sans mt-0.5 text-zinc-300">
                 {selectedLead.ciudad} • {selectedLead.genero || 'Variado'} •{' '}
                 {selectedLead.aforo ? `${selectedLead.aforo} pax` : 'Aforo n/d'}
@@ -182,6 +189,11 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
+            <FavoriteButton 
+              isFavorite={!!selectedLead.es_favorito}
+              onToggle={(newVal) => onUpdateLead(selectedLead.id, { es_favorito: newVal })}
+              size="md"
+            />
             <button
               onClick={handleStartEdit}
               className="p-2 rounded-xl bg-[#252423] hover:bg-[#2e2d2b] text-zinc-300 hover:text-white transition-colors cursor-pointer border border-zinc-700/60"
@@ -199,9 +211,12 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
           </div>
         </div>
 
-        {/* Lead Health / Temperature Badge & Status Indicator */}
+        {/* Lead Health / Temperature Badge & Quality Indicator */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-800/80">
-          <LeadHealthBadge lead={selectedLead} showDescription={true} size="md" />
+          <div className="flex flex-wrap items-center gap-2">
+            <LeadHealthBadge lead={selectedLead} showDescription={true} size="md" />
+            <ReliabilityBadge item={selectedLead} size="md" />
+          </div>
 
           {/* Status selector */}
           <div className="flex items-center gap-1.5 bg-[#121110] px-2.5 py-1 rounded-xl border border-zinc-800">

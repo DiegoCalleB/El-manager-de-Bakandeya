@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../services/api';
-import { Message as MessageType, Lead, Rehearsal, Concert, ThemeColors, User as UserType } from '../types';
-import { Send, Bot, Guitar, User, Sparkles, RefreshCw, AlertCircle, CheckCircle, HelpCircle, Calendar, ShieldAlert, X, Activity, ExternalLink, Terminal, Clock, Copy, Key, Sliders } from 'lucide-react';
+import { Message as MessageType, Lead, Rehearsal, Concert, ThemeColors, User as UserType, EPKConfig } from '../types';
+import { Send, Bot, Guitar, User, Sparkles, RefreshCw, AlertCircle, CheckCircle, HelpCircle, Calendar, ShieldAlert, X, Activity, ExternalLink, Terminal, Clock, Copy, Key, Sliders, Mail } from 'lucide-react';
+import { AgentAutonomySettingsModal } from './dashboard/AgentAutonomySettingsModal';
+import { sendGmailMessage, createGmailDraft, getAccessToken, googleSignIn } from '../utils/gmail';
+import { formatEmailWithSignatureAndDossier } from '../utils/emailFormatter';
 
 interface ProposedAction {
- type: 'propose_lead_approval' | 'propose_rehearsal' | 'propose_status_change' | 'propose_agent_trigger' | 'propose_concert' | 'propose_add_concert' | 'propose_band' | 'propose_tour' | 'propose_update_logo';
+ type: 'propose_lead_approval' | 'propose_rehearsal' | 'propose_status_change' | 'propose_agent_trigger' | 'propose_concert' | 'propose_add_concert' | 'propose_band' | 'propose_tour' | 'propose_update_logo' | 'propose_send_email' | 'propose_draft_email' | 'propose_add_lead' | 'propose_update_lead';
  leadId?: string;
  bandId?: string;
  targetType?: 'lead' | 'band';
@@ -20,6 +23,13 @@ interface ProposedAction {
  tour?: any;
  imagen_url?: string;
  icono?: string;
+ subject?: string;
+ body?: string;
+ senderName?: string;
+ attachDossier?: boolean;
+ incluirFirmaRedes?: boolean;
+ lead?: any;
+ updatedFields?: any;
 }
 
 interface ChatMessage {
@@ -32,23 +42,27 @@ interface ChatMessage {
 }
 
 interface ChatbotProps {
- key?: string;
- colors: ThemeColors;
- leads: Lead[];
- rehearsals: Rehearsal[];
- concerts: Concert[];
- onUpdateLead: (leadId: string, updatedFields: Partial<Lead>, expectedStatus?: string) => void;
- onAddRehearsal: (rehearsal: Rehearsal) => void;
- onAddConcert?: (concert: Concert) => void;
- isFloating?: boolean;
- onClose?: () => void;
- userRole?: string;
- currentUser?: UserType | null;
- activeBandName?: string;
- onLoadingChange?: (isLoading: boolean) => void;
+  key?: string;
+  colors: ThemeColors;
+  leads: Lead[];
+  rehearsals: Rehearsal[];
+  concerts: Concert[];
+  epkConfig?: EPKConfig;
+  onUpdateLead: (leadId: string, updatedFields: Partial<Lead>, expectedStatus?: string) => void;
+  onCreateLead?: (lead: Lead) => void;
+  onAddRehearsal: (rehearsal: Rehearsal) => void;
+  onAddConcert?: (concert: Concert) => void;
+  isFloating?: boolean;
+  onClose?: () => void;
+  userRole?: string;
+  currentUser?: UserType | null;
+  activeBandName?: string;
+  onLoadingChange?: (isLoading: boolean) => void;
 }
 
-export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateLead, onAddRehearsal, onAddConcert, isFloating, onClose, userRole, currentUser, activeBandName, onLoadingChange }: ChatbotProps) {
+export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig, onUpdateLead, onCreateLead, onAddRehearsal, onAddConcert, isFloating, onClose, userRole, currentUser, activeBandName, onLoadingChange }: ChatbotProps) {
+  const isAdmin = userRole === 'admin' || userRole === 'leader' || (currentUser?.role as string) === 'admin' || currentUser?.role === 'leader';
+  const [isAutonomyModalOpen, setIsAutonomyModalOpen] = useState(false);
   const bandDisplayName = activeBandName || currentUser?.bandName || 'vuestra banda';
   const cleanUserName = (() => {
     const rawName = currentUser?.name || currentUser?.username || '';
@@ -137,9 +151,23 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  const [inputText, setInputText] = useState('');
  const [isLoading, setIsLoading] = useState(false);
 
+ const onLoadingChangeRef = useRef(onLoadingChange);
  useEffect(() => {
-   onLoadingChange?.(isLoading);
- }, [isLoading, onLoadingChange]);
+   onLoadingChangeRef.current = onLoadingChange;
+ }, [onLoadingChange]);
+
+ const prevLoadingRef = useRef<boolean>(isLoading);
+ useEffect(() => {
+   if (prevLoadingRef.current !== isLoading) {
+     prevLoadingRef.current = isLoading;
+     const timer = setTimeout(() => {
+       if (onLoadingChangeRef.current) {
+         onLoadingChangeRef.current(isLoading);
+       }
+     }, 0);
+     return () => clearTimeout(timer);
+   }
+ }, [isLoading]);
  const messagesEndRef = useRef<HTMLDivElement>(null);
  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -380,7 +408,7 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  return () => clearInterval(intervalId);
  }, [activeRun?.id, activeRun?.status, activeRun?.isDemo]);
 
- const isStitchLight = colors.accent === 'text-indigo-600';
+ const isStitchLight = colors.name?.toLowerCase().includes('light') || colors.bg.includes('f8fafc') || colors.bg.includes('white') || colors.bg.includes('slate-50') || false;
 
  // Auto-scroll chat to bottom on mount and on message/loading updates
  useEffect(() => {
@@ -511,17 +539,54 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  // Confirm action callback
  async function handleConfirmAction(msgId: string, action: ProposedAction) {
  // 1. Apply changes
- if (action.type === 'propose_lead_approval' && action.leadId) {
+ if (action.type === 'propose_lead_approval') {
  const targetLead = leads.find(l => l.id === action.leadId);
  if (targetLead) {
  const today = new Date().toISOString().split('T')[0];
- const updatedNotes = `*** [${today}] Correo APROBADO vía Chatbot AI Assistant ***\n${targetLead.notas || ''}`;
+ const nowStr = `${today} ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
  
+ let gmailMessageId = '';
+ let gmailError = '';
+ const emailBody = action.body || targetLead.pitch_generado || '';
+ const emailSubject = action.subject || `Propuesta de Concierto - Bakandeya en ${targetLead.nombre_sala}`;
+ const recipientEmail = targetLead.email_contacto;
+
+ if (recipientEmail) {
+ try {
+ let token = await getAccessToken();
+ if (!token) {
+ const authRes = await googleSignIn();
+ token = authRes?.accessToken || null;
+ }
+ if (token) {
+ const formatted = formatEmailWithSignatureAndDossier({
+   pitchText: emailBody,
+   lead: targetLead,
+   epkConfig,
+   senderName: action.senderName || cleanUserName,
+   bandName: bandDisplayName
+ });
+ const res = await sendGmailMessage(recipientEmail, emailSubject, formatted.html, token, true);
+ gmailMessageId = res.id;
+ } else {
+ gmailError = 'Sin conexión Google OAuth activa.';
+ }
+ } catch (err: any) {
+ console.error('Error sending email on lead approval:', err);
+ gmailError = err.message || 'Error al enviar por Gmail API';
+ }
+ } else if (!recipientEmail) {
+ gmailError = 'La sala no tiene un correo de contacto (email_contacto).';
+ }
+
+ const updatedNotes = `*** [${nowStr}] Correo APROBADO Y ENVIADO vía Chatbot AI Assistant${gmailMessageId ? ` [Gmail ID: ${gmailMessageId}]` : ''} ***\n${targetLead.notas || ''}`;
+
  onUpdateLead(action.leadId, {
  estado: 'aprobado',
+ fecha_envio: nowStr,
+ pitch_generado: emailBody || targetLead.pitch_generado,
  notas: updatedNotes
  }, targetLead.estado);
- }
 
  setMessages(prev => prev.map(m => {
  if (m.id === msgId) {
@@ -533,12 +598,16 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  const successMsg: ChatMessage = {
  id: `sys-${Date.now()}`,
  sender: 'bot',
- text: `✅ **Acción Ejecutada con éxito:** Se ha procesado la propuesta para **"${action.leadName || 'Sala'}"**. El estado ha sido modificado y se ha persistido el log correspondiente en la base de datos de Google Sheets. El agente Enviador re-procesará la cola esta tarde.`,
+ text: gmailMessageId
+ ? `📧 **¡Correo Enviado con Éxito vía Gmail!**\n\nSe ha enviado el correo oficialmente a **"${recipientEmail}"** (${targetLead.nombre_sala}).\n- **ID de Mensaje Gmail:** \`${gmailMessageId}\`\n- **Estado:** Aprobado/Enviado (${nowStr})\n- **Sincronización:** Google Sheets actualizado.`
+ : `✅ **Aprobación Registrada en Google Sheets:** Se ha marcado como aprobado **"${targetLead.nombre_sala}"** en la base de datos.${gmailError ? `\n\n⚠️ *Aviso Gmail:* ${gmailError}` : ''}`,
  timestamp: new Date()
  };
  setMessages(prev => [...prev, successMsg]);
+ }
 
- } else if (action.type === 'propose_status_change' && action.leadId && action.newStatus) {
+ } else if (action.type === 'propose_status_change') {
+ if (action.leadId && action.newStatus) {
  const targetLead = leads.find(l => l.id === action.leadId);
  if (targetLead) {
  const today = new Date().toISOString().split('T')[0];
@@ -564,6 +633,7 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  timestamp: new Date()
  };
  setMessages(prev => [...prev, successMsg]);
+ }
 
  } else if (action.type === 'propose_band' || action.band) {
  const bandData = {
@@ -794,6 +864,202 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  };
  setMessages(prev => [...prev, successMsg]);
 
+ } else if (action.type === 'propose_add_lead' || action.lead) {
+ const newLeadData: Lead = {
+ id: action.lead?.id || `lead-${Date.now()}`,
+ nombre_sala: action.lead?.nombre_sala || action.leadName || 'Nuevo Lead',
+ ciudad: action.lead?.ciudad || 'Madrid',
+ region: action.lead?.region || action.lead?.ciudad || 'Madrid',
+ aforo: action.lead?.aforo || 300,
+ genero: action.lead?.genero || 'Variado',
+ tipo: action.lead?.tipo || 'sala',
+ email_contacto: action.lead?.email_contacto || '',
+ telefono: action.lead?.telefono || '',
+ website: action.lead?.website || '',
+ instagram: action.lead?.instagram || '',
+ fuente: action.lead?.fuente || 'Chatbot AI',
+ estado: action.lead?.estado || 'nuevo',
+ notas: action.lead?.notas || 'Creado directamente vía Chatbot AI',
+ pitch_generado: action.lead?.pitch_generado || '',
+ fecha_envio: action.lead?.fecha_envio || '',
+ fecha_ultima_respuesta: ''
+ };
+
+ if (onCreateLead) {
+ onCreateLead(newLeadData);
+ } else {
+ try {
+ const token = localStorage.getItem('bakandeya_token');
+ fetch('/api/leads', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json',
+ ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+ },
+ body: JSON.stringify(newLeadData)
+ });
+ } catch (e) {
+ console.error("Error creating lead from chatbot:", e);
+ }
+ }
+
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) return { ...m, actionStatus: 'applied' };
+ return m;
+ }));
+
+ const addSuccessMsg: ChatMessage = {
+ id: `sys-${Date.now()}`,
+ sender: 'bot',
+ text: `✨ **Nuevo Lead / Medio Creado con Éxito:**\n\nSe ha guardado e insertado **"${newLeadData.nombre_sala}"** (${newLeadData.ciudad}) en la base de datos y sincronizado directamente con Google Sheets.`,
+ timestamp: new Date()
+ };
+ setMessages(prev => [...prev, addSuccessMsg]);
+
+ } else if (action.type === 'propose_update_lead' && action.leadId) {
+ const targetLead = leads.find(l => l.id === action.leadId);
+ if (targetLead && action.updatedFields) {
+ onUpdateLead(action.leadId, action.updatedFields, targetLead.estado);
+ }
+
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) return { ...m, actionStatus: 'applied' };
+ return m;
+ }));
+
+ const updateSuccessMsg: ChatMessage = {
+ id: `sys-${Date.now()}`,
+ sender: 'bot',
+ text: `✏️ **Lead / Medio Actualizado con Éxito:** Se han guardado los cambios para **"${action.leadName || targetLead?.nombre_sala || 'Lead'}"** en la base de datos y Google Sheets.`,
+ timestamp: new Date()
+ };
+ setMessages(prev => [...prev, updateSuccessMsg]);
+
+ } else if (action.type === 'propose_draft_email' && action.leadId) {
+ const targetLead = leads.find(l => l.id === action.leadId);
+ const today = new Date().toISOString().split('T')[0];
+ const rawDraftBody = action.body || targetLead?.pitch_generado || '';
+ const draftSubject = action.subject || `Propuesta de Concierto - Bakandeya en ${targetLead?.nombre_sala || 'Sala'}`;
+ const formatted = formatEmailWithSignatureAndDossier({
+   pitchText: rawDraftBody,
+   lead: targetLead,
+   epkConfig,
+   senderName: action.senderName || cleanUserName,
+   bandName: bandDisplayName
+ });
+
+ let gmailDraftId = '';
+ let gmailError = '';
+
+ if (targetLead && targetLead.email_contacto) {
+ try {
+ let token = await getAccessToken();
+ if (!token) {
+ const authRes = await googleSignIn();
+ token = authRes?.accessToken || null;
+ }
+ if (token) {
+ const res = await createGmailDraft(targetLead.email_contacto, draftSubject, formatted.html, token, true);
+ gmailDraftId = res.id;
+ } else {
+ gmailError = 'No hay sesión de Google OAuth activa para crear el borrador.';
+ }
+ } catch (err: any) {
+ console.error('Error creating Gmail draft:', err);
+ gmailError = err.message || 'Error en la API de Gmail';
+ }
+ }
+
+ if (targetLead) {
+ const updatedNotes = `*** [${today}] Borrador guardado vía Chatbot AI (${draftSubject})${gmailDraftId ? ` [Gmail Draft ID: ${gmailDraftId}]` : ''} ***\n${targetLead.notas || ''}`;
+ onUpdateLead(action.leadId, {
+ pitch_generado: formatted.text,
+ estado: 'pendiente_aprobacion',
+ notas: updatedNotes
+ }, targetLead.estado);
+ }
+
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) return { ...m, actionStatus: 'applied' };
+ return m;
+ }));
+
+ const draftSuccessMsg: ChatMessage = {
+ id: `sys-${Date.now()}`,
+ sender: 'bot',
+ text: gmailDraftId
+ ? `📝 **Borrador Creado en Gmail & Guardado:**\n\nSe ha creado el borrador real en tu bandeja de Gmail para **"${targetLead?.email_contacto}"** (${targetLead?.nombre_sala}).\n- **Borrador ID:** \`${gmailDraftId}\`\n- **Estado:** Pendiente de Aprobación en Google Sheets.`
+ : `📝 **Borrador Guardado en Google Sheets:**\n\nSe ha guardado el borrador para **"${action.leadName || targetLead?.nombre_sala || 'Sala'}"** en el panel de aprobación.${gmailError ? `\n\n⚠️ *Aviso Gmail:* ${gmailError}` : ''}`,
+ timestamp: new Date()
+ };
+ setMessages(prev => [...prev, draftSuccessMsg]);
+
+ } else if (action.type === 'propose_send_email' && action.leadId) {
+ const targetLead = leads.find(l => l.id === action.leadId);
+ const today = new Date().toISOString().split('T')[0];
+ const nowStr = `${today} ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+
+ let gmailMessageId = '';
+ let gmailError = '';
+
+ if (targetLead) {
+ const emailBody = action.body || targetLead.pitch_generado || '';
+ const emailSubject = action.subject || `Propuesta de Concierto / Presentación - Bakandeya en ${targetLead.nombre_sala}`;
+ const recipientEmail = targetLead.email_contacto;
+
+ if (recipientEmail) {
+ try {
+ let token = await getAccessToken();
+ if (!token) {
+ const authRes = await googleSignIn();
+ token = authRes?.accessToken || null;
+ }
+ if (token) {
+ const formatted = formatEmailWithSignatureAndDossier({
+   pitchText: emailBody,
+   lead: targetLead,
+   epkConfig,
+   senderName: action.senderName || cleanUserName,
+   bandName: bandDisplayName
+ });
+ const res = await sendGmailMessage(recipientEmail, emailSubject, formatted.html, token, true);
+ gmailMessageId = res.id;
+ } else {
+ gmailError = 'No hay sesión de Google OAuth activa para enviar el correo.';
+ }
+ } catch (err: any) {
+ console.error('Error sending email via Gmail API:', err);
+ gmailError = err.message || 'Error en la API de Gmail';
+ }
+ } else {
+ gmailError = 'El lead/sala no tiene un correo de contacto definido (email_contacto).';
+ }
+
+ const updatedNotes = `*** [${nowStr}] Correo ENVIADO a ${recipientEmail || 'sin_email'} por ${action.senderName || 'Mánager Virtual Chatbot'}${gmailMessageId ? ` [Gmail Message ID: ${gmailMessageId}]` : ''} ***\n${targetLead.notas || ''}`;
+
+ onUpdateLead(action.leadId, {
+ estado: 'aprobado',
+ fecha_envio: nowStr,
+ pitch_generado: emailBody,
+ notas: updatedNotes
+ }, targetLead.estado);
+
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) return { ...m, actionStatus: 'applied' };
+ return m;
+ }));
+
+ const sendSuccessMsg: ChatMessage = {
+ id: `sys-${Date.now()}`,
+ sender: 'bot',
+ text: gmailMessageId
+ ? `📧 **¡Correo ENVIADO REALMENTE por Gmail!**\n\nEl correo ha sido enviado oficialmente a **"${recipientEmail}"** (${targetLead.nombre_sala}).\n- **Gmail Message ID:** \`${gmailMessageId}\`\n- **Estado:** Aprobado / Enviado (${nowStr})\n- **Firma & EPK:** Incluidos automáticamente.\n\nSe ha actualizado el estado y registrado la fecha de envío en Google Sheets.`
+ : `📧 **Correo Marcado como Aprobado en Google Sheets:**\n\nSe ha actualizado el estado de **"${action.leadName || targetLead.nombre_sala}"** a **Aprobado/Enviado** en la base de datos (${nowStr}).\n\n⚠️ **Atención:** ${gmailError}`,
+ timestamp: new Date()
+ };
+ setMessages(prev => [...prev, sendSuccessMsg]);
+ }
+
  } else if (action.type === 'propose_agent_trigger' && action.agentName) {
  try {
  const token = localStorage.getItem('bakandeya_token');
@@ -916,6 +1182,9 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  }
  };
 
+ try {
+ } catch (_) {}
+
  const handleDismissAction = (msgId: string) => {
  setMessages(prev => prev.map(m => {
  if (m.id === msgId) {
@@ -951,19 +1220,40 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  </div>
 
  <div className="flex items-center gap-3">
+ {isAdmin ? (
+ <button
+ type="button"
+ onClick={() => setIsAutonomyModalOpen(true)}
+ className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border font-semibold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+ isStitchLight 
+ ? 'bg-purple-100 hover:bg-purple-200 text-purple-800 border-purple-300 shadow-sm' 
+ : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border-purple-500/40 shadow-sm'
+ }`}
+ title="Configurar niveles de autonomía de los agentes (Solo Administradores)"
+ >
+ <Sliders className="w-3 h-3 text-purple-400" />
+ <span>
+ Autonomía: {autonomyConfig.dispatchLevel === 'draft_only' ? 'Borrador' : autonomyConfig.dispatchLevel === 'scheduled_window' ? 'Ventana 3h' : 'Auto 1er Contacto'} • Min {autonomyConfig.minCacheThreshold || 300}€
+ </span>
+ <span className="px-1 py-0.2 text-[8px] rounded font-black bg-purple-500/40 text-purple-100 ml-0.5">
+ ADMIN
+ </span>
+ </button>
+ ) : (
  <div 
- className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border font-semibold ${
+ className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border font-semibold opacity-80 ${
  isStitchLight 
  ? 'bg-purple-50 text-purple-700 border-purple-200' 
  : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
  }`}
- title="Límites de autonomía y negociación configurados para el mánager y agentes AI"
+ title="Límites de autonomía configurados (Configuración restringida a Administradores)"
  >
  <Sliders className="w-3 h-3 text-purple-400" />
  <span>
  Autonomía: {autonomyConfig.dispatchLevel === 'draft_only' ? 'Borrador' : autonomyConfig.dispatchLevel === 'scheduled_window' ? 'Ventana 3h' : 'Auto 1er Contacto'} • Min {autonomyConfig.minCacheThreshold || 300}€
  </span>
  </div>
+ )}
 
  <button
  id="clear-chat-btn"
@@ -1020,6 +1310,25 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  </span>
  </div>
 
+ <div className="flex items-center gap-2 shrink-0">
+ {isAdmin && (
+ <button
+ id="open-autonomy-config-btn"
+ type="button"
+ onClick={() => setIsAutonomyModalOpen(true)}
+ className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-sm active:scale-95 ${
+ isStitchLight
+ ? 'bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300'
+ : 'bg-purple-500/25 hover:bg-purple-500/40 text-purple-200 border border-purple-500/50'
+ }`}
+ title="Configurar niveles de autonomía y negociación de los agentes AI (Solo Administradores)"
+ >
+ <Sliders className="w-3 h-3 text-purple-400" />
+ <span>Niveles de Autonomía</span>
+ <span className="px-1 py-0.2 rounded text-[8px] bg-purple-500/50 text-white font-black">ADMIN</span>
+ </button>
+ )}
+
  <button
  id="toggle-agents-switch"
  type="button"
@@ -1037,6 +1346,7 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  >
  <span>{agentsEnabled ?"Desactivar Agentes Python" :"Activar Agentes Python"}</span>
  </button>
+ </div>
  </div>
 
  {/* Messages Thread Container */}
@@ -1473,6 +1783,16 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, onUpdateL
  <Send className={`w-4 h-4 ${isStitchLight && inputText.trim() ? 'text-white' : 'text-zinc-950'}`} />
  </button>
  </form>
+
+ {/* MODAL CONFIGURACIÓN NIVELES DE AUTONOMÍA (SOLO ADMINISTRADORES) */}
+ {isAdmin && (
+ <AgentAutonomySettingsModal
+ isOpen={isAutonomyModalOpen}
+ onClose={() => setIsAutonomyModalOpen(false)}
+ bandName={bandDisplayName}
+ />
+ )}
  </div>
  );
 }
+

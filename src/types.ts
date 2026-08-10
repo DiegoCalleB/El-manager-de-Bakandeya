@@ -28,6 +28,9 @@ export interface BandContact {
   ciudad_origen_swap?: string;
   icono?: string;
   imagen_url?: string;
+  es_favorito?: boolean;
+  es_verificado?: boolean;
+  fiabilidad_score?: number;
 }
 
 export interface InteractionLog {
@@ -85,6 +88,9 @@ export interface Lead {
   icono?: string;
   imagen_url?: string;
   band_id?: string;
+  es_favorito?: boolean;
+  es_verificado?: boolean;
+  fiabilidad_score?: number;
 }
 
 export interface Rehearsal {
@@ -135,6 +141,28 @@ export interface Concert {
   convocados_nombres?: string[];
 }
 
+export interface EmailSignatureConfig {
+  nombreRemitente?: string;
+  cargo?: string;
+  telefono?: string;
+  email?: string;
+  textoPie?: string;
+  incluirIconosRedes?: boolean;
+  adjuntarDossierPorDefecto?: boolean;
+  redesSociales?: {
+    spotify?: string;
+    instagram?: string;
+    youtube?: string;
+    tiktok?: string;
+    facebook?: string;
+    twitter?: string;
+    appleMusic?: string;
+    bandcamp?: string;
+    website?: string;
+    whatsapp?: string;
+  };
+}
+
 export interface EPKConfig {
   biografia: string;
   logoUrl: string;
@@ -166,6 +194,7 @@ export interface EPKConfig {
     codigoDescuento?: string;
   };
   ciudadesConfig?: string[];
+  firmaEmail?: EmailSignatureConfig;
 }
 
 export interface Fan {
@@ -222,6 +251,16 @@ export interface SocialMetric {
 
 export type UserRole = 'leader' | 'member';
 
+export interface GoogleOAuthConfig {
+  connected: boolean;
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
+  accessToken?: string;
+  scopes?: string[];
+  connectedAt?: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -234,6 +273,7 @@ export interface User {
   instrument?: string;
   avatarColor?: string;
   createdAt: string;
+  googleOAuth?: GoogleOAuthConfig;
 }
 
 export interface UserWithHash extends User {

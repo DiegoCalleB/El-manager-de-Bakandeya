@@ -32,7 +32,7 @@ import {
   ensureAutonomiaSheet,
   syncAllTabsWithBakandeya
 } from "./server/sheets.js";
-import { loadState, saveState, getEpkConfigForBand } from "./server/state.js";
+import { loadState, saveState, getEpkConfigForBand, ensureUniqueIdsInState } from "./server/state.js";
 
 import usersRouter from "./server/routes/users.js";
 import postsRouter from "./server/routes/posts.js";
@@ -450,28 +450,61 @@ app.get("/api/state", async (req, res) => {
   const isBakandeya = userBandId === 'band-bakandeya' || userBandId === 'reg-bakandeya';
 
   const state = loadState();
-  try {
-    state.leads = await fetchLeadsFromSheet(state.leads);
-    state.rehearsals = await fetchRehearsalsFromSheet(state.rehearsals);
-    state.concerts = await fetchConcertsFromSheet(state.concerts);
-    state.posts = await fetchPostsFromSheet(state.posts);
-    if (isLeader) {
-      state.payments = await fetchPaymentsFromSheet(state.payments);
+
+  // Asynchronous background Google Sheets sync - non-blocking so the user gets state instantly!
+  (async () => {
+    try {
+      const [
+        leads,
+        rehearsals,
+        concerts,
+        posts,
+        payments,
+        metrics,
+        logistics,
+        songs,
+        setlists,
+        bands,
+        tours,
+        fans,
+        registeredBands
+      ] = await Promise.all([
+        fetchLeadsFromSheet(state.leads).catch(() => state.leads),
+        fetchRehearsalsFromSheet(state.rehearsals).catch(() => state.rehearsals),
+        fetchConcertsFromSheet(state.concerts).catch(() => state.concerts),
+        fetchPostsFromSheet(state.posts).catch(() => state.posts),
+        isLeader ? fetchPaymentsFromSheet(state.payments).catch(() => state.payments) : Promise.resolve([]),
+        fetchMetricsFromSheet(state.metrics).catch(() => state.metrics),
+        fetchLogisticsFromSheet(state.runOfShow, state.gearChecklists).catch(() => ({ runOfShow: state.runOfShow, gearChecklists: state.gearChecklists })),
+        fetchSongsFromSheet(state.songs).catch(() => state.songs),
+        fetchSetlistsFromSheet(state.setlists).catch(() => state.setlists),
+        fetchBandsFromSheet(state.bands || []).catch(() => state.bands || []),
+        fetchToursFromSheet(state.tours || []).catch(() => state.tours || []),
+        fetchFansFromSheet(state.fans || []).catch(() => state.fans || []),
+        fetchRegisteredBandsFromSheet(state.registeredBands || []).catch(() => state.registeredBands || [])
+      ]);
+
+      state.leads = leads;
+      state.rehearsals = rehearsals;
+      state.concerts = concerts;
+      state.posts = posts;
+      if (isLeader) state.payments = payments;
+      state.metrics = metrics;
+      state.runOfShow = logistics.runOfShow;
+      state.gearChecklists = logistics.gearChecklists;
+      state.songs = songs;
+      state.setlists = setlists;
+      state.bands = bands;
+      state.tours = tours;
+      state.fans = fans;
+      state.registeredBands = registeredBands;
+
+      ensureUniqueIdsInState(state);
+      saveState(state);
+    } catch (error: any) {
+      console.error("Background sync error:", error.message || error);
     }
-    state.metrics = await fetchMetricsFromSheet(state.metrics);
-    const logistics = await fetchLogisticsFromSheet(state.runOfShow, state.gearChecklists);
-    state.runOfShow = logistics.runOfShow;
-    state.gearChecklists = logistics.gearChecklists;
-    state.songs = await fetchSongsFromSheet(state.songs);
-    state.setlists = await fetchSetlistsFromSheet(state.setlists);
-    state.bands = await fetchBandsFromSheet(state.bands || []);
-    state.tours = await fetchToursFromSheet(state.tours || []);
-    state.fans = await fetchFansFromSheet(state.fans || []);
-    state.registeredBands = await fetchRegisteredBandsFromSheet(state.registeredBands || []);
-    saveState(state);
-  } catch (error: any) {
-    console.error("Error fetching state from Google Sheets, falling back to local cached state:", error.message || error);
-  }
+  })();
 
   const rawPayments = isLeader ? (state.payments || []) : [];
   const rawUsers = getSafeUsers(state.users);
@@ -621,7 +654,10 @@ async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === "true" ? false : undefined
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -633,8 +669,27 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Bakandeya Virtual Manager server running on http://localhost:${PORT}`);
+  });
+
+  let retries = 0;
+  server.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      if (retries < 3) {
+        retries++;
+        console.warn(`Port ${PORT} in use, retrying (${retries}/3)...`);
+        setTimeout(() => {
+          try { server.close(); } catch {}
+          server.listen(PORT, "0.0.0.0");
+        }, 1000);
+      } else {
+        console.error(`Port ${PORT} is already occupied. Terminating duplicate process.`);
+        process.exit(1);
+      }
+    } else {
+      console.error("Server error:", err);
+    }
   });
 }
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lead, LeadType, ThemeColors, SocialMetric, Concert, Rehearsal, EPKConfig, Tour, Fan, SocialPost } from '../types';
+import { isSameBandId } from '../utils/bandUtils';
 import DirectionsCard from './DirectionsCard';
 import { AddLeadModal } from './dashboard/AddLeadModal';
 import { ProfileCompletenessCard } from './dashboard/ProfileCompletenessCard';
@@ -274,7 +275,7 @@ export default function Dashboard({
  return matchesSearch && matchesCity && matchesGenre;
  });
 
- const isStitchLight = colors.accent === 'text-sky-400';
+ const isStitchLight = colors.name?.toLowerCase().includes('light') || colors.bg.includes('f8fafc') || colors.bg.includes('white') || colors.bg.includes('slate-50') || false;
  const subCardBg = isStitchLight ? 'bg-slate-50/80 text-slate-800' : 'bg-[#1A1918] text-zinc-100';
  const textTitle = isStitchLight ? 'text-slate-900' : 'text-neutral-100';
  const textSub = isStitchLight ? 'text-slate-500' : 'text-neutral-400';
@@ -301,15 +302,15 @@ export default function Dashboard({
 
   const activeBandConcerts = React.useMemo(() => {
     return concerts.filter(c => {
-      if (!c.band_id) return activeBandId === "band-bakandeya";
-      return c.band_id === activeBandId;
+      if (!c.band_id) return isSameBandId(activeBandId, "band-bakandeya");
+      return isSameBandId(c.band_id, activeBandId);
     });
   }, [concerts, activeBandId]);
 
   const activeBandRehearsals = React.useMemo(() => {
     return rehearsals.filter(r => {
-      if (!r.band_id) return activeBandId === "band-bakandeya";
-      return r.band_id === activeBandId;
+      if (!r.band_id) return isSameBandId(activeBandId, "band-bakandeya");
+      return isSameBandId(r.band_id, activeBandId);
     });
   }, [rehearsals, activeBandId]);
 
@@ -317,14 +318,14 @@ export default function Dashboard({
  // Filter concerts & rehearsals based on agendaFilterMode
  const filteredConcerts = concerts.filter(c => {
  if (agendaFilterMode === 'all') return true;
- if (!c.band_id) return activeBandId === 'band-bakandeya';
- return c.band_id === activeBandId;
+ if (!c.band_id) return isSameBandId(activeBandId, 'band-bakandeya');
+ return isSameBandId(c.band_id, activeBandId);
  });
 
  const filteredRehearsals = rehearsals.filter(r => {
  if (agendaFilterMode === 'all') return true;
- if (!r.band_id) return activeBandId === 'band-bakandeya';
- return r.band_id === activeBandId;
+ if (!r.band_id) return isSameBandId(activeBandId, 'band-bakandeya');
+ return isSameBandId(r.band_id, activeBandId);
  });
 
  // Build upcoming agenda dates
@@ -470,20 +471,13 @@ export default function Dashboard({
         isStitchLight={isStitchLight}
         bandName={activeBandName}
         onNavigate={onNavigate}
-        onOpenAutonomyModal={() => setIsAutonomyModalOpen(true)}
+        onOpenAutonomyModal={() => onNavigate && onNavigate('chat')}
       />
 
   {/* MODAL: PLANTILLAS Y EJEMPLOS REALES DE EMAIL */}
   <EmailTemplatesModal
   isOpen={isEmailTemplatesOpen}
   onClose={() => setIsEmailTemplatesOpen(false)}
-  bandName={activeBandName}
-  />
-
-  {/* MODAL: CONFIGURACIÓN DE AUTONOMÍA Y NEGOCIACIÓN DE AGENTES AI */}
-  <AgentAutonomySettingsModal
-  isOpen={isAutonomyModalOpen}
-  onClose={() => setIsAutonomyModalOpen(false)}
   bandName={activeBandName}
   />
 
@@ -1173,7 +1167,7 @@ export default function Dashboard({
 
  <button
  id="quick-act-autonomy"
- onClick={() => setIsAutonomyModalOpen(true)}
+ onClick={() => onNavigate && onNavigate('chat')}
  className={`p-3 rounded-xl text-left transition-all flex flex-col justify-between gap-2 cursor-pointer ${
  isStitchLight 
  ? 'bg-purple-500/15 text-purple-600' 
@@ -1184,7 +1178,7 @@ export default function Dashboard({
  <Sliders className="w-4 h-4" />
  <span>Autonomía AI</span>
  </div>
- <span className={`text-[10px] ${textSub}`}>Configurar límites de envío y negociación</span>
+ <span className={`text-[10px] ${textSub}`}>Gestionar límites en Agent Manager</span>
  </button>
 
  <button

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   FileText, Sparkles, Copy, Check, QrCode, ExternalLink, Printer, 
   Upload, Save, Globe, Mail, Phone, Music, Image as ImageIcon, CheckCircle2,
-  FileDown, Trash2, Loader2, Bot, Info, Download
+  FileDown, Trash2, Loader2, Bot, Info, Download, AtSign, Share2
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { EPKConfig, Song, User } from '../types';
@@ -36,7 +36,28 @@ const DEFAULT_EPK_CONFIG: EPKConfig = {
     youtube: 'https://youtube.com/@bakandeya_oficial',
     instagram: 'https://instagram.com/bakandeya_oficial'
   },
-  riderTecnico: 'PA 2000W mín, manguera 16 canales, 4 envíos de monitor, 3 micros vocales SM58, microfonía metales...'
+  riderTecnico: 'PA 2000W mín, manguera 16 canales, 4 envíos de monitor, 3 micros vocales SM58, microfonía metales...',
+  firmaEmail: {
+    nombreRemitente: 'Diego & Filgue',
+    cargo: 'Booking & Management Team',
+    telefono: '+34 652 93 85 21',
+    email: 'booking@bakandeya.es',
+    textoPie: 'Bakandeya — Electrónica-Fusión & Balkan Ska Directo',
+    incluirIconosRedes: true,
+    adjuntarDossierPorDefecto: true,
+    redesSociales: {
+      spotify: 'https://open.spotify.com/artist/bakandeya',
+      instagram: 'https://instagram.com/bakandeya_oficial',
+      youtube: 'https://youtube.com/@bakandeya_oficial',
+      tiktok: 'https://tiktok.com/@bakandeya',
+      facebook: 'https://facebook.com/bakandeya',
+      twitter: '',
+      appleMusic: '',
+      bandcamp: '',
+      website: 'https://bakandeya.es',
+      whatsapp: '+34652938521'
+    }
+  }
 };
 
 export const EPKManager: React.FC<EPKManagerProps> = ({ 
@@ -48,21 +69,30 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
   const activeBandId = currentUser?.band_id || 'band-bakandeya';
   const [config, setConfig] = useState<EPKConfig>(() => ({
     ...DEFAULT_EPK_CONFIG,
-    ...(epkConfig || {})
+    ...(epkConfig || {}),
+    firmaEmail: {
+      ...DEFAULT_EPK_CONFIG.firmaEmail,
+      ...(epkConfig?.firmaEmail || {})
+    }
   }));
 
   React.useEffect(() => {
     if (epkConfig) {
       setConfig(prev => ({
         ...prev,
-        ...epkConfig
+        ...epkConfig,
+        firmaEmail: {
+          ...DEFAULT_EPK_CONFIG.firmaEmail,
+          ...prev.firmaEmail,
+          ...(epkConfig.firmaEmail || {})
+        }
       }));
     }
   }, [epkConfig]);
 
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [copiedPublicUrl, setCopiedPublicUrl] = useState(false);
-  const [activeTab, setActiveTab] = useState<'editor' | 'qr'>('editor');
+  const [activeTab, setActiveTab] = useState<'editor' | 'firma' | 'qr'>('editor');
 
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingDossier, setIsUploadingDossier] = useState(false);
@@ -128,7 +158,9 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
       const updated = { 
         ...config, 
         dossierPdfUrl: url,
-        dossierPdfName: file.name
+        dossierPdfName: file.name,
+        dossierDocumentUrl: url,
+        dossierDocumentName: file.name
       };
       setConfig(updated);
       if (onSave) onSave(updated);
@@ -138,10 +170,13 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
       const reader = new FileReader();
       reader.onload = async (ev) => {
         if (ev.target?.result) {
+          const url = ev.target!.result as string;
           const updated = { 
             ...config, 
-            dossierPdfUrl: ev.target!.result as string,
-            dossierPdfName: file.name
+            dossierPdfUrl: url,
+            dossierPdfName: file.name,
+            dossierDocumentUrl: url,
+            dossierDocumentName: file.name
           };
           setConfig(updated);
           if (onSave) onSave(updated);
@@ -266,16 +301,22 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
       )}
 
       {/* TABS */}
-      <div className="flex border-b border-slate-800 text-sm font-bold">
+      <div className="flex border-b border-slate-800 text-sm font-bold flex-wrap">
         <button
           onClick={() => setActiveTab('editor')}
-          className={`px-4 py-2.5 flex items-center gap-2 border-b-2 transition ${activeTab === 'editor' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+          className={`px-4 py-2.5 flex items-center gap-2 border-b-2 transition cursor-pointer ${activeTab === 'editor' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
         >
           <FileText className="w-4 h-4" /> Editar Dossier e Información
         </button>
         <button
+          onClick={() => setActiveTab('firma')}
+          className={`px-4 py-2.5 flex items-center gap-2 border-b-2 transition cursor-pointer ${activeTab === 'firma' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          <AtSign className="w-4 h-4" /> Firma de Email & Redes
+        </button>
+        <button
           onClick={() => setActiveTab('qr')}
-          className={`px-4 py-2.5 flex items-center gap-2 border-b-2 transition ${activeTab === 'qr' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+          className={`px-4 py-2.5 flex items-center gap-2 border-b-2 transition cursor-pointer ${activeTab === 'qr' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
         >
           <QrCode className="w-4 h-4" /> Código QR & Compartir
         </button>
@@ -668,6 +709,278 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'firma' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* CONFIGURACIÓN DE FIRMA */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+            <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                <AtSign className="w-5 h-5" /> Configurar Firma de Correo
+              </h3>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                Personalización Avanzada
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-300">Nombre del Remitente</label>
+                <input
+                  type="text"
+                  value={config.firmaEmail?.nombreRemitente || ''}
+                  onChange={e => setConfig({
+                    ...config,
+                    firmaEmail: { ...(config.firmaEmail || {}), nombreRemitente: e.target.value }
+                  })}
+                  placeholder="Ej: Diego & Filgue"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-300">Cargo / Puesto</label>
+                <input
+                  type="text"
+                  value={config.firmaEmail?.cargo || ''}
+                  onChange={e => setConfig({
+                    ...config,
+                    firmaEmail: { ...(config.firmaEmail || {}), cargo: e.target.value }
+                  })}
+                  placeholder="Ej: Booking & Management Team"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-300">Teléfono de Contacto</label>
+                <input
+                  type="text"
+                  value={config.firmaEmail?.telefono || ''}
+                  onChange={e => setConfig({
+                    ...config,
+                    firmaEmail: { ...(config.firmaEmail || {}), telefono: e.target.value }
+                  })}
+                  placeholder="+34 652 93 85 21"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white outline-none font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-300">Email Oficial</label>
+                <input
+                  type="email"
+                  value={config.firmaEmail?.email || ''}
+                  onChange={e => setConfig({
+                    ...config,
+                    firmaEmail: { ...(config.firmaEmail || {}), email: e.target.value }
+                  })}
+                  placeholder="booking@bakandeya.es"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white outline-none font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-300">Lema / Pie de Firma</label>
+              <input
+                type="text"
+                value={config.firmaEmail?.textoPie || ''}
+                onChange={e => setConfig({
+                  ...config,
+                  firmaEmail: { ...(config.firmaEmail || {}), textoPie: e.target.value }
+                })}
+                placeholder="Bakandeya — Electrónica-Fusión & Balkan Ska Directo"
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
+              />
+            </div>
+
+            {/* OPCIONES DE INCLUSIÓN */}
+            <div className="pt-2 border-t border-slate-800 space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer p-2.5 bg-slate-950 border border-slate-800 rounded-xl hover:border-amber-500/50 transition">
+                <input
+                  type="checkbox"
+                  checked={config.firmaEmail?.incluirIconosRedes ?? true}
+                  onChange={e => setConfig({
+                    ...config,
+                    firmaEmail: { ...(config.firmaEmail || {}), incluirIconosRedes: e.target.checked }
+                  })}
+                  className="w-4 h-4 accent-amber-500 rounded"
+                />
+                <div>
+                  <p className="text-xs font-bold text-white">Incluir iconos interactivos de redes sociales y plataformas musicales</p>
+                  <p className="text-[11px] text-slate-400">Añade enlaces directos a Spotify, Instagram, YouTube, TikTok, WhatsApp, etc.</p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer p-2.5 bg-slate-950 border border-slate-800 rounded-xl hover:border-amber-500/50 transition">
+                <input
+                  type="checkbox"
+                  checked={config.firmaEmail?.adjuntarDossierPorDefecto ?? true}
+                  onChange={e => setConfig({
+                    ...config,
+                    firmaEmail: { ...(config.firmaEmail || {}), adjuntarDossierPorDefecto: e.target.checked }
+                  })}
+                  className="w-4 h-4 accent-amber-500 rounded"
+                />
+                <div>
+                  <p className="text-xs font-bold text-white">Adjuntar Dossier EPK automáticamente en la firma</p>
+                  <p className="text-[11px] text-slate-400">Incluye el botón con enlace al Dossier PDF en cada plantilla y correo redactado.</p>
+                </div>
+              </label>
+            </div>
+
+            {/* ENLACES A REDES SOCIALES PARA LA FIRMA */}
+            <div className="pt-3 border-t border-slate-800 space-y-3">
+              <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                <Share2 className="w-3.5 h-3.5" /> Enlaces de Redes y Plataformas para la Firma
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {[
+                  { key: 'spotify', label: '🟢 Spotify', placeholder: 'https://open.spotify.com/artist/...' },
+                  { key: 'instagram', label: '📸 Instagram', placeholder: 'https://instagram.com/...' },
+                  { key: 'youtube', label: '🔴 YouTube', placeholder: 'https://youtube.com/...' },
+                  { key: 'tiktok', label: '🎵 TikTok', placeholder: 'https://tiktok.com/@...' },
+                  { key: 'facebook', label: '📘 Facebook', placeholder: 'https://facebook.com/...' },
+                  { key: 'twitter', label: '🐦 Twitter / X', placeholder: 'https://x.com/...' },
+                  { key: 'appleMusic', label: '🍎 Apple Music', placeholder: 'https://music.apple.com/...' },
+                  { key: 'bandcamp', label: '⛺ Bandcamp', placeholder: 'https://bakandeya.bandcamp.com' },
+                  { key: 'website', label: '🌐 Sitio Web', placeholder: 'https://bakandeya.es' },
+                  { key: 'whatsapp', label: '💬 WhatsApp', placeholder: '+34652938521' }
+                ].map(item => (
+                  <div key={item.key} className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-300">{item.label}</label>
+                    <input
+                      type="text"
+                      value={(config.firmaEmail?.redesSociales as any)?.[item.key] || ''}
+                      onChange={e => setConfig({
+                        ...config,
+                        firmaEmail: {
+                          ...(config.firmaEmail || {}),
+                          redesSociales: {
+                            ...(config.firmaEmail?.redesSociales || {}),
+                            [item.key]: e.target.value
+                          }
+                        }
+                      })}
+                      placeholder={item.placeholder}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none font-mono"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* VISTA PREVIA EN VIVO DE LA FIRMA */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                <Mail className="w-5 h-5" /> Vista Previa en Vivo de la Firma
+              </h3>
+              <span className="text-[10px] text-slate-400 font-mono">Renderizado de Email</span>
+            </div>
+
+            <div className="bg-white text-slate-900 p-6 rounded-2xl border border-slate-200 shadow-xl space-y-4 font-sans text-xs">
+              <p className="text-slate-500 italic pb-2 border-b border-slate-100">
+                ... [Cuerpo del correo electrónico redactado para la sala o festival] ...
+              </p>
+
+              <div className="pt-2 space-y-3">
+                <div className="flex items-start gap-4">
+                  <img
+                    src={config.logoUrl || '/logo_bakandeya_bueno_sin_fondo.png'}
+                    alt="Logo"
+                    className="w-16 h-16 rounded-xl object-contain bg-slate-950 p-1 border border-amber-500 shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).src = '/logo_bakandeya_bueno_sin_fondo.png'; }}
+                  />
+
+                  <div className="space-y-1 flex-1">
+                    <h4 className="font-extrabold text-slate-900 text-sm">
+                      {config.firmaEmail?.nombreRemitente || config.contactoBooking?.nombre || 'Diego & Filgue'}
+                    </h4>
+                    <p className="text-amber-600 font-bold text-[11px]">
+                      {config.firmaEmail?.cargo || 'Booking & Management Team'}
+                    </p>
+                    <p className="text-slate-600 text-[11px] font-medium">
+                      {config.firmaEmail?.textoPie || 'Bakandeya — Directo de Fusión y Escenario'}
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 pt-1 font-mono">
+                      {config.firmaEmail?.telefono && (
+                        <span>📞 {config.firmaEmail.telefono}</span>
+                      )}
+                      {config.firmaEmail?.email && (
+                        <span>✉️ {config.firmaEmail.email}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* BOTÓN DOSSIER SI ESTÁ HABILITADO */}
+                {(config.firmaEmail?.adjuntarDossierPorDefecto ?? true) && (config.dossierPdfUrl || publicEpkUrl) && (
+                  <div className="pt-2">
+                    <a
+                      href={config.dossierPdfUrl || publicEpkUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-[11px] shadow-sm transition"
+                    >
+                      <FileDown className="w-3.5 h-3.5" />
+                      <span>{config.dossierPdfName ? `📄 Ver Dossier Oficial (${config.dossierPdfName})` : '📄 Abrir Dossier & Kit de Prensa'}</span>
+                    </a>
+                  </div>
+                )}
+
+                {/* ICONOS DE REDES SOCIALES */}
+                {(config.firmaEmail?.incluirIconosRedes ?? true) && (
+                  <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                    {Object.entries(config.firmaEmail?.redesSociales || {}).map(([net, url]) => {
+                      if (!url) return null;
+                      const icons: Record<string, { label: string; bg: string }> = {
+                        spotify: { label: '🟢 Spotify', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                        instagram: { label: '📸 Instagram', bg: 'bg-pink-50 text-pink-700 border-pink-200' },
+                        youtube: { label: '🔴 YouTube', bg: 'bg-red-50 text-red-700 border-red-200' },
+                        tiktok: { label: '🎵 TikTok', bg: 'bg-slate-100 text-slate-900 border-slate-300' },
+                        facebook: { label: '📘 Facebook', bg: 'bg-blue-50 text-blue-700 border-blue-200' },
+                        twitter: { label: '🐦 X / Twitter', bg: 'bg-slate-100 text-slate-800 border-slate-300' },
+                        appleMusic: { label: '🍎 Apple Music', bg: 'bg-rose-50 text-rose-700 border-rose-200' },
+                        bandcamp: { label: '⛺ Bandcamp', bg: 'bg-teal-50 text-teal-700 border-teal-200' },
+                        website: { label: '🌐 Web', bg: 'bg-amber-50 text-amber-800 border-amber-200' },
+                        whatsapp: { label: '💬 WhatsApp', bg: 'bg-emerald-50 text-emerald-800 border-emerald-200' }
+                      };
+                      const iconData = icons[net] || { label: net, bg: 'bg-slate-100 text-slate-700 border-slate-200' };
+                      const rawUrl = String(url || '');
+
+                      return (
+                        <a
+                          key={net}
+                          href={rawUrl.startsWith('http') || rawUrl.startsWith('+') ? (rawUrl.startsWith('+') ? `https://wa.me/${rawUrl.replace(/\+/g, '')}` : rawUrl) : `https://${rawUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`px-2 py-0.5 rounded-md border font-semibold text-[10px] flex items-center gap-1 transition ${iconData.bg}`}
+                        >
+                          {iconData.label}
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+              <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4" /> Uso Automático en el Sistema
+              </p>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Esta firma se incluirá automáticamente al redactar y enviar correos a salas desde el Booking CRM, las plantillas predefinidas o las propuestas generadas por el Chatbot y los Agentes de IA.
+              </p>
             </div>
           </div>
         </div>

@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BandContact, BandRelationshipStatus, ThemeColors, Lead } from '../types';
+import { api, getAuthHeaders } from '../services/api';
 import BandMap from './BandMap';
 import { BandPitchModal } from './bandCRM/BandPitchModal';
 import { uploadFileToServer } from '../utils/audioStorage';
+import { FavoriteButton } from './common/FavoriteButton';
+import { VerifiedBadge } from './common/VerifiedBadge';
+import { ReliabilityBadge } from './common/ReliabilityBadge';
+import { isLeadVerificado } from '../utils/leadReliability';
 import { 
  Users, Music, MapPin, Clock, Sparkles, Plus, Search, Filter, Edit3, Trash2, 
  Copy, Check, ExternalLink, Send, MessageCircle, RefreshCw, LayoutGrid, List, 
@@ -176,7 +181,7 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead, c
          setBands(data.bands);
        }
      })
-     .catch(err => console.error("Error loading bands:", err))
+     .catch(err => { if (err?.status !== 401) console.warn("Could not load bands:", err); })
      .finally(() => setIsLoading(false));
  };
 
@@ -267,7 +272,7 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead, c
          setRegisteredBands(data.registeredBands);
        }
      })
-     .catch(err => console.error("Error fetching registered bands:", err))
+     .catch(err => { if (err?.status !== 401) console.warn("Could not load registered bands:", err); })
      .finally(() => setIsLoadingRegBands(false));
  };
 
@@ -555,6 +560,18 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead, c
  }
  };
 
+ // Toggle Favorite
+ const handleUpdateBandFavorite = async (id: string, isFav: boolean) => {
+ setBands(prev => prev.map(b => b.id === id ? { ...b, es_favorito: isFav } : b));
+ try {
+ await fetch(`/api/bands/${id}`, {
+ method: 'PUT',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ es_favorito: isFav })
+ });
+ } catch (err) { console.error("Error updating favorite status", err); }
+ };
+
  // Quick Status update
  const handleQuickStatusChange = async (id: string, newStatus: BandRelationshipStatus) => {
  const today = new Date().toISOString().split('T')[0];
@@ -677,7 +694,7 @@ https://youtube.com/bakandeya_live
 Bakandeya Agent Manager IA & Músicos`;
  };
 
- const isStitchLight = colors.name?.toLowerCase().includes('light') || false;
+ const isStitchLight = colors.name?.toLowerCase().includes('light') || colors.bg.includes('f8fafc') || colors.bg.includes('white') || colors.bg.includes('slate-50') || false;
 
  return (
  <div className="w-full space-y-6">
@@ -1044,7 +1061,8 @@ Bakandeya Agent Manager IA & Músicos`;
  {/* Card Top: Band Name & Status */}
  <div className="flex items-start justify-between gap-2">
  <div className="space-y-1 min-w-0">
- <h3 className="text-base font-bold font-display tracking-wider uppercase text-white flex items-center gap-2 group-hover:text-[#f2ca50] transition-colors truncate">
+ <div className="flex items-center gap-1.5 min-w-0">
+ <h3 className="text-base font-bold font-display tracking-wider uppercase text-white flex items-center gap-2 group-hover:text-[#f2ca50] transition-colors truncate min-w-0">
  {band.imagen_url ? (
  <img src={band.imagen_url} alt={band.nombre_banda} className="w-6 h-6 rounded-full object-cover border border-[#f2ca50]/50 shrink-0" />
  ) : (
@@ -1052,6 +1070,8 @@ Bakandeya Agent Manager IA & Músicos`;
  )}
  <span className="truncate">{band.nombre_banda}</span>
  </h3>
+ <VerifiedBadge isVerified={isLeadVerificado(band)} size="sm" />
+ </div>
  
  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-neutral-400">
  <span className="bg-neutral-800 px-2 py-1 rounded-md text-[#d1b375] flex items-center gap-1 shrink-0">
@@ -1063,11 +1083,18 @@ Bakandeya Agent Manager IA & Músicos`;
  <MapPin className="w-3 h-3 text-rose-400" />
  <span>{band.localizacion}</span>
  </span>
+
+ <ReliabilityBadge item={band} size="sm" />
  </div>
  </div>
 
- {/* Actions Dropdown / Quick Status */}
- <div className="shrink-0">
+ {/* Actions Dropdown / Quick Status & Favorite */}
+ <div className="shrink-0 flex items-center gap-1.5">
+ <FavoriteButton 
+ isFavorite={!!band.es_favorito}
+ onToggle={(newVal) => handleUpdateBandFavorite(band.id, newVal)}
+ size="sm"
+ />
  {renderStatusBadge(band.estado_relacion)}
  </div>
  </div>

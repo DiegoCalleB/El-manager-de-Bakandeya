@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
+import { requireAuth } from "../state.js";
 
 const router = express.Router();
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
@@ -81,7 +82,7 @@ router.get("/test-supabase", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, async (req, res) => {
   try {
     const { filename, base64, bandId, category, folder } = req.body;
     if (!filename || !base64) {

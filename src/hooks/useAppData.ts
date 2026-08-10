@@ -15,7 +15,7 @@ export function useAppData(isLoggedIn: boolean, bandId?: string) {
   const [fans, setFans] = useState<Fan[]>([]);
   const [epkConfig, setEpkConfig] = useState<Partial<EPKConfig>>({});
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('syncing');
 
   const dedupeById = <T extends { id?: string }>(arr: T[] = []): T[] => {
@@ -66,15 +66,17 @@ export function useAppData(isLoggedIn: boolean, bandId?: string) {
     }
   }, [isLoggedIn, bandId, fetchState]);
 
-  // Handle external agent completions
+  // Handle external agent completions and app data updates
   useEffect(() => {
-    const handleAgentCompleted = () => {
-      console.log('[useAppData] Agente completado. Refrescando datos...');
+    const handleRefresh = () => {
+      console.log('[useAppData] Refrescando datos del servidor...');
       fetchState();
     };
-    window.addEventListener('github-agent-completed', handleAgentCompleted);
+    window.addEventListener('github-agent-completed', handleRefresh);
+    window.addEventListener('app-data-updated', handleRefresh);
     return () => {
-      window.removeEventListener('github-agent-completed', handleAgentCompleted);
+      window.removeEventListener('github-agent-completed', handleRefresh);
+      window.removeEventListener('app-data-updated', handleRefresh);
     };
   }, [fetchState]);
 

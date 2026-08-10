@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { User as UserIcon, Key, Music, Check, AlertCircle, X, Shield, Lock, Palette, Users, FileSpreadsheet, Download, Database, Type } from 'lucide-react';
-import { User, ThemeName } from '../types';
+import { User as UserIcon, Key, Music, Check, AlertCircle, X, Shield, Lock, Palette, Users, FileSpreadsheet, Download, Database, Type, Mail, HardDrive, Unlink, ExternalLink, Loader2, Guitar, Upload, Camera } from 'lucide-react';
+import { User, ThemeName, GoogleOAuthConfig } from '../types';
 import { THEMES } from '../utils/theme';
 import { FONT_PRESETS, FontPresetKey, applyFontPreset, getStoredFontPreset } from '../utils/typography';
+import { googleSignIn, logout } from '../utils/gmail';
+import { uploadFileToServer } from '../utils/audioStorage';
+import { getAuthHeaders } from '../services/api';
 
 interface UserProfileModalProps {
  currentUser: User;
@@ -15,6 +18,10 @@ interface UserProfileModalProps {
  onThemeChange?: (theme: ThemeName) => void;
  currentFont?: FontPresetKey;
  onFontChange?: (font: FontPresetKey) => void;
+ epkConfig?: any;
+ onUpdateEpkConfig?: (newConfig: any) => Promise<any> | void;
+ activeBandName?: string;
+ onRefreshData?: () => void;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
@@ -27,19 +34,141 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
  currentTheme,
  onThemeChange,
  currentFont,
- onFontChange
+ onFontChange,
+ epkConfig,
+ onUpdateEpkConfig,
+ activeBandName,
+ onRefreshData
 }) => {
  const [name, setName] = useState(currentUser.name || '');
  const [instrument, setInstrument] = useState(currentUser.instrument || '');
  const [avatarColor, setAvatarColor] = useState(currentUser.avatarColor || '#10b981');
+ const [bandLogoUrl, setBandLogoUrl] = useState<string>(epkConfig?.logoUrl || '');
+ const [logoImgError, setLogoImgError] = useState(false);
+ const [uploadingLogo, setUploadingLogo] = useState(false);
  
  // Password change state
  const [newPassword, setNewPassword] = useState('');
  const [confirmPassword, setConfirmPassword] = useState('');
 
+ const handleLogoChangeInProfile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  setUploadingLogo(true);
+  setError(null);
+  setSuccessMsg(null);
+  try {
+   const userBandId = currentUser.band_id || 'band-bakandeya';
+   const url = await uploadFileToServer(file, { bandId: userBandId, category: 'logo' });
+   setBandLogoUrl(url);
+
+   const updatedEpk = { ...epkConfig, logoUrl: url };
+   if (onUpdateEpkConfig) {
+    await onUpdateEpkConfig(updatedEpk);
+   } else {
+    const authHeaders = getAuthHeaders() as Record<string, string>;
+    await fetch('/api/epk', {
+     method: 'PUT',
+     headers: { 'Content-Type': 'application/json', ...authHeaders },
+     body: JSON.stringify({ logoUrl: url, bandId: userBandId })
+    });
+   }
+   if (onRefreshData) onRefreshData();
+   setSuccessMsg('¡Logo del proyecto actualizado con éxito!');
+  } catch (err: any) {
+   console.error('Error uploading band logo in profile:', err);
+   setError('Error al subir el logo de la banda.');
+  } finally {
+   setUploadingLogo(false);
+  }
+ };
+
  const [loading, setLoading] = useState(false);
  const [error, setError] = useState<string | null>(null);
  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+ // Google OAuth state
+ const [oauthLoading, setOauthLoading] = useState(false);
+ const [googleOAuthState, setGoogleOAuthState] = useState<GoogleOAuthConfig | null>(
+ currentUser.googleOAuth || null
+ );
+
+ const handleConnectGoogleOAuth = async () => {
+ setOauthLoading(true);
+ setError(null);
+ setSuccessMsg(null);
+ try {
+ const res = await googleSignIn();
+ const googleData: GoogleOAuthConfig = {
+ connected: true,
+ email: res.user?.email || '',
+ displayName: res.user?.displayName || res.user?.email || '',
+ photoURL: res.user?.photoURL || '',
+ accessToken: res.accessToken,
+ scopes: [
+ 'https://www.googleapis.com/auth/gmail.readonly',
+ 'https://www.googleapis.com/auth/gmail.compose',
+ 'https://www.googleapis.com/auth/gmail.send',
+ 'https://www.googleapis.com/auth/drive.readonly'
+ ],
+ connectedAt: new Date().toISOString()
+ };
+
+ setGoogleOAuthState(googleData);
+
+ const token = localStorage.getItem('bakandeya_token');
+ const updateRes = await fetch(`/api/users/${currentUser.id}`, {
+ method: 'PUT',
+ headers: {
+ 'Content-Type': 'application/json',
+ ...(token ? { Authorization: `Bearer ${token}` } : {})
+ },
+ body: JSON.stringify({ googleOAuth: googleData })
+ });
+
+ if (updateRes.ok) {
+ const updatedUser = await updateRes.json();
+ onUpdateUser(updatedUser);
+ setSuccessMsg(`¡Cuenta Google (${googleData.email}) conectada con OAuth 2.0 para Gmail y Drive!`);
+ } else {
+ setSuccessMsg(`Cuenta Google autenticada: ${googleData.email}`);
+ }
+ } catch (err: any) {
+ console.error("Error connecting Google OAuth:", err);
+ setError(err.message || 'Error al conectar con Google OAuth.');
+ } finally {
+ setOauthLoading(false);
+ }
+ };
+
+ const handleDisconnectGoogleOAuth = async () => {
+ setOauthLoading(true);
+ try {
+ await logout();
+ const disconnectedState: GoogleOAuthConfig = { connected: false };
+ setGoogleOAuthState(disconnectedState);
+
+ const token = localStorage.getItem('bakandeya_token');
+ const updateRes = await fetch(`/api/users/${currentUser.id}`, {
+ method: 'PUT',
+ headers: {
+ 'Content-Type': 'application/json',
+ ...(token ? { Authorization: `Bearer ${token}` } : {})
+ },
+ body: JSON.stringify({ googleOAuth: disconnectedState })
+ });
+
+ if (updateRes.ok) {
+ const updatedUser = await updateRes.json();
+ onUpdateUser(updatedUser);
+ }
+ setSuccessMsg('Conexión con Google revocada.');
+ } catch (err: any) {
+ setError(err.message || 'Error al desconectar de Google.');
+ } finally {
+ setOauthLoading(false);
+ }
+ };
 
  const colors = [
  '#10b981', // Emerald
@@ -211,6 +340,56 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
  </div>
  </div>
 
+ {/* Active Band Logo Edit Section (Netflix Profile Style) */}
+ <div className="space-y-2 pt-2 border-t border-neutral-800/80">
+ <label className="text-xs font-mono font-semibold text-neutral-400 flex items-center justify-between">
+ <span className="flex items-center gap-1.5">
+ <Camera className="w-3.5 h-3.5 text-amber-400" />
+ <span>Logo de tu Banda / Proyecto Musical</span>
+ </span>
+ <span className="text-[10px] text-amber-400/80 font-normal font-mono">Editar Avatar</span>
+ </label>
+
+ <div className={`p-3 rounded-xl flex items-center justify-between gap-3 ${
+ isStitchLight ? 'bg-slate-50 border border-slate-200' : 'bg-neutral-950 border border-neutral-800'
+ }`}>
+ <div className="flex items-center gap-3">
+ <div className="w-12 h-12 rounded-xl bg-neutral-900 border border-neutral-700 overflow-hidden flex items-center justify-center p-1 shrink-0 relative group">
+ {bandLogoUrl && !logoImgError ? (
+ <img src={bandLogoUrl} alt="Logo Banda" onError={() => setLogoImgError(true)} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+ ) : (
+ <Guitar className="w-6 h-6 text-amber-400" />
+ )}
+ </div>
+ <div>
+ <p className="text-xs font-bold text-white">{activeBandName || currentUser.bandName || 'Tu Banda'}</p>
+ <p className="text-[10px] text-neutral-400 font-mono">Avatar / Logo oficial de la banda</p>
+ </div>
+ </div>
+
+ <label className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95">
+ {uploadingLogo ? (
+ <>
+ <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+ <span>Subiendo...</span>
+ </>
+ ) : (
+ <>
+ <Upload className="w-3.5 h-3.5" />
+ <span>Cambiar Logo</span>
+ </>
+ )}
+ <input
+ type="file"
+ accept="image/*"
+ className="hidden"
+ disabled={uploadingLogo}
+ onChange={handleLogoChangeInProfile}
+ />
+ </label>
+ </div>
+ </div>
+
  {/* Theme Selection */}
  {onThemeChange && (
  <div className="space-y-2 pt-2 -neutral-800/80">
@@ -369,6 +548,98 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
  </button>
  </div>
  )}
+
+ {/* Google OAuth 2.0 Integration Section (Gmail & Google Drive) */}
+ <div className="pt-3 -neutral-800/80 space-y-2">
+ <label className="text-xs font-mono font-semibold text-neutral-400 flex items-center justify-between">
+ <span className="flex items-center gap-1.5">
+ <Mail className="w-3.5 h-3.5 text-sky-400" />
+ <span>Conexión Google OAuth 2.0 (Gmail & Drive)</span>
+ </span>
+ <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+ googleOAuthState?.connected ? 'bg-emerald-500/15 text-emerald-400 -emerald-500/30' : 'bg-neutral-800 text-neutral-400'
+ }`}>
+ {googleOAuthState?.connected ? 'OAuth Activo' : 'No Conectado'}
+ </span>
+ </label>
+
+ <div className={`p-3.5 rounded-xl text-xs space-y-3 ${
+ isStitchLight ? 'bg-slate-50 -slate-200 text-slate-800' : 'bg-neutral-900/90 -neutral-800 text-neutral-200'
+ }`}>
+ {googleOAuthState?.connected ? (
+ <div className="space-y-2.5">
+ <div className="flex items-center justify-between">
+ <div className="flex items-center gap-2.5">
+ {googleOAuthState.photoURL ? (
+ <img src={googleOAuthState.photoURL} alt="Google Avatar" className="w-8 h-8 rounded-full ring-2 ring-emerald-500/40" />
+ ) : (
+ <div className="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold">
+ G
+ </div>
+ )}
+ <div>
+ <p className="font-bold text-xs">{googleOAuthState.displayName || googleOAuthState.email}</p>
+ <p className="text-[10.5px] font-mono text-neutral-400 truncate max-w-[200px]">{googleOAuthState.email}</p>
+ </div>
+ </div>
+ <button
+ type="button"
+ onClick={handleDisconnectGoogleOAuth}
+ disabled={oauthLoading}
+ className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-mono"
+ title="Desconectar cuenta Google"
+ >
+ <Unlink className="w-3.5 h-3.5" />
+ <span>Desconectar</span>
+ </button>
+ </div>
+
+ <div className="pt-2 -neutral-800/60 grid grid-cols-2 gap-1.5 text-[10px] font-mono text-neutral-400">
+ <div className="flex items-center gap-1 text-emerald-400">
+ <Check className="w-3 h-3" />
+ <span>Gmail: Lectura/Borradores</span>
+ </div>
+ <div className="flex items-center gap-1 text-emerald-400">
+ <Check className="w-3 h-3" />
+ <span>Gmail: Envíos Directos</span>
+ </div>
+ <div className="flex items-center gap-1 text-emerald-400">
+ <Check className="w-3 h-3" />
+ <span>Google Drive: Lectura</span>
+ </div>
+ <div className="flex items-center gap-1 text-sky-400">
+ <HardDrive className="w-3 h-3" />
+ <span>Tokens Seguros</span>
+ </div>
+ </div>
+ </div>
+ ) : (
+ <div className="space-y-2">
+ <p className="text-[11px] text-neutral-300 leading-relaxed">
+ Autoriza a la aplicación y a los agentes de IA (Lector, Redactor, Enviador) a gestionar los emails de booking e inspeccionar dossiers de Google Drive.
+ </p>
+ <button
+ type="button"
+ onClick={handleConnectGoogleOAuth}
+ disabled={oauthLoading}
+ className="w-full py-2 px-3 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 -sky-500/30 text-sky-300 font-mono text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+ >
+ {oauthLoading ? (
+ <>
+ <Loader2 className="w-3.5 h-3.5 animate-spin" />
+ <span>Autenticando en Google...</span>
+ </>
+ ) : (
+ <>
+ <Mail className="w-3.5 h-3.5 text-sky-400" />
+ <span>Conectar con Google OAuth 2.0 (Gmail & Drive)</span>
+ </>
+ )}
+ </button>
+ </div>
+ )}
+ </div>
+ </div>
 
  {/* Database & Google Sheets / Excel Section */}
  <div className="pt-3 -neutral-800/80 space-y-2">

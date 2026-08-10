@@ -88,7 +88,7 @@ router.put("/autonomy", requireAuth, async (req, res) => {
 router.get("/epk", async (req, res) => {
   const state = loadState();
   const user = (req as any).user;
-  const userBandId = user?.band_id || BAKANDEYA_BAND_ID;
+  const userBandId = (req.query.bandId as string) || (req.headers['x-band-id'] as string) || user?.band_id || BAKANDEYA_BAND_ID;
   const userBandName = user?.bandName || user?.name || 'Tu Banda';
   
   // Try loading from Google Sheets to ensure sync
@@ -109,7 +109,7 @@ router.put("/epk", requireAuth, async (req, res) => {
     const updatedConfig: Partial<EPKConfig> = req.body;
     const state = loadState();
     const user = (req as any).user;
-    const userBandId = user?.band_id || BAKANDEYA_BAND_ID;
+    const userBandId = (req.body as any).bandId || (req.headers['x-band-id'] as string) || user?.band_id || BAKANDEYA_BAND_ID;
     const cleanUserBandId = userBandId.replace(/^(band|reg)-/, '');
     const userBandName = user?.bandName || user?.name || 'Tu Banda';
     const current = getEpkConfigForBand(state, userBandId, userBandName, user?.email);

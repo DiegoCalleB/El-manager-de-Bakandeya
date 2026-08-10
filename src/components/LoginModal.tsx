@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, User, Eye, EyeOff, AlertCircle, Mail, Music, Check, ArrowRight, Zap, Star, Shield, Chrome, KeyRound, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { User as UserType } from '../types';
+import { googleSignIn } from '../utils/gmail';
 
 interface LoginModalProps {
   onLoginSuccess: (user: UserType, token: string, bandsList?: any[]) => void;
@@ -24,11 +25,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
     return localStorage.getItem('bakandeya_remember_me') !== 'false';
   });
 
-  // On mount, prefill username if stored
+  // On mount, prefill username and emails if stored in localStorage
   useEffect(() => {
-    const savedUser = localStorage.getItem('bakandeya_remembered_username');
+    const savedUser = localStorage.getItem('bakandeya_remembered_username') || localStorage.getItem('bakandeya_last_login_email');
     if (savedUser) {
       setUsername(savedUser);
+      setRegEmail(savedUser);
+      setActivateEmail(savedUser);
       setRememberMe(true);
     }
   }, []);
@@ -161,6 +164,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
       }
 
       // Handle Remember Me preference
+      localStorage.setItem('bakandeya_last_login_email', username.trim());
       if (rememberMe) {
         localStorage.setItem('bakandeya_remembered_username', username.trim());
         localStorage.setItem('bakandeya_remember_me', 'true');
@@ -337,6 +341,87 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
     }
   };
 
+  // --- Google Social Login / Registration ---
+  const handleGoogleSocialSignIn = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await googleSignIn();
+      if (!res) {
+        // User closed or cancelled Google popup window gracefully
+        return;
+      }
+      if (!res.user) {
+        throw new Error('No se pudo obtener la información de la cuenta de Google.');
+      }
+
+      const email = res.user.email || '';
+      const displayName = res.user.displayName || email.split('@')[0] || 'Miembro Banda';
+
+      // Call backend API /api/auth/google
+      try {
+        const response = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            name: displayName,
+            uid: res.user.uid,
+            accessToken: res.accessToken
+          })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.token) {
+          localStorage.setItem('bakandeya_token', data.token);
+          document.cookie = `bakandeya_token=${data.token}; path=/; max-age=2592000; SameSite=Lax`;
+          onLoginSuccess(data.user, data.token, data.availableBands);
+          return;
+        }
+      } catch (backendErr) {
+        console.warn("API de auth Google fallo, iniciando sesion local:", backendErr);
+      }
+
+      // Fallback local login if backend is unreachable
+      const fallbackUser: UserType = {
+        id: res.user.uid || `user-${Date.now()}`,
+        username: email || 'usuario_google',
+        name: displayName,
+        bandName: 'Bakandeya',
+        email: email,
+        role: 'leader',
+        plan: 'profesional',
+        createdAt: new Date().toISOString()
+      };
+      onLoginSuccess(fallbackUser, res.accessToken);
+    } catch (err: any) {
+      const errCode = err?.code || '';
+      const errMsg = String(err?.message || '').toLowerCase();
+      if (
+        errCode === 'auth/popup-closed-by-user' ||
+        errCode === 'auth/cancelled-popup-request' ||
+        errMsg.includes('popup-closed-by-user') ||
+        errMsg.includes('closed-by-user')
+      ) {
+        // Ignore user cancellation gracefully
+        return;
+      }
+      if (
+        errMsg.includes('access_denied') ||
+        errMsg.includes('blocked') ||
+        errMsg.includes('verification') ||
+        errCode.includes('access-denied')
+      ) {
+        setError('Google ha bloqueado el acceso OAuth porque el proyecto de Firebase está en modo Pruebas. Puedes iniciar sesión o registrarte con tu correo y contraseña directamente abajo sin pasar por Google.');
+        return;
+      }
+      console.error("Error al iniciar sesión con Google:", err);
+      setError(err.message || 'Error al conectar con Google OAuth.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // --- Shared UI Components ---
   const AppleIcon = () => (
     <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
@@ -351,34 +436,61 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
     </svg>
   );
 
+  const PasswordStrengthBar = ({ pass }: { pass: string }) => {
+    if (!pass) return null;
+    let score = 0;
+    if (pass.length >= 6) score += 1;
+    if (pass.length >= 8) score += 1;
+    if (/[0-9]/.test(pass) && /[^A-Za-z0-9]/.test(pass)) score += 1;
+
+    const labels = ['Contraseña básica', 'Seguridad media', 'Muy segura'];
+    const colors = ['bg-rose-500', 'bg-amber-400', 'bg-emerald-400'];
+    const textColors = ['text-rose-400', 'text-amber-400', 'text-emerald-400'];
+
+    return (
+      <div className="space-y-1.5 pt-1 px-0.5">
+        <div className="flex gap-1 h-1 w-full bg-neutral-800/80 rounded-full overflow-hidden">
+          <div className={`h-full transition-all duration-300 ${score >= 1 ? colors[0] : 'bg-transparent'} w-1/3`} />
+          <div className={`h-full transition-all duration-300 ${score >= 2 ? colors[1] : 'bg-transparent'} w-1/3`} />
+          <div className={`h-full transition-all duration-300 ${score >= 3 ? colors[2] : 'bg-transparent'} w-1/3`} />
+        </div>
+        <div className="flex justify-between items-center text-[11px]">
+          <span className={`font-medium ${textColors[Math.max(0, score - 1)]}`}>{labels[Math.max(0, score - 1)]}</span>
+          <span className="text-neutral-500">{pass.length < 6 ? 'Mínimo 6 caracteres' : '✓ Longitud OK'}</span>
+        </div>
+      </div>
+    );
+  };
+
   const SocialButtons = () => (
-    <div className="flex gap-3 w-full mt-4">
-      <button type="button" className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#131317]/80 hover:bg-[#1f1f26] border border-neutral-800/50 rounded-2xl text-sm font-medium text-neutral-300 transition-colors shadow-inner cursor-pointer">
+    <div className="w-full mt-3">
+      <button 
+        type="button" 
+        onClick={handleGoogleSocialSignIn}
+        disabled={loading}
+        className="w-full flex items-center justify-center gap-2.5 py-3 bg-[#131317]/80 hover:bg-[#1f1f26] border border-neutral-800/80 rounded-2xl text-sm font-medium text-neutral-200 hover:text-white transition-all shadow-inner cursor-pointer disabled:opacity-50"
+      >
         <GoogleIcon />
-        <span>Google</span>
-      </button>
-      <button type="button" className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#131317]/80 hover:bg-[#1f1f26] border border-neutral-800/50 rounded-2xl text-sm font-medium text-neutral-300 transition-colors shadow-inner cursor-pointer">
-        <AppleIcon />
-        <span>Apple</span>
+        <span>{loading ? 'Conectando...' : 'Continuar con Google'}</span>
       </button>
     </div>
   );
 
   return (
     <div className="fixed inset-0 z-50 p-4 bg-[#09090b] text-neutral-100 overflow-y-auto animate-in fade-in duration-300">
-      <div className="min-h-full flex items-center justify-center py-8 md:py-12">
-        <div className={`w-full relative z-10 flex flex-col items-center transition-all duration-500 ${view === 'plans' ? 'max-w-5xl' : 'max-w-sm space-y-7'}`}>
+      <div className="min-h-full flex items-center justify-center py-6 md:py-8">
+        <div className={`w-full relative z-10 flex flex-col items-center transition-all duration-500 ${view === 'plans' ? 'max-w-5xl' : 'max-w-sm space-y-5'}`}>
         
         {/* Soft Golden Background Ambient Glow */}
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-[#f2ca50]/5 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute top-8 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-[#f2ca50]/5 rounded-full blur-[100px] pointer-events-none" />
 
         {/* --- BRANDING LOGO & TYPOGRAPHY (Only for Login/Register) --- */}
         {view !== 'plans' && (
-          <div className="relative group cursor-pointer flex flex-col items-center justify-center mt-8">
+          <div className="relative group cursor-pointer flex flex-col items-center justify-center mt-2 mb-1">
             <img 
               src="/bandmanager_logo.jpeg" 
               alt="BANDMANAGER.ai - IA Agéntica para tu Banda" 
-              className="w-64 h-auto sm:w-72 drop-shadow-[0_15px_35px_rgba(242,202,80,0.15)] group-hover:scale-[1.02] transition-transform rounded-2xl border border-[#f2ca50]/10"
+              className="w-52 h-auto sm:w-60 drop-shadow-[0_10px_25px_rgba(242,202,80,0.12)] group-hover:scale-[1.01] transition-transform rounded-2xl border border-[#f2ca50]/10"
               referrerPolicy="no-referrer"
             />
           </div>
@@ -386,9 +498,27 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
 
         {/* --- ERROR ALERT --- */}
         {error && view !== 'plans' && (
-          <div className="w-full p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-xs text-rose-400 flex items-center gap-2 animate-in fade-in duration-200">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-            <span>{error}</span>
+          <div className="w-full p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-xs text-rose-300 flex flex-col gap-2 animate-in fade-in duration-200">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+              <span className="leading-relaxed">{error}</span>
+            </div>
+            {(error.includes('Google') || error.includes('OAuth') || error.includes('bloqueado')) && (
+              <div className="pt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (username) setRegEmail(username);
+                    setError(null);
+                    setView('register');
+                  }}
+                  className="px-3 py-1.5 bg-[#f2ca50] text-neutral-950 font-bold text-xs rounded-xl hover:bg-[#f5d778] transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Crear / Acceder con Email en 10s</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -489,31 +619,32 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
 
             <SocialButtons />
 
-            <div className="text-center mt-6 space-y-3">
-              <p className="text-sm text-neutral-400">
-                ¿Te han agregado a alguna banda?{' '}
-                <button 
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setActivateStep(1);
-                    setView('activate');
-                  }} 
-                  className="text-[#f2ca50] hover:underline font-medium cursor-pointer block sm:inline mt-1 sm:mt-0"
-                >
-                  Activa tu cuenta / Regístrate
-                </button>
-              </p>
-              <p className="text-xs text-neutral-500">
-                ¿Quieres registrar una nueva banda?{' '}
-                <button 
-                  type="button"
-                  onClick={() => setView('register')} 
-                  className="text-neutral-400 hover:text-[#f2ca50] hover:underline font-medium cursor-pointer"
-                >
-                  Crea tu banda
-                </button>
-              </p>
+            <div className="text-center mt-6 text-xs text-neutral-400 flex items-center justify-center gap-2 flex-wrap">
+              <span>¿No tienes cuenta?</span>
+              <button 
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  if (username) setRegEmail(username);
+                  setView('register');
+                }} 
+                className="text-[#f2ca50] hover:underline font-semibold cursor-pointer"
+              >
+                Crear banda
+              </button>
+              <span className="text-neutral-700">•</span>
+              <button 
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  if (username) setActivateEmail(username);
+                  setActivateStep(1);
+                  setView('activate');
+                }} 
+                className="text-neutral-400 hover:text-[#f2ca50] hover:underline cursor-pointer"
+              >
+                Activar invitación
+              </button>
             </div>
           </div>
         )}
@@ -573,6 +704,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                   />
                 </div>
 
+                <p className="text-[11px] text-neutral-400 px-1 leading-tight">
+                  ⚡ Se enviará un código seguro de 6 dígitos de verificación inmediata para restablecer tu contraseña.
+                </p>
+
                 <button
                   type="submit"
                   disabled={loading}
@@ -584,59 +719,90 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                       <span>Generando código...</span>
                     </span>
                   ) : (
-                    <span>Continuar</span>
+                    <span>Continuar y Recibir Código</span>
                   )}
                 </button>
               </form>
             ) : (
               <form onSubmit={handleConfirmReset} className="space-y-3.5">
-                <div className="relative flex items-center">
-                  <KeyRound className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={resetCode}
-                    onChange={(e) => setResetCode(e.target.value)}
-                    placeholder="Código de 6 dígitos"
-                    maxLength={6}
-                    className="w-full pl-11 pr-4 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal placeholder:text-neutral-500 outline-none transition-all shadow-inner"
-                    required
-                  />
+                <div className="space-y-1">
+                  <div className="relative flex items-center">
+                    <KeyRound className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value)}
+                      placeholder="Código de 6 dígitos"
+                      maxLength={6}
+                      className="w-full pl-11 pr-4 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal placeholder:text-neutral-500 outline-none transition-all shadow-inner"
+                      required
+                    />
+                  </div>
+                  {resetCode && (
+                    <div className="flex justify-end pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setError(null)}
+                        className="text-[11px] text-[#f2ca50] hover:underline font-mono flex items-center gap-1 cursor-pointer"
+                      >
+                        ✓ Código cargado: {resetCode}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                <div className="relative flex items-center">
-                  <Lock className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
-                  <input
-                    type={showResetNewPassword ? 'text' : 'password'}
-                    value={resetNewPassword}
-                    onChange={(e) => setResetNewPassword(e.target.value)}
-                    placeholder="Nueva contraseña (mín. 6 caracteres)"
-                    className="w-full pl-11 pr-11 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowResetNewPassword(!showResetNewPassword)}
-                    className="absolute right-4 text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer"
-                  >
-                    {showResetNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                <div className="space-y-1">
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
+                    <input
+                      type={showResetNewPassword ? 'text' : 'password'}
+                      value={resetNewPassword}
+                      onChange={(e) => setResetNewPassword(e.target.value)}
+                      placeholder="Nueva contraseña (mín. 6 caracteres)"
+                      className="w-full pl-11 pr-11 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowResetNewPassword(!showResetNewPassword)}
+                      className="absolute right-4 text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer"
+                    >
+                      {showResetNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <PasswordStrengthBar pass={resetNewPassword} />
                 </div>
 
-                <div className="relative flex items-center">
-                  <Lock className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
-                  <input
-                    type={showResetNewPassword ? 'text' : 'password'}
-                    value={resetConfirmPassword}
-                    onChange={(e) => setResetConfirmPassword(e.target.value)}
-                    placeholder="Repite la nueva contraseña"
-                    className="w-full pl-11 pr-11 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
-                    required
-                  />
+                <div className="space-y-1">
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
+                    <input
+                      type={showResetNewPassword ? 'text' : 'password'}
+                      value={resetConfirmPassword}
+                      onChange={(e) => setResetConfirmPassword(e.target.value)}
+                      placeholder="Repite la nueva contraseña"
+                      className="w-full pl-11 pr-11 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
+                      required
+                    />
+                  </div>
+                  {resetConfirmPassword.length > 0 && (
+                    <div className="text-[11px] px-1 flex items-center gap-1.5 pt-0.5">
+                      {resetNewPassword === resetConfirmPassword ? (
+                        <span className="text-emerald-400 font-medium flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> Las contraseñas coinciden perfectamente
+                        </span>
+                      ) : (
+                        <span className="text-rose-400 font-medium">
+                          Las contraseñas no coinciden aún
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || (resetConfirmPassword.length > 0 && resetNewPassword !== resetConfirmPassword)}
                   className="w-full py-3.5 px-4 mt-2 rounded-2xl bg-[#f2ca50] hover:bg-[#f5d778] text-neutral-950 font-bold text-sm tracking-wide transition-all shadow-[0_0_20px_rgba(242,202,80,0.15)] active:scale-[0.98] disabled:opacity-50 flex items-center justify-center cursor-pointer"
                 >
                   {loading ? (
@@ -715,23 +881,26 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                 />
               </div>
 
-              <div className="relative flex items-center">
-                <Lock className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
-                <input
-                  type={showRegPassword ? 'text' : 'password'}
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
-                  placeholder="Contraseña"
-                  className="w-full pl-11 pr-11 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowRegPassword(!showRegPassword)}
-                  className="absolute right-4 text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer"
-                >
-                  {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+              <div className="space-y-1">
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 text-[#f2ca50] absolute left-4 pointer-events-none" />
+                  <input
+                    type={showRegPassword ? 'text' : 'password'}
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    placeholder="Contraseña"
+                    className="w-full pl-11 pr-11 py-3.5 bg-[#131317]/90 border border-neutral-800/90 focus:border-[#f2ca50]/50 rounded-2xl text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-all shadow-inner"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegPassword(!showRegPassword)}
+                    className="absolute right-4 text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer"
+                  >
+                    {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <PasswordStrengthBar pass={regPassword} />
               </div>
 
               <button
@@ -814,6 +983,37 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                     )}
                   </button>
                 </form>
+
+                {activateEmail.trim().length > 2 && (
+                  <div className="p-3 bg-[#131317] border border-neutral-800 rounded-2xl text-xs text-neutral-300 space-y-2 animate-in fade-in">
+                    <p className="font-medium text-neutral-200">
+                      ¿Quieres registrar tu propia banda en vez de activar una invitación?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegEmail(activateEmail);
+                        setError(null);
+                        setView('register');
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-[#f2ca50] hover:bg-[#f5d778] text-neutral-950 font-bold transition-all cursor-pointer text-xs flex items-center justify-center gap-2"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Crear Banda Nueva con {activateEmail}</span>
+                    </button>
+                  </div>
+                )}
+
+                <div className="relative mt-5 mb-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-neutral-800"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="px-2 bg-[#09090b] text-neutral-500">O comprobar con</span>
+                  </div>
+                </div>
+
+                <SocialButtons />
               </div>
             ) : (
               <div className="space-y-4">
@@ -893,6 +1093,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                     )}
                   </button>
                 </form>
+
+                <div className="relative mt-5 mb-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-neutral-800"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="px-2 bg-[#09090b] text-neutral-500">O activar con tu cuenta de Google</span>
+                  </div>
+                </div>
+
+                <SocialButtons />
               </div>
             )}
 
@@ -1090,18 +1301,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           </div>
         )}
 
-        {/* --- FOOTER TAGLINE (Only for Login/Register) --- */}
-        {view !== 'plans' && (
-          <div className="text-center pt-3 border-t border-neutral-800/60 mt-1 w-full space-y-1.5 opacity-70">
-            <p className="text-xs sm:text-sm font-sans font-medium text-neutral-300 leading-snug">
-              Tú concéntrate en la música. <br />
-              <span className="text-[#f2ca50] font-bold">Tu Manager IA llena los escenarios.</span>
-            </p>
-            <p className="text-[10px] text-neutral-500 font-mono tracking-widest uppercase">
-              Booking • Promoción • Agentes Autónomos 24/7
-            </p>
-          </div>
-        )}
+
 
       </div>
       </div>

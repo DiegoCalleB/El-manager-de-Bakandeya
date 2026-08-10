@@ -4,7 +4,8 @@ import { Lead, EmailMessage, Concert, Payment, Rehearsal, SocialPost, SocialMetr
 
 export const DEFAULT_LEADS_HEADERS = [
   "id", "nombre_sala", "ciudad", "region", "aforo", "genero", "email_contacto", "fuente", "estado", "pitch_generado", "fecha_envio", "fecha_ultima_respuesta", "notas",
-  "direccion", "tipo", "telefono", "website", "instagram", "contacto_nombre", "contexto_extra", "hilo_emails", "icono", "imagen_url", "band_id"
+  "direccion", "tipo", "telefono", "website", "instagram", "contacto_nombre", "contexto_extra", "hilo_emails", "icono", "imagen_url", "band_id",
+  "es_favorito", "es_verificado", "fiabilidad_score"
 ];
 
 export function getColumnLetter(colIndex: number): string {
@@ -148,6 +149,9 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
   let iconoVal: string | undefined;
   let imagenUrlVal: string | undefined;
   let bandIdVal: string | undefined;
+  let esFavoritoVal = false;
+  let esVerificadoVal = false;
+  let fiabilidadVal: number | undefined = undefined;
 
   if (layoutType === 'OLD_24') {
     idVal = strAt(0);
@@ -224,6 +228,9 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
     iconoVal = getValByHeader("icono", "logo", "icon", "emoji") ? String(getValByHeader("icono", "logo", "icon", "emoji")).trim() : undefined;
     imagenUrlVal = getValByHeader("imagen_url", "imagen", "photo_url", "foto", "avatar") ? String(getValByHeader("imagen_url", "imagen", "photo_url", "foto", "avatar")).trim() : undefined;
     bandIdVal = getValByHeader("band_id", "bandid") ? String(getValByHeader("band_id", "bandid")).trim() : undefined;
+    esFavoritoVal = String(getValByHeader("es_favorito", "favorito", "fav") || "").toLowerCase() === 'true';
+    esVerificadoVal = String(getValByHeader("es_verificado", "verificado") || "").toLowerCase() === 'true';
+    fiabilidadVal = getValByHeader("fiabilidad_score", "fiabilidad") ? parseFloat(String(getValByHeader("fiabilidad_score", "fiabilidad"))) : undefined;
   }
 
   // Collect all non-empty cell strings for content sanitation
@@ -391,7 +398,10 @@ export function rowToLeadDynamic(row: any[], headerMap: Record<string, number>):
     hilo_emails: hiloEmails,
     icono: iconoVal,
     imagen_url: imagenUrlVal,
-    band_id: bandIdVal
+    band_id: bandIdVal,
+    es_favorito: esFavoritoVal,
+    es_verificado: esVerificadoVal,
+    fiabilidad_score: fiabilidadVal
   };
 }
 
@@ -542,6 +552,19 @@ export function leadToRowDynamic(
       case "band_id":
       case "bandid":
         row[idx] = lead.band_id || (lead as any).bandId || "";
+        break;
+      case "es_favorito":
+      case "favorito":
+      case "fav":
+        row[idx] = lead.es_favorito ? "true" : "false";
+        break;
+      case "es_verificado":
+      case "verificado":
+        row[idx] = lead.es_verificado ? "true" : "false";
+        break;
+      case "fiabilidad_score":
+      case "fiabilidad":
+        row[idx] = lead.fiabilidad_score !== undefined ? lead.fiabilidad_score : "";
         break;
       default:
         break;
@@ -997,19 +1020,22 @@ export async function retrySheetsWrite<T>(fn: () => Promise<T>, maxRetries = 3, 
 
 /**
  * Perform a cached values.get request to Google Sheets API.
- * Default TTL is 30,000ms (30 seconds).
- * On rate limit (429 / Quota Exceeded), returns cached data if available.
+ * Default TTL is 300,000ms (5 minutes).
+ * On rate limit (429 / Quota Exceeded), returns cached data if available or empty fallback.
  */
 export async function getValuesCached(
   sheets: any,
   params: { spreadsheetId: string; range: string },
-  ttlMs = 30000
+  ttlMs = 300000
 ): Promise<any> {
   const cacheKey = `${params.spreadsheetId}:${params.range}`;
   const now = Date.now();
   const cached = valuesCache.get(cacheKey);
 
-  if (cached && (now - cached.timestamp < ttlMs)) {
+  // Enforce minimum cache TTL of 60 seconds (60,000ms) to prevent hitting Google Sheets rate limits
+  const effectiveTtl = Math.max(ttlMs, 60000);
+
+  if (cached && (now - cached.timestamp < effectiveTtl)) {
     return cached.data;
   }
 
@@ -1033,7 +1059,8 @@ export async function getValuesCached(
     }
 
     if (isQuotaError) {
-      console.warn(`[Google Sheets Rate Limit] Excedida cuota de lectura para '${params.range}'. No hay caché previa.`);
+      console.warn(`[Google Sheets Rate Limit] Excedida cuota de lectura para '${params.range}'. Retornando lista vacía (fallback).`);
+      return { data: { values: [] } };
     }
     throw err;
   }
@@ -1077,17 +1104,11 @@ export async function fetchLeadsFromSheet(localLeads: Lead[]): Promise<Lead[]> {
         const headerMap = buildHeaderMap(headers);
         const dataRows = rows.slice(1);
         leadsFromSheet = dataRows.map(row => rowToLeadDynamic(row, headerMap));
-
-        // Always realign in background if rows exist, to guarantee Google Sheet columns match DEFAULT_LEADS_HEADERS canonical layout and cleaned values
-        if (dataRows.length > 0) {
-          console.log("[Google Sheets] Syncing & realigning 'leads' tab with sanitized columns...");
-          realignLeadsSheetHeadersAndData(sheets, spreadsheetId, leadsFromSheet).catch(err => {
-            console.warn("Auto realign background notice:", err);
-          });
-        }
       }
     } catch (e: any) {
-      console.error("Error reading leads tab:", e?.message || e);
+      if (e?.status !== 429 && e?.code !== 429 && !String(e?.message || "").toLowerCase().includes("quota")) {
+        console.error("Error reading leads tab:", e?.message || e);
+      }
     }
 
     // Fetch Medios tab (if present)
@@ -1210,12 +1231,12 @@ export async function bootstrapSheet(sheets: any, spreadsheetId: string, leads: 
     const hilosSheetId = await getSheetId(sheets, spreadsheetId, "hilos_emails");
     const headers = DEFAULT_LEADS_HEADERS;
     const values = [headers, ...leads.map(lead => leadToRowDynamic(lead, headers, hilosSheetId))];
-    await sheets.spreadsheets.values.update({
+    await retrySheetsWrite(() => sheets.spreadsheets.values.update({
       spreadsheetId,
       range: "leads!A1",
       valueInputOption: "RAW",
       requestBody: { values },
-    });
+    }));
     console.log("Successfully bootstrapped Google Sheet with headers and seed data.");
   } catch (error) {
     console.error("Error bootstrapping Google Sheet:", error);
@@ -1234,12 +1255,12 @@ export async function bootstrapHilosEmailsSheet(sheets: any, spreadsheetId: stri
       }
     }
     const values = [headers, ...rows];
-    await sheets.spreadsheets.values.update({
+    await retrySheetsWrite(() => sheets.spreadsheets.values.update({
       spreadsheetId,
       range: "hilos_emails!A1",
       valueInputOption: "USER_ENTERED",
       requestBody: { values },
-    });
+    }));
     console.log("Successfully bootstrapped Google Sheet hilos_emails tab.");
   } catch (error) {
     console.error("Error bootstrapping hilos_emails sheet tab:", error);

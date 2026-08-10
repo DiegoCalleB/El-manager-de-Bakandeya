@@ -139,6 +139,24 @@ export function ensureBakandeyaBandId(state: any): boolean {
   }
 
   if (state.registeredBands && Array.isArray(state.registeredBands)) {
+    const hasRepercusion = state.registeredBands.some((b: any) =>
+      b.band_id === "band-repercusion" || String(b.nombre_banda || "").toLowerCase().includes("repercusion")
+    );
+    if (!hasRepercusion) {
+      state.registeredBands.push({
+        id: "reg-repercusion",
+        band_id: "band-repercusion",
+        nombre_banda: "Repercusión",
+        email: "diego.delacalleb@gmail.com",
+        plan: "pro",
+        contacto_nombre: "Diego de la Calle",
+        estilo_musical: "Reggae-Ska / Mestizaje",
+        user_id: "MUIF3Rw4eyeny7ywmBVv8IDlRl12",
+        fecha_registro: new Date().toISOString()
+      });
+      changed = true;
+    }
+
     for (const b of state.registeredBands) {
       if (b.nombre_banda && b.nombre_banda.toLowerCase() !== "bakandeya") {
         const cleanSlug = slugify(b.nombre_banda);
@@ -219,19 +237,30 @@ export function ensureBakandeyaBandId(state: any): boolean {
   // Ensure all registered bands have leader associations in userBands
   if (state.registeredBands && Array.isArray(state.registeredBands)) {
     state.registeredBands.forEach((rb: any) => {
-      if (rb.user_id && rb.band_id) {
-        const hasUB = state.userBands.some((ub: any) => ub.user_id === rb.user_id && ub.band_id === rb.band_id);
+      if (!rb.band_id) return;
+      const rbEmail = (rb.email || "").toLowerCase();
+      const matchingUsers = (state.users || []).filter((u: any) =>
+        u.id === rb.user_id ||
+        (rbEmail && (u.email?.toLowerCase() === rbEmail || u.username?.toLowerCase() === rbEmail))
+      );
+
+      // If no user object matched yet, but rb has user_id, use that user_id
+      const userIdsToLink = new Set<string>(matchingUsers.map((u: any) => u.id));
+      if (rb.user_id) userIdsToLink.add(rb.user_id);
+
+      userIdsToLink.forEach((uid) => {
+        const hasUB = state.userBands.some((ub: any) => ub.user_id === uid && ub.band_id === rb.band_id);
         if (!hasUB) {
           state.userBands.push({
-            id: `ub-${rb.user_id}-${rb.band_id}`,
-            user_id: rb.user_id,
+            id: `ub-${uid}-${rb.band_id}`,
+            user_id: uid,
             band_id: rb.band_id,
             role: "leader",
             createdAt: rb.fecha_registro || new Date().toISOString()
           });
           changed = true;
         }
-      }
+      });
     });
   }
 
@@ -302,45 +331,60 @@ export function ensureBakandeyaBandId(state: any): boolean {
   return changed;
 }
 
+function cleanBidStr(bid: any): string {
+  if (!bid) return '';
+  return String(bid).replace(/^(band|reg)-/, '').replace(/(-\d+)+$/, '');
+}
+
 export function ensureUniqueIdsInState(state: any): boolean {
   let changed = false;
 
   const collections = [
     'songs', 'setlists', 'leads', 'rehearsals', 'concerts', 'posts',
-    'payments', 'metrics', 'tours', 'fans', 'bands', 'users', 'registeredBands', 'messages'
+    'payments', 'metrics', 'tours', 'fans', 'bands', 'users', 'registeredBands', 'messages', 'userBands'
   ];
 
   for (const colKey of collections) {
     if (Array.isArray(state[colKey])) {
-      const seenIds = new Set<string>();
+      const originalLen = state[colKey].length;
+      const seenKeys = new Set<string>();
+      const cleanArray: any[] = [];
+
       state[colKey].forEach((item: any, idx: number) => {
         if (!item || typeof item !== 'object') return;
-        
-        let prefix = colKey.endsWith('s') ? colKey.slice(0, -1) : colKey;
-        if (colKey === 'registeredBands') prefix = 'reg';
 
-        if (!item.id || seenIds.has(item.id)) {
-          const oldId = item.id;
-          const newId = oldId ? `${oldId}-${idx + 1}` : `${prefix}-${Date.now()}-${idx + 1}`;
-          item.id = newId;
-          seenIds.add(newId);
-          changed = true;
+        let key = '';
+        if (colKey === 'registeredBands') {
+          const bid = cleanBidStr(item.band_id || item.id || '');
+          const email = (item.email || '').toLowerCase();
+          key = `${bid}:${email}`;
+        } else if (colKey === 'songs') {
+          const title = (item.titulo || item.id || '').trim().toLowerCase();
+          const bid = cleanBidStr(item.band_id || '');
+          key = `${title}:${bid}`;
+        } else if (colKey === 'setlists') {
+          const name = (item.nombreSetlist || item.id || '').trim().toLowerCase();
+          const bid = cleanBidStr(item.band_id || '');
+          key = `${name}:${bid}`;
+        } else if (colKey === 'bands') {
+          const bid = cleanBidStr(item.band_id || item.id || '');
+          key = bid || item.nombre_banda || item.id;
+        } else if (colKey === 'userBands') {
+          key = `${item.user_id}:${item.band_id}`;
         } else {
-          seenIds.add(item.id);
+          key = item.id || `${colKey}-${idx}`;
         }
 
-        // Sub-arrays like setlist items
-        if (colKey === 'setlists' && Array.isArray(item.items)) {
-          const subSeen = new Set<string>();
-          item.items.forEach((sItem: any, sIdx: number) => {
-            if (!sItem.id || subSeen.has(sItem.id)) {
-              sItem.id = sItem.id ? `${sItem.id}-${sIdx + 1}` : `item-${Date.now()}-${sIdx + 1}`;
-              changed = true;
-            }
-            subSeen.add(sItem.id);
-          });
+        if (!key || !seenKeys.has(key)) {
+          if (key) seenKeys.add(key);
+          cleanArray.push(item);
         }
       });
+
+      if (cleanArray.length !== originalLen) {
+        state[colKey] = cleanArray;
+        changed = true;
+      }
     }
   }
 

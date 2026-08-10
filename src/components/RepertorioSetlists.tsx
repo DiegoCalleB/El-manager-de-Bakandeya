@@ -289,7 +289,7 @@ export default function RepertorioSetlists({
  onUpdateConcert,
  onUpdateRehearsal
 }: RepertorioSetlistsProps) {
- const isStitchLight = colors.name === 'stitch_light';
+ const isStitchLight = colors.name?.toLowerCase().includes('light') || colors.bg.includes('f8fafc') || colors.bg.includes('white') || colors.bg.includes('slate-50') || false;
  const bName = bandName || 'Tu Banda';
 
  // Navigation tab inside module

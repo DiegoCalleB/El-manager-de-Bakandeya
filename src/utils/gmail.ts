@@ -8,11 +8,43 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
-// Request Gmail readonly scope
+// Request Gmail scopes (readonly, compose, send)
 provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+provider.addScope('https://www.googleapis.com/auth/gmail.compose');
+provider.addScope('https://www.googleapis.com/auth/gmail.send');
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
+
+const STORAGE_TOKEN_KEY = 'bakandeya_gmail_token';
+const STORAGE_TOKEN_EXP_KEY = 'bakandeya_gmail_token_exp';
+
+// Save token to localStorage for persistence across reloads/sessions
+const saveTokenToStorage = (token: string) => {
+  cachedAccessToken = token;
+  try {
+    localStorage.setItem(STORAGE_TOKEN_KEY, token);
+    // Google tokens usually expire in 3600 seconds (1 hr). We set 50 mins threshold.
+    localStorage.setItem(STORAGE_TOKEN_EXP_KEY, String(Date.now() + 50 * 60 * 1000));
+  } catch (e) {
+    console.warn('Could not save Gmail token to localStorage', e);
+  }
+};
+
+const getStoredToken = (): string | null => {
+  if (cachedAccessToken) return cachedAccessToken;
+  try {
+    const token = localStorage.getItem(STORAGE_TOKEN_KEY);
+    const exp = localStorage.getItem(STORAGE_TOKEN_EXP_KEY);
+    if (token && exp && Date.now() < Number(exp)) {
+      cachedAccessToken = token;
+      return token;
+    }
+  } catch (e) {
+    // ignore storage errors
+  }
+  return null;
+};
 
 // Initialize auth state listener
 export const initAuth = (
@@ -20,33 +52,60 @@ export const initAuth = (
   onAuthFailure?: () => void
 ) => {
   return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
+    const validToken = getStoredToken();
+    if (user && validToken) {
+      if (onAuthSuccess) onAuthSuccess(user, validToken);
+    } else if (user) {
+      // User is logged in with Firebase, check if we can silently get token or let caller ask
+      if (validToken && onAuthSuccess) {
+        onAuthSuccess(user, validToken);
+      } else if (!isSigningIn && onAuthFailure) {
+        onAuthFailure();
       }
     } else {
       cachedAccessToken = null;
+      try {
+        localStorage.removeItem(STORAGE_TOKEN_KEY);
+        localStorage.removeItem(STORAGE_TOKEN_EXP_KEY);
+      } catch (e) {}
       if (onAuthFailure) onAuthFailure();
     }
   });
 };
 
-// Google Sign-In
+// Google Sign-In without forcing prompt select_account if already logged in
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;
-    const result = await signInWithPopup(provider.setCustomParameters({ prompt: 'select_account' }) ? auth : auth, provider);
+    // Do not force 'prompt: select_account' so Google automatically reuses existing session
+    const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
       throw new Error('No se pudo obtener el token de acceso de Google Auth');
     }
 
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
+    saveTokenToStorage(credential.accessToken);
+    return { user: result.user, accessToken: credential.accessToken };
   } catch (error: any) {
+    const errCode = error?.code || '';
+    const errMsg = String(error?.message || '').toLowerCase();
+
+    if (
+      errCode === 'auth/popup-closed-by-user' ||
+      errCode === 'auth/cancelled-popup-request' ||
+      errCode === 'auth/user-cancelled' ||
+      errMsg.includes('popup-closed-by-user') ||
+      errMsg.includes('cancelled-popup-request') ||
+      errMsg.includes('closed-by-user')
+    ) {
+      console.log('[Google Auth] El usuario cerró la ventana de autenticación con Google.');
+      return null;
+    }
+
+    if (errCode === 'auth/popup-blocked' || errMsg.includes('popup-blocked')) {
+      throw new Error('El navegador ha bloqueado la ventana emergente. Por favor, permite las ventanas emergentes en tu navegador.');
+    }
+
     console.error('Error al iniciar sesión con Google:', error);
     throw error;
   } finally {
@@ -55,12 +114,16 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
+  return getStoredToken();
 };
 
 export const logout = async () => {
   await auth.signOut();
   cachedAccessToken = null;
+  try {
+    localStorage.removeItem(STORAGE_TOKEN_KEY);
+    localStorage.removeItem(STORAGE_TOKEN_EXP_KEY);
+  } catch (e) {}
 };
 
 // Base64URL decoder
@@ -209,4 +272,198 @@ export const fetchGmailThreadsForEmail = async (
     console.error('Error fetching Gmail messages:', err);
     throw err;
   }
+};
+
+// Helper to safely encode UTF-8 strings to Base64URL
+function base64UrlEncode(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+export interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  dataBase64: string;
+}
+
+// Helper to construct base64url encoded MIME message (supports HTML, UTF-8, and Attachments)
+export function buildRawMimeMessage(
+  to: string,
+  subject: string,
+  bodyContent: string,
+  from?: string,
+  isHtml: boolean = true,
+  attachments: EmailAttachment[] = []
+): string {
+  const bytes = new TextEncoder().encode(subject);
+  let binarySubject = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binarySubject += String.fromCharCode(bytes[i]);
+  }
+  const subjectB64 = btoa(binarySubject);
+
+  const boundary = `====_Bakandeya_Boundary_${Date.now()}_====`;
+
+  let rawMime = '';
+
+  if (attachments && attachments.length > 0) {
+    // Multipart MIME Message with Attachments
+    const headers = [
+      `To: ${to}`,
+      from ? `From: ${from}` : '',
+      `Subject: =?UTF-8?B?${subjectB64}?=`,
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    ].filter(Boolean);
+
+    let mimeParts = headers.join('\r\n') + '\r\n\r\n';
+
+    // Body Part
+    mimeParts += `--${boundary}\r\n`;
+    mimeParts += isHtml
+      ? 'Content-Type: text/html; charset=UTF-8\r\n'
+      : 'Content-Type: text/plain; charset=UTF-8\r\n';
+    mimeParts += 'Content-Transfer-Encoding: 8bit\r\n\r\n';
+    mimeParts += bodyContent + '\r\n\r\n';
+
+    // Attachment Parts
+    for (const att of attachments) {
+      mimeParts += `--${boundary}\r\n`;
+      mimeParts += `Content-Type: ${att.contentType}; name="${att.filename}"\r\n`;
+      mimeParts += `Content-Disposition: attachment; filename="${att.filename}"\r\n`;
+      mimeParts += 'Content-Transfer-Encoding: base64\r\n\r\n';
+      mimeParts += att.dataBase64 + '\r\n\r\n';
+    }
+
+    mimeParts += `--${boundary}--\r\n`;
+    rawMime = mimeParts;
+  } else {
+    // Single part Message
+    const headers: string[] = [`To: ${to}`];
+    if (from) {
+      headers.push(`From: ${from}`);
+    }
+    headers.push(`Subject: =?UTF-8?B?${subjectB64}?=`);
+    headers.push('MIME-Version: 1.0');
+    headers.push(
+      isHtml
+        ? 'Content-Type: text/html; charset=UTF-8'
+        : 'Content-Type: text/plain; charset=UTF-8'
+    );
+
+    rawMime = headers.join('\r\n') + '\r\n\r\n' + bodyContent;
+  }
+
+  return base64UrlEncode(rawMime);
+}
+
+// Create Draft in Gmail
+export const createGmailDraft = async (
+  to: string,
+  subject: string,
+  bodyContent: string,
+  token?: string | null,
+  isHtml: boolean = true,
+  attachments: EmailAttachment[] = []
+): Promise<{ id: string; message: any }> => {
+  let activeToken = token || (await getAccessToken());
+  if (!activeToken) {
+    const authRes = await googleSignIn();
+    activeToken = authRes?.accessToken || null;
+  }
+  if (!activeToken) throw new Error('No hay sesión de Google activa para crear borrador en Gmail.');
+
+  const raw = buildRawMimeMessage(to, subject, bodyContent, undefined, isHtml, attachments);
+  let response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${activeToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      message: { raw }
+    })
+  });
+
+  if (response.status === 401) {
+    console.warn("Gmail token expirado (401), reintentando actualización automática...");
+    const authRes = await googleSignIn();
+    if (authRes?.accessToken) {
+      activeToken = authRes.accessToken;
+      response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${activeToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: { raw }
+        })
+      });
+    }
+  }
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `Error ${response.status} al crear borrador en Gmail`);
+  }
+
+  return response.json();
+};
+
+// Send Message in Gmail
+export const sendGmailMessage = async (
+  to: string,
+  subject: string,
+  bodyContent: string,
+  token?: string | null,
+  isHtml: boolean = true,
+  attachments: EmailAttachment[] = []
+): Promise<{ id: string; threadId: string }> => {
+  let activeToken = token || (await getAccessToken());
+  if (!activeToken) {
+    const authRes = await googleSignIn();
+    activeToken = authRes?.accessToken || null;
+  }
+  if (!activeToken) throw new Error('No hay sesión de Google activa para enviar correo vía Gmail.');
+
+  const raw = buildRawMimeMessage(to, subject, bodyContent, undefined, isHtml, attachments);
+  let response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${activeToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ raw })
+  });
+
+  if (response.status === 401) {
+    console.warn("Gmail token expirado (401), reintentando actualización automática...");
+    const authRes = await googleSignIn();
+    if (authRes?.accessToken) {
+      activeToken = authRes.accessToken;
+      response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${activeToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ raw })
+      });
+    }
+  }
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error?.message || `Error ${response.status} al enviar correo vía Gmail`);
+  }
+
+  return response.json();
 };

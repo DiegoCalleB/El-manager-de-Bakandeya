@@ -5,6 +5,8 @@
  * and audio file helpers.
  */
 
+import { getAuthHeaders } from '../services/api';
+
 const DB_NAME = 'BakandeyaAudioDB';
 const STORE_NAME = 'audio_files';
 const DB_VERSION = 1;
@@ -123,13 +125,23 @@ export async function uploadFileToServer(
   file: File, 
   options?: { bandId?: string; category?: string; folder?: string } | string
 ): Promise<string> {
+  const opts = typeof options === 'string' ? { bandId: options } : (options || {});
+
   try {
     const base64 = await fileToBase64(file);
-    const opts = typeof options === 'string' ? { bandId: options } : (options || {});
     
+    const authHeaders = getAuthHeaders() as Record<string, string>;
+    const headers: Record<string, string> = {
+      ...authHeaders,
+      'Content-Type': 'application/json'
+    };
+    if (opts.bandId) {
+      headers['x-band-id'] = opts.bandId;
+    }
+
     const response = await fetch('/api/upload', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ 
         filename: file.name, 
         base64,
@@ -145,18 +157,28 @@ export async function uploadFileToServer(
       console.warn(`/api/upload returned status ${response.status}, falling back to local storage`);
     }
   } catch (err) {
-    console.warn("Server upload failed, falling back to local IndexedDB storage:", err);
+    console.warn("Server upload failed, falling back to local storage:", err);
   }
 
-  // Fallback to IndexedDB local storage
-  try {
-    const fileKey = `track_file_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    await saveAudioToStorage(fileKey, file);
-    return `indexeddb:${fileKey}`;
-  } catch (idbErr) {
-    console.warn("IndexedDB fallback failed, returning base64 DataURL:", idbErr);
-    return await fileToBase64(file);
+  // Fallback: ONLY use IndexedDB for audio tracks (not for images/documents like logo/dossier/rider)
+  const isDocOrImage = opts.category === 'logo' || 
+                       opts.category === 'dossier' || 
+                       opts.category === 'rider' || 
+                       opts.category === 'epk' || 
+                       file.type.startsWith('image/') || 
+                       file.type.includes('pdf');
+
+  if (!isDocOrImage) {
+    try {
+      const fileKey = `track_file_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      await saveAudioToStorage(fileKey, file);
+      return `indexeddb:${fileKey}`;
+    } catch (idbErr) {
+      console.warn("IndexedDB fallback failed, returning base64 DataURL:", idbErr);
+    }
   }
+
+  return await fileToBase64(file);
 }
 
 export function fileToBase64(file: File): Promise<string> {

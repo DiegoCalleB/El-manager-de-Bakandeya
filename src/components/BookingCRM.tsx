@@ -17,6 +17,7 @@ import { NegotiationSimulationModal } from './booking/NegotiationSimulationModal
 import { LeadsTable } from './booking/LeadsTable';
 import { VenueDetailPanel } from './booking/VenueDetailPanel';
 import { MobileBottomSheet } from './booking/MobileBottomSheet';
+import { isLeadVerificado } from '../utils/leadReliability';
 
 export type TemplateCategory = 'salas' | 'festivales' | 'discotecas' | 'medios' | 'grupos' | 'managements';
 
@@ -154,6 +155,8 @@ export default function BookingCRM({
   });
 
   const [minCapacityFilter, setMinCapacityFilter] = useState<number>(0);
+  const [onlyFavoritesFilter, setOnlyFavoritesFilter] = useState<boolean>(false);
+  const [onlyVerifiedFilter, setOnlyVerifiedFilter] = useState<boolean>(false);
   const [isSavingFilterOpen, setIsSavingFilterOpen] = useState<boolean>(false);
   const [newFilterName, setNewFilterName] = useState<string>('');
   const [activeSavedFilterId, setActiveSavedFilterId] = useState<string | null>(null);
@@ -222,6 +225,8 @@ export default function BookingCRM({
     setStatusFilter('todos');
     setTypeFilter('todos');
     setMinCapacityFilter(0);
+    setOnlyFavoritesFilter(false);
+    setOnlyVerifiedFilter(false);
     setActiveSavedFilterId(null);
   };
 
@@ -909,7 +914,7 @@ Bakandeya Agent Manager IA`);
  return norm === 'medio' || norm === 'productora';
  };
 
- const isStitchLight = colors.accent === 'text-sky-400';
+ const isStitchLight = colors.name?.toLowerCase().includes('light') || colors.bg.includes('f8fafc') || colors.bg.includes('white') || colors.bg.includes('slate-50') || false;
 
  const getTypeBadgeClass = (typeVal: any) => {
  const norm = normalizeType(typeVal);
@@ -1757,6 +1762,36 @@ Bakandeya Agent Manager IA`);
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
+        {/* Favorites Filter Button */}
+        <button
+          type="button"
+          onClick={() => setOnlyFavoritesFilter(!onlyFavoritesFilter)}
+          className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+            onlyFavoritesFilter
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+              : 'bg-black/40 text-neutral-400 border-neutral-800 hover:text-amber-300'
+          }`}
+          title="Filtrar solo favoritos"
+        >
+          <span>⭐ Favoritos</span>
+          {onlyFavoritesFilter && <X className="w-3 h-3 ml-0.5" />}
+        </button>
+
+        {/* Verified Filter Button */}
+        <button
+          type="button"
+          onClick={() => setOnlyVerifiedFilter(!onlyVerifiedFilter)}
+          className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+            onlyVerifiedFilter
+              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50'
+              : 'bg-black/40 text-neutral-400 border-neutral-800 hover:text-sky-300'
+          }`}
+          title="Filtrar solo leads verificados con conversación activa"
+        >
+          <span>✔ Verificados</span>
+          {onlyVerifiedFilter && <X className="w-3 h-3 ml-0.5" />}
+        </button>
+
         {/* Min Capacity Filter Input */}
         <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-lg border border-neutral-800 text-[11px]">
           <span className="text-neutral-400">Aforo mín:</span>
@@ -1816,7 +1851,7 @@ Bakandeya Agent Manager IA`);
           </form>
         )}
 
-        {(searchTerm || selectedCityFilter || statusFilter !== "todos" || typeFilter !== "todos" || minCapacityFilter > 0 || activeSavedFilterId) && (
+        {(searchTerm || selectedCityFilter || statusFilter !== "todos" || typeFilter !== "todos" || minCapacityFilter > 0 || onlyFavoritesFilter || onlyVerifiedFilter || activeSavedFilterId) && (
           <button
             type="button"
             onClick={handleClearAllFilters}

@@ -6,54 +6,103 @@ import { loadState, saveState, requireAuth, requireLeader, getEpkConfigForBand, 
 export function buildAvailableBandsForUser(state: any, targetUser: any): any[] {
   if (!targetUser) return [];
   if (!state.userBands) state.userBands = [];
-  const userBandsList = state.userBands.filter((ub: any) => ub.user_id === targetUser.id);
+  
   const availableBands: any[] = [];
-  const seenBandIds = new Set<string>();
+  const seenCleanBandIds = new Set<string>();
 
   const getLogoForBand = (bandId: string, defaultName: string) => {
     const epk = getEpkConfigForBand(state, bandId, defaultName);
     if (epk?.logoUrl && epk.logoUrl.trim().length > 0) return epk.logoUrl;
-    const bandInfo = (state.registeredBands || []).find((b: any) => b.band_id === bandId || b.id === bandId);
+    const bandInfo = (state.registeredBands || []).find((b: any) =>
+      b.band_id === bandId || b.id === bandId ||
+      (b.band_id && b.band_id.replace(/^(band|reg)-/, '') === bandId.replace(/^(band|reg)-/, '')) ||
+      (b.id && b.id.replace(/^(band|reg)-/, '') === bandId.replace(/^(band|reg)-/, ''))
+    );
     if (bandInfo?.logo_url && bandInfo.logo_url.trim().length > 0) return bandInfo.logo_url;
     if (bandInfo?.imagen_url && bandInfo.imagen_url.trim().length > 0) return bandInfo.imagen_url;
-    if (bandId === 'band-bakandeya' || bandId === 'reg-bakandeya' || bandId === BAKANDEYA_BAND_ID) return '/logo_bakandeya_bueno_sin_fondo.png';
+    const clean = bandId.replace(/^(band|reg)-/, '');
+    if (clean === 'bakandeya') return '/logo_bakandeya_bueno_sin_fondo.png';
     return '';
   };
 
+  const userEmail = (targetUser.email || targetUser.username || "").toLowerCase();
+
+  // 1. Bands from state.userBands
+  const userBandsList = state.userBands.filter((ub: any) =>
+    ub.user_id === targetUser.id ||
+    (state.users && state.users.some((u: any) => u.id === ub.user_id && userEmail && (u.email?.toLowerCase() === userEmail || u.username?.toLowerCase() === userEmail)))
+  );
+
   userBandsList.forEach((ub: any) => {
-    const bandInfo = (state.registeredBands || []).find((b: any) => b.band_id === ub.band_id || b.id === ub.band_id);
-    const bandName = bandInfo?.nombre_banda || targetUser.bandName || "Banda";
-    seenBandIds.add(ub.band_id);
+    if (!ub.band_id) return;
+    const cleanId = ub.band_id.replace(/^(band|reg)-/, '');
+    if (seenCleanBandIds.has(cleanId)) return;
+    seenCleanBandIds.add(cleanId);
+
+    const bandInfo = (state.registeredBands || []).find((b: any) =>
+      b.band_id === ub.band_id || b.id === ub.band_id ||
+      (b.band_id && b.band_id.replace(/^(band|reg)-/, '') === cleanId) ||
+      (b.id && b.id.replace(/^(band|reg)-/, '') === cleanId)
+    );
+    const formattedFallback = cleanId ? cleanId.charAt(0).toUpperCase() + cleanId.slice(1) : "Banda";
+    const bandName = bandInfo?.nombre_banda || (ub.band_id === targetUser.band_id ? targetUser.bandName : null) || formattedFallback;
     availableBands.push({
       band_id: ub.band_id,
       bandName,
+      nombre_banda: bandName,
       role: ub.role || "member",
       userId: targetUser.id,
       logoUrl: getLogoForBand(ub.band_id, bandName)
     });
   });
 
-  const userEmail = targetUser.email?.toLowerCase() || targetUser.username?.toLowerCase() || "";
+  // 2. Bands from state.registeredBands
   const registeredBandsForUser = (state.registeredBands || []).filter(
     (b: any) => b.user_id === targetUser.id || (b.email && b.email.toLowerCase() === userEmail)
   );
   registeredBandsForUser.forEach((b: any) => {
-    if (b.band_id && !seenBandIds.has(b.band_id)) {
-      seenBandIds.add(b.band_id);
-      const bName = b.nombre_banda || "Banda";
+    const bid = b.band_id || b.id;
+    if (!bid) return;
+    const cleanId = bid.replace(/^(band|reg)-/, '');
+    if (seenCleanBandIds.has(cleanId)) return;
+    seenCleanBandIds.add(cleanId);
+
+    const bName = b.nombre_banda || "Banda";
+    availableBands.push({
+      band_id: bid,
+      bandName: bName,
+      nombre_banda: bName,
+      role: "leader",
+      userId: targetUser.id,
+      logoUrl: getLogoForBand(bid, bName)
+    });
+  });
+
+  // 3. Bands from other accounts matching same email/username
+  (state.users || []).forEach((u: any) => {
+    if (!u.band_id) return;
+    if (u.id === targetUser.id || (userEmail && (u.email?.toLowerCase() === userEmail || u.username?.toLowerCase() === userEmail))) {
+      const cleanId = u.band_id.replace(/^(band|reg)-/, '');
+      if (seenCleanBandIds.has(cleanId)) return;
+      seenCleanBandIds.add(cleanId);
+
+      const bName = u.bandName || u.name || "Banda";
       availableBands.push({
-        band_id: b.band_id,
+        band_id: u.band_id,
         bandName: bName,
-        role: "leader",
+        nombre_banda: bName,
+        role: u.role || "leader",
         userId: targetUser.id,
-        logoUrl: getLogoForBand(b.band_id, bName)
+        logoUrl: getLogoForBand(u.band_id, bName)
       });
     }
   });
 
+  // 4. Current active band
   const currentBid = targetUser.band_id || BAKANDEYA_BAND_ID;
-  if (!seenBandIds.has(currentBid)) {
-    seenBandIds.add(currentBid);
+  const cleanCurrent = currentBid.replace(/^(band|reg)-/, '');
+  if (!seenCleanBandIds.has(cleanCurrent)) {
+    seenCleanBandIds.add(cleanCurrent);
     const bName = targetUser.bandName || targetUser.name || "BAKANDEYA";
     availableBands.push({
       band_id: currentBid,
@@ -232,6 +281,13 @@ router.post("/auth/register", async (req, res) => {
   // Calculate availableBands dynamically
   const availableBands = buildAvailableBandsForUser(state, userToUse);
 
+  res.cookie("bakandeya_token", token, {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/"
+  });
+
   const { passwordHash, salt: _, ...safeUser } = userToUse;
   res.status(201).json({ token, user: safeUser, availableBands, multipleBands: availableBands.length > 1 });
 });
@@ -406,7 +462,122 @@ router.post("/auth/activate-member", async (req, res) => {
     };
   });
 
+  res.cookie("bakandeya_token", token, {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/"
+  });
+
   const { passwordHash: _, salt: __, ...safeUser } = user;
+  res.json({ token, user: safeUser, availableBands });
+});
+
+// Google Social OAuth Login / Registration
+router.post("/auth/google", loginRateLimiter, async (req, res) => {
+  const { email, name, uid, accessToken } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: "Email de Google es requerido" });
+  }
+
+  const state = loadState();
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Sync users from Google Sheets tab 'usuarios'
+  try {
+    const sheetUsers = await googleSheetsService.fetchUsers(state.users || []);
+    if (sheetUsers && sheetUsers.length > 0) {
+      sheetUsers.forEach((su: any) => {
+        const idx = state.users.findIndex(
+          (u: any) => u.id === su.id || (u.email && u.email.toLowerCase() === su.email?.toLowerCase())
+        );
+        if (idx !== -1) {
+          state.users[idx] = { ...state.users[idx], ...su };
+        } else {
+          state.users.push(su);
+        }
+      });
+      saveState(state);
+    }
+  } catch (err) {
+    // Continue with state
+  }
+
+  // Find existing user by email or google uid
+  let user = state.users.find(
+    (u: any) =>
+      (u.email && u.email.toLowerCase() === cleanEmail) ||
+      (u.username && u.username.toLowerCase() === cleanEmail) ||
+      (uid && u.googleUid === uid)
+  );
+
+  if (!user) {
+    // Auto-register new user authenticated with Google OAuth
+    const newUserId = uid || `user-google-${Date.now()}`;
+    const cleanName = name || cleanEmail.split("@")[0] || "Miembro Banda";
+    user = {
+      id: newUserId,
+      username: cleanEmail,
+      email: cleanEmail,
+      name: cleanName,
+      bandName: "Bakandeya",
+      band_id: BAKANDEYA_BAND_ID,
+      role: "leader",
+      plan: "profesional",
+      createdAt: new Date().toISOString(),
+      googleUid: uid,
+      authProvider: "google"
+    };
+
+    state.users.push(user);
+
+    // Sync user-band relationship
+    if (!state.userBands) state.userBands = [];
+    const existingUB = state.userBands.find(
+      (ub: any) => ub.user_id === user.id && ub.band_id === BAKANDEYA_BAND_ID
+    );
+    if (!existingUB) {
+      const newUB = {
+        id: `ub-${user.id}-${BAKANDEYA_BAND_ID}`,
+        user_id: user.id,
+        band_id: BAKANDEYA_BAND_ID,
+        role: "leader"
+      };
+      state.userBands.push(newUB);
+      try {
+        await googleSheetsService.appendUserBand(newUB);
+      } catch (e) {}
+    }
+
+    try {
+      await googleSheetsService.appendUser(user);
+    } catch (err) {
+      console.warn("Could not append new Google user to Sheets:", err);
+    }
+  }
+
+  if (accessToken) {
+    user.googleAccessToken = accessToken;
+  }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const sessionObj = { userId: user.id, googleAccessToken: accessToken, createdAt: Date.now() };
+  ACTIVE_SESSIONS[token] = sessionObj;
+  if (!state.sessions) state.sessions = {};
+  state.sessions[token] = sessionObj;
+
+  saveState(state);
+
+  const availableBands = buildAvailableBandsForUser(state, user);
+  const { passwordHash: _, salt: __, ...safeUser } = user;
+
+  res.cookie("bakandeya_token", token, {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/"
+  });
+
   res.json({ token, user: safeUser, availableBands });
 });
 
@@ -483,6 +654,13 @@ router.post("/auth/login", loginRateLimiter, async (req, res) => {
   // Recalculate availableBands
   const availableBands = buildAvailableBandsForUser(state, selectedUser);
 
+  res.cookie("bakandeya_token", token, {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/"
+  });
+
   const { passwordHash, salt, ...safeUser } = selectedUser;
   res.json({ token, user: safeUser, availableBands, multipleBands: availableBands.length > 1 });
 });
@@ -505,8 +683,8 @@ router.post("/auth/reset-password/request", loginRateLimiter, async (req, res) =
     return res.status(404).json({ error: "No se encontró ningún usuario con ese correo o usuario." });
   }
 
-  // Generate 6 digit code
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // Generate cryptographically secure 6 digit code
+  const code = crypto.randomInt(100000, 1000000).toString();
   const expiresAt = Date.now() + 15 * 60 * 1000; // 15 mins
 
   // Store reset code on user object(s) with matching email/username
@@ -532,9 +710,8 @@ router.post("/auth/reset-password/request", loginRateLimiter, async (req, res) =
 
   return res.json({
     success: true,
-    message: `Código de verificación generado para ${maskedEmail}`,
-    emailMasked: maskedEmail,
-    code
+    message: `Código de verificación enviado a ${maskedEmail}`,
+    emailMasked: maskedEmail
   });
 });
 
@@ -620,13 +797,30 @@ router.get("/auth/me", (req, res) => {
     return res.status(401).json({ error: "Sesión no válida o expirada" });
   }
 
-  if (token && session) ACTIVE_SESSIONS[token] = session;
+  if (token && session) {
+    session.createdAt = Date.now();
+    ACTIVE_SESSIONS[token] = session;
+    if (state.sessions && state.sessions[token]) {
+      state.sessions[token].createdAt = Date.now();
+      saveState(state);
+    }
+  }
+
+  // Set/Refresh 30-day session cookie
+  if (token) {
+    res.cookie("bakandeya_token", token, {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      httpOnly: false,
+      sameSite: "lax",
+      path: "/"
+    });
+  }
 
   // Recalculate availableBands
   const availableBands = buildAvailableBandsForUser(state, user);
 
   const { passwordHash, salt, ...safeUser } = user;
-  res.json({ user: safeUser, availableBands, multipleBands: availableBands.length > 1 });
+  res.json({ token, user: safeUser, availableBands, multipleBands: availableBands.length > 1 });
 });
 
 // Switch Active Band
@@ -697,15 +891,31 @@ router.post("/auth/switch-band", (req, res) => {
   let targetUser = currentUser;
   if (legacyTargetUser) {
     targetUser = legacyTargetUser;
-  } else {
-    // Single user model: update active band_id on user record
-    const bandInfo = (state.registeredBands || []).find(
-      (b: any) => b.band_id === band_id || b.id === band_id || (b.band_id && b.band_id.replace(/^(band|reg)-/, '') === cleanTargetBand)
-    );
-    currentUser.band_id = band_id;
-    if (bandInfo) {
-      currentUser.bandName = bandInfo.nombre_banda || bandInfo.bandName || bandInfo.name;
-    }
+  }
+  
+  const bandInfo = (state.registeredBands || []).find(
+    (b: any) => b.band_id === band_id || b.id === band_id ||
+    (b.band_id && b.band_id.replace(/^(band|reg)-/, '') === cleanTargetBand) ||
+    (b.id && b.id.replace(/^(band|reg)-/, '') === cleanTargetBand)
+  ) || (state.bands || []).find(
+    (b: any) => b.band_id === band_id || b.id === band_id ||
+    (b.band_id && b.band_id.replace(/^(band|reg)-/, '') === cleanTargetBand) ||
+    (b.id && b.id.replace(/^(band|reg)-/, '') === cleanTargetBand)
+  );
+
+  const resolvedName = bandInfo ? (bandInfo.nombre_banda || bandInfo.bandName || bandInfo.name) : (cleanTargetBand === 'bakandeya' ? 'BAKANDEYA' : targetUser.bandName || 'Banda');
+
+  targetUser.band_id = band_id;
+  targetUser.bandName = resolvedName;
+
+  // Sync band_id on all user records matching email
+  if (state.users) {
+    state.users.forEach((u: any) => {
+      if (u.id === targetUser.id || (userEmail && (u.email?.toLowerCase() === userEmail || u.username?.toLowerCase() === userEmail))) {
+        u.band_id = band_id;
+        u.bandName = resolvedName;
+      }
+    });
   }
 
   // Update session
@@ -715,6 +925,13 @@ router.post("/auth/switch-band", (req, res) => {
   if (!state.sessions) state.sessions = {};
   state.sessions[effectiveToken] = session;
   saveState(state);
+
+  res.cookie("bakandeya_token", effectiveToken, {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/"
+  });
 
   // Recalculate availableBands dynamically using userBands
   const availableBands = buildAvailableBandsForUser(state, targetUser);
@@ -734,6 +951,7 @@ router.post("/auth/logout", (req, res) => {
       saveState(state);
     }
   }
+  res.clearCookie("bakandeya_token", { path: "/" });
   res.json({ success: true });
 });
 
@@ -930,7 +1148,7 @@ router.put("/users/:id", requireAuth, async (req, res) => {
   if (loggedUser.role !== 'leader' && loggedUser.id !== id) {
     return res.status(403).json({ error: "Acceso denegado. Solo puedes modificar tu propia cuenta." });
   }
-  const { name, role, instrument, avatarColor, newPassword } = req.body;
+  const { name, role, instrument, avatarColor, newPassword, googleOAuth } = req.body;
 
   const state = loadState();
   const userIndex = state.users.findIndex((u: any) => u.id === id);
@@ -941,6 +1159,7 @@ router.put("/users/:id", requireAuth, async (req, res) => {
 
   const user = state.users[userIndex];
   if (name) user.name = name.trim();
+  if (googleOAuth !== undefined) user.googleOAuth = googleOAuth;
 
   // Security guard: Only leaders can change the role property.
   if (role !== undefined) {
