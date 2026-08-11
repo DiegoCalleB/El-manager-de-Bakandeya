@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "BUILDING=true vite build && BUILDING=true esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
+    "build": "BUILDING=true NODE_OPTIONS=--max-old-space-size=1536 vite build && BUILDING=true esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
     "start": "node --openssl-legacy-provider dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "esbuild server.ts src/main.tsx --bundle --platform=node --packages=external --outdir=dist/test-lint && rm -rf dist/test-lint",
@@ -35,7 +35,6 @@
     "react-dom": "^19.0.1",
     "react-qr-code": "^2.2.0",
     "recharts": "^3.9.2",
-    "vite": "^6.2.3",
     "wavesurfer.js": "^7.12.11",
     "xlsx": "^0.18.5",
     "youtube-transcript": "^1.3.1"
