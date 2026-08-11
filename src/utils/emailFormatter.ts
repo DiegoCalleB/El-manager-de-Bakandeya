@@ -141,16 +141,25 @@ export function formatEmailWithSignatureAndDossier(params: {
   const telefono = firma?.telefono || booking?.telefono || '+34 652 938 521';
   const email = firma?.email || booking?.email || 'bakandeya@gmail.com';
 
-  const dossierPdfUrl = epkConfig?.dossierPdfUrl || epkConfig?.dossierDocumentUrl || 'https://bands-manager.up.railway.app/epk';
-  const dossierPdfName = epkConfig?.dossierPdfName || 'Dossier_Oficial_Bakandeya_2025.pdf';
+  const dossierPdfUrl = epkConfig?.dossierPdfUrl || epkConfig?.dossierDocumentUrl || '';
+  const dossierPdfName = epkConfig?.dossierPdfName || 'Dossier_Oficial.pdf';
 
-  const spotify = epkConfig?.enlacesRedes?.spotify || 'https://open.spotify.com/artist/bakandeya';
-  const instagram = epkConfig?.enlacesRedes?.instagram || 'https://instagram.com/Bakandeya';
-  const youtube = epkConfig?.enlacesRedes?.youtube || 'https://youtube.com/@Bakandeya';
+  const spotify = epkConfig?.enlacesRedes?.spotify || '';
+  const instagram = epkConfig?.enlacesRedes?.instagram || '';
+  const youtube = epkConfig?.enlacesRedes?.youtube || '';
+  const website = epkConfig?.enlacesRedes?.website || '';
 
   // Check if user's pitch body already ends with a personal signature block
   const lowerBody = bodyContent.toLowerCase();
   const hasEmbeddedName = lowerBody.includes(remitenteNombre.toLowerCase()) || lowerBody.includes('diego de la calle');
+
+  const signatureLinksHtml = [
+    dossierPdfUrl ? `<a href="${dossierPdfUrl}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">🌐 Kit de Prensa (EPK)</a>` : '',
+    website ? `<a href="${website}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">🌐 Sitio Web</a>` : '',
+    spotify ? `<a href="${spotify}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">Spotify</a>` : '',
+    instagram ? `<a href="${instagram}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">Instagram</a>` : '',
+    youtube ? `<a href="${youtube}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">YouTube</a>` : ''
+  ].filter(Boolean).join(' &nbsp;•&nbsp; ');
 
   // 3. Construct natural, human HTML email body
   const html = `<!DOCTYPE html>
@@ -180,12 +189,11 @@ export function formatEmailWithSignatureAndDossier(params: {
         ✉️ <a href="mailto:${email}" style="color: #0284c7; text-decoration: none;">${email}</a>
       </div>
 
+      ${signatureLinksHtml ? `
       <div style="font-size: 13px; margin-top: 8px;">
-        🌐 <a href="${dossierPdfUrl}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">Kit de Prensa (EPK)</a> &nbsp;•&nbsp; 
-        <a href="${spotify}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">Spotify</a> &nbsp;•&nbsp; 
-        <a href="${instagram}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">Instagram</a> &nbsp;•&nbsp; 
-        <a href="${youtube}" style="color: #0284c7; text-decoration: underline; font-weight: 500;">YouTube</a>
+        ${signatureLinksHtml}
       </div>
+      ` : ''}
     </div>
 
   </div>
@@ -193,6 +201,14 @@ export function formatEmailWithSignatureAndDossier(params: {
 </html>`.trim();
 
   // 4. Plain text version
+  const linksTextArray = [
+    dossierPdfUrl ? `EPK / Dossier: ${dossierPdfUrl}` : '',
+    website ? `Web: ${website}` : '',
+    spotify ? `Spotify: ${spotify}` : '',
+    instagram ? `Instagram: ${instagram}` : '',
+    youtube ? `YouTube: ${youtube}` : ''
+  ].filter(Boolean);
+
   const text = `
 ${bodyContent}
 
@@ -200,8 +216,7 @@ ${bodyContent}
 ${remitenteNombre}
 ${cargo} — ${resolvedBandName}
 Tel: ${telefono} | Email: ${email}
-EPK / Dossier: ${dossierPdfUrl}
-Spotify: ${spotify} | Instagram: ${instagram}
+${linksTextArray.join(' | ')}
 `.trim();
 
   // 5. Generate REAL PDF attachment
