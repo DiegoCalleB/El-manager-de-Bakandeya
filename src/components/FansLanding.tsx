@@ -218,7 +218,7 @@ export const FansLanding: React.FC = () => {
                 ¡Gracias por tu apoyo! 🎶
               </span>
             )} 
-            Apóyanos como prefieras: **síguenos directamente en tus redes favoritas** o **recibe información en tu correo**.
+            Apóyanos como prefieras: <strong className="text-white">síguenos directamente en tus redes favoritas</strong> o <strong className="text-white">recibe información en tu correo</strong>.
           </p>
         </div>
 
@@ -254,7 +254,7 @@ export const FansLanding: React.FC = () => {
             <div className="p-3.5 bg-neutral-950/80 rounded-xl border border-neutral-800 text-center space-y-1">
               <p className="text-xs font-bold text-amber-400">⚡ ¡Ayúdanos a crecer!</p>
               <p className="text-[11px] text-neutral-400 font-mono leading-relaxed">
-                Elige tu plataforma preferida y danos un **Follow / Guardar**. ¡Es la mejor forma de apoyar la música independiente!
+                Elige tu plataforma preferida y danos un <strong className="text-white">Follow / Guardar</strong>. ¡Es la mejor forma de apoyar la música independiente!
               </p>
             </div>
 
