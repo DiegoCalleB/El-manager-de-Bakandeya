@@ -472,14 +472,26 @@ Nunca inventories datos. Si el usuario pregunta por algo que no está en el JSON
           description: `Aprobar el correo de presentación preparado para ${matchedLead.nombre_sala}.`
         });
       } else if (pendingLeads.length > 0 && (lowerMsg.includes("aprobar") || lowerMsg.includes("pendiente") || lowerMsg.includes("correo"))) {
-        const firstPending = pendingLeads[0];
-        reply += `\n\n💡 **Acción recomendada detectada:** Tienes **${pendingLeads.length}** salas pendientes de aprobación. Te propongo aprobar la primera (**${firstPending.nombre_sala}**):`;
-        proposedActions.push({
-          type: "propose_lead_approval",
-          leadId: firstPending.id,
-          leadName: firstPending.nombre_sala,
-          description: `Aprobar el correo de presentación preparado para ${firstPending.nombre_sala}.`
-        });
+        if (lowerMsg.includes("todo") || lowerMsg.includes("todas") || lowerMsg.includes("todos") || lowerMsg.includes("varios") || lowerMsg.includes("3")) {
+          reply += `\n\n💡 **Acciones recomendadas detectadas:** Tienes **${pendingLeads.length}** salas pendientes de aprobación. Te propongo la aprobación de todas ellas:`;
+          pendingLeads.forEach(pLead => {
+            proposedActions.push({
+              type: "propose_lead_approval",
+              leadId: pLead.id,
+              leadName: pLead.nombre_sala,
+              description: `Aprobar el correo de presentación preparado para ${pLead.nombre_sala}.`
+            });
+          });
+        } else {
+          const firstPending = pendingLeads[0];
+          reply += `\n\n💡 **Acción recomendada detectada:** Tienes **${pendingLeads.length}** salas pendientes de aprobación. Te propongo aprobar la primera (**${firstPending.nombre_sala}**):`;
+          proposedActions.push({
+            type: "propose_lead_approval",
+            leadId: firstPending.id,
+            leadName: firstPending.nombre_sala,
+            description: `Aprobar el correo de presentación preparado para ${firstPending.nombre_sala}.`
+          });
+        }
       }
 
       return res.json({

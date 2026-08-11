@@ -753,7 +753,8 @@ export function parsePrivateKey(rawKey?: string): string | null {
         console.warn("[Sheets Auth Fix] RSA key format failed validation:", err2.message || err2);
       }
 
-      return formattedKey;
+      console.warn("[Sheets Auth Fix] Private key failed crypto validation. Please verify GOOGLE_PRIVATE_KEY environment variable format.");
+      return null;
     }
   }
 

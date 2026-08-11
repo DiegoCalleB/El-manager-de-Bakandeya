@@ -7,7 +7,8 @@ import { sendGmailMessage, createGmailDraft, getAccessToken, googleSignIn } from
 import { formatEmailWithSignatureAndDossier } from '../utils/emailFormatter';
 
 interface ProposedAction {
- type: 'propose_lead_approval' | 'propose_rehearsal' | 'propose_status_change' | 'propose_agent_trigger' | 'propose_concert' | 'propose_add_concert' | 'propose_band' | 'propose_tour' | 'propose_update_logo' | 'propose_send_email' | 'propose_draft_email' | 'propose_add_lead' | 'propose_update_lead';
+  status?: 'pending' | 'applied' | 'dismissed';
+  type: 'propose_lead_approval' | 'propose_rehearsal' | 'propose_status_change' | 'propose_agent_trigger' | 'propose_concert' | 'propose_add_concert' | 'propose_band' | 'propose_tour' | 'propose_update_logo' | 'propose_send_email' | 'propose_draft_email' | 'propose_add_lead' | 'propose_update_lead';
  leadId?: string;
  bandId?: string;
  targetType?: 'lead' | 'band';
@@ -97,7 +98,11 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((m: any) => ({
             ...m,
-            timestamp: m.timestamp ? new Date(m.timestamp) : new Date()
+            timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+            proposedActions: (m.proposedActions || []).map((act: any) => ({
+              ...act,
+              status: act.status || (m.actionStatus === 'applied' ? 'applied' : m.actionStatus === 'dismissed' ? 'dismissed' : 'pending')
+            }))
           }));
         }
       } catch (e) {
@@ -123,7 +128,11 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
         if (Array.isArray(parsed) && parsed.length > 0) {
           setMessages(parsed.map((m: any) => ({
             ...m,
-            timestamp: m.timestamp ? new Date(m.timestamp) : new Date()
+            timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+            proposedActions: (m.proposedActions || []).map((act: any) => ({
+              ...act,
+              status: act.status || (m.actionStatus === 'applied' ? 'applied' : m.actionStatus === 'dismissed' ? 'dismissed' : 'pending')
+            }))
           })));
           return;
         }
@@ -502,22 +511,28 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
 
  const data = await response.json();
  
+ const rawActions: ProposedAction[] = data.proposedActions || [];
+ const processedActions: ProposedAction[] = rawActions.map(a => ({
+ ...a,
+ status: a.status || 'pending'
+ }));
+
  const botMsg: ChatMessage = {
  id: `bot-${Date.now()}`,
  sender: 'bot',
  text: data.text || 'He recibido los datos correctamente.',
  timestamp: new Date(),
- proposedActions: data.proposedActions || [],
- actionStatus: (data.proposedActions && data.proposedActions.length > 0) ? 'pending' : undefined
+ proposedActions: processedActions,
+ actionStatus: (processedActions.length > 0) ? 'pending' : undefined
  };
 
  setMessages(prev => [...prev, botMsg]);
  
  // Auto-execute the agent trigger action if proposed
- if (data.proposedActions && data.proposedActions.length > 0) {
- data.proposedActions.forEach((action: ProposedAction) => {
+ if (processedActions.length > 0) {
+ processedActions.forEach((action: ProposedAction, idx: number) => {
  if (action.type === 'propose_agent_trigger') {
- handleConfirmAction(botMsg.id, action);
+ handleConfirmAction(botMsg.id, idx, action);
  }
  });
  }
@@ -536,8 +551,44 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  }
  };
 
+ const updateActionStatusInMessages = (msgId: string, actionIndex: number, action: ProposedAction, status: 'applied' | 'dismissed') => {
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) {
+ const currentActions = m.proposedActions ? [...m.proposedActions] : [];
+ let targetIdx = actionIndex;
+ if (targetIdx < 0 || targetIdx >= currentActions.length || !currentActions[targetIdx]) {
+ targetIdx = currentActions.findIndex(a => (action.leadId && a.leadId === action.leadId) || (a.description && a.description === action.description) || a === action);
+ }
+ if (targetIdx !== -1 && currentActions[targetIdx]) {
+ currentActions[targetIdx] = {
+ ...currentActions[targetIdx],
+ status
+ };
+ }
+ const nonTriggers = currentActions.filter(a => a.type !== 'propose_agent_trigger');
+ const allResolved = nonTriggers.length === 0 || nonTriggers.every(a => a.status === 'applied' || a.status === 'dismissed');
+ return {
+ ...m,
+ proposedActions: currentActions,
+ actionStatus: allResolved ? status : 'pending'
+ };
+ }
+ return m;
+ }));
+ };
+
+ async function handleConfirmAllActions(msgId: string, actions: ProposedAction[]) {
+ const pendingItems = actions
+ .map((act, idx) => ({ act, idx }))
+ .filter(item => item.act.type !== 'propose_agent_trigger' && (item.act.status || 'pending') === 'pending');
+
+ for (const item of pendingItems) {
+ await handleConfirmAction(msgId, item.idx, item.act);
+ }
+ }
+
  // Confirm action callback
- async function handleConfirmAction(msgId: string, action: ProposedAction) {
+ async function handleConfirmAction(msgId: string, actionIndex: number, action: ProposedAction) {
  // 1. Apply changes
   if (action.type === 'propose_lead_approval') {
  const targetLead = leads.find(l => l.id === action.leadId);
@@ -647,12 +698,7 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  }, targetLead.estado);
  }
 
- setMessages(prev => prev.map(m => {
- if (m.id === msgId) {
- return { ...m, actionStatus: 'applied' };
- }
- return m;
- }));
+ updateActionStatusInMessages(msgId, actionIndex, action, 'applied');
 
  const successMsg: ChatMessage = {
  id: `sys-${Date.now()}`,
@@ -1242,13 +1288,18 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  try {
  } catch (_) {}
 
- const handleDismissAction = (msgId: string) => {
- setMessages(prev => prev.map(m => {
- if (m.id === msgId) {
- return { ...m, actionStatus: 'dismissed' };
- }
- return m;
- }));
+ const handleDismissAction = (msgId: string, actionIndex?: number, action?: ProposedAction) => {
+   if (typeof actionIndex === 'number' && action) {
+     updateActionStatusInMessages(msgId, actionIndex, action, 'dismissed');
+   } else {
+     setMessages(prev => prev.map(m => {
+       if (m.id === msgId) {
+         const currentActions = (m.proposedActions || []).map(a => ({ ...a, status: 'dismissed' as const }));
+         return { ...m, proposedActions: currentActions, actionStatus: 'dismissed' };
+       }
+       return m;
+     }));
+   }
  };
 
  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1439,31 +1490,49 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  </div>
 
  {/* Proposed actions box within chat */}
- {isBot && msg.proposedActions && msg.proposedActions.filter(a => a.type !== 'propose_agent_trigger').length > 0 && (
+ {isBot && msg.proposedActions && msg.proposedActions.filter(a => a.type !== 'propose_agent_trigger').length > 0 && (() => {
+ const nonTriggerActions = msg.proposedActions.filter(a => a.type !== 'propose_agent_trigger');
+ const pendingActions = nonTriggerActions.filter(a => (a.status || 'pending') === 'pending');
+
+ return (
  <div className={` rounded-2xl p-4 space-y-3 max-w-sm mt-1 backdrop-blur-md ${isStitchLight ? '-indigo-100 bg-indigo-50/20' : '-cyan-500/20 bg-cyan-500/5'}`}>
+ <div className="flex items-center justify-between gap-1.5">
  <div className={`flex items-center gap-1.5 ${isStitchLight ? 'text-indigo-600' : 'text-cyan-400'}`}>
  <Sparkles className="w-3.5 h-3.5 animate-pulse" />
- <h5 className="font-mono font-bold text-[9px] tracking-widest uppercase">Propuesta del Manager de IA</h5>
+ <h5 className="font-mono font-bold text-[9px] tracking-widest uppercase">Propuestas del Manager ({nonTriggerActions.length})</h5>
+ </div>
+ {pendingActions.length > 1 && (
+ <button
+ onClick={() => handleConfirmAllActions(msg.id, msg.proposedActions || [])}
+ className={`text-[9px] font-bold font-mono px-2 py-1 rounded-md transition-all active:scale-95 ${isStitchLight ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-cyan-500 text-neutral-950 hover:bg-cyan-400'}`}
+ >
+ ⚡ Aprobar Todos ({pendingActions.length})
+ </button>
+ )}
  </div>
  
- {msg.proposedActions.filter(a => a.type !== 'propose_agent_trigger').map((act, aIdx) => (
- <div key={aIdx} className="space-y-2.5">
+ {nonTriggerActions.map((act, aIdx) => {
+ const realIdx = msg.proposedActions ? msg.proposedActions.indexOf(act) : aIdx;
+ const actStatus = act.status || (msg.actionStatus === 'applied' ? 'applied' : msg.actionStatus === 'dismissed' ? 'dismissed' : 'pending');
+
+ return (
+ <div key={aIdx} className="space-y-2 border-t border-slate-800/20 pt-2 first:border-0 first:pt-0">
  <p className={`text-[11px] leading-relaxed p-2.5 rounded-xl font-mono ${isStitchLight ? 'text-slate-800 bg-white -slate-200' : 'text-neutral-300 bg-neutral-950 -neutral-900'}`}>
  {act.description}
  </p>
 
- {msg.actionStatus === 'pending' ? (
+ {actStatus === 'pending' ? (
  <div className="flex gap-2">
  <button
- id={`confirm-proposal-btn-${msg.id}`}
- onClick={() => handleConfirmAction(msg.id, act)}
+ id={`confirm-proposal-btn-${msg.id}-${aIdx}`}
+ onClick={() => handleConfirmAction(msg.id, realIdx, act)}
  className={`flex-1 text-[10px] font-bold font-mono tracking-wider uppercase py-2 rounded-lg transition-all cursor-pointer active:scale-95 active:opacity-90 ${isStitchLight ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm' : 'bg-cyan-500 hover:bg-cyan-600 text-neutral-950'}`}
  >
- ✓ Aplicar Cambio
+ ✓ Aprobar esta
  </button>
  <button
- id={`dismiss-proposal-btn-${msg.id}`}
- onClick={() => handleDismissAction(msg.id)}
+ id={`dismiss-proposal-btn-${msg.id}-${aIdx}`}
+ onClick={() => handleDismissAction(msg.id, realIdx, act)}
  className={`px-3 py-2 text-[10px] font-mono rounded-lg transition-colors cursor-pointer active:scale-95 active:opacity-90 ${
  isStitchLight 
  ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 -slate-200' 
@@ -1473,19 +1542,21 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  Descartar
  </button>
  </div>
- ) : msg.actionStatus === 'applied' ? (
+ ) : actStatus === 'applied' ? (
  <div className="text-[10px] font-mono text-emerald-600 bg-emerald-500/5 -emerald-500/10 rounded-lg p-2 flex items-center gap-1.5">
- <CheckCircle className="w-3.5 h-3.5" /> Cambio de estado aplicado
+ <CheckCircle className="w-3.5 h-3.5" /> Aprobado e insertado
  </div>
  ) : (
  <div className={`text-[10px] font-mono rounded-lg p-2 ${isStitchLight ? 'text-slate-400 bg-slate-50 -slate-100' : 'text-neutral-500 bg-neutral-900 -neutral-800'}`}>
- Propuesta descartada / expirada
+ Propuesta descartada
  </div>
  )}
  </div>
- ))}
+ );
+ })}
  </div>
- )}
+ );
+ })()}
  </div>
  </div>
  );
