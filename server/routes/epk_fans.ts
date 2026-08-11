@@ -182,8 +182,15 @@ router.get("/public/epk", (req, res) => {
 });
 
 // Get Fans List (Authenticated)
-router.get("/fans", requireAuth, (req, res) => {
+router.get("/fans", requireAuth, async (req, res) => {
   const state = loadState();
+  try {
+    state.fans = await googleSheetsService.fetchFans(state.fans || []);
+    saveState(state);
+  } catch (err) {
+    console.warn("Notice fetching fans from sheet:", err);
+  }
+
   const userBandId = (req as any).user?.band_id || 'band-bakandeya';
   const matchBand = (f: any) => {
     if (!f) return false;

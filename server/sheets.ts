@@ -3154,19 +3154,23 @@ export async function fetchFansFromSheet(fallback: Fan[]): Promise<Fan[]> {
 export async function appendFanToSheet(fan: Fan) {
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
-  if (!sheets || !spreadsheetId) return;
+  if (!sheets || !spreadsheetId) {
+    console.warn("⚠️ [appendFanToSheet] Google Sheets client or SPREADSHEET_ID is not configured. Fan saved locally only.");
+    return;
+  }
 
   try {
     await ensureFansSheet(sheets, spreadsheetId);
     await retrySheetsWrite(() => sheets.spreadsheets.values.append({
       spreadsheetId,
       range: "fans!A:J",
-      valueInputOption: "RAW",
+      valueInputOption: "USER_ENTERED",
       requestBody: { values: [fanToRow(fan)] }
     }));
+    console.log(`Successfully appended Fan ${fan.email} to Google Sheet tab 'fans'`);
     invalidateValuesCache("fans");
   } catch (error: any) {
-    console.error("Error appending fan to sheet:", error.message || error);
+    console.error("Error appending fan to Google Sheet:", error?.message || error);
   }
 }
 
