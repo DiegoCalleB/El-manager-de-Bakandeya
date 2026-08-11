@@ -821,8 +821,7 @@ router.post("/places-search", requireAuth, async (req, res) => {
     }
 
     const searchQuery = query || `salas de concierto y festivales de música en ${ciudad}${region ? `, ${region}` : ''}, España`;
-    // Desactivado temporalmente a petición del usuario para probar el fallback de Gemini
-    const placesApiKey = ""; // process.env.GOOGLE_PLACES_API_KEY || process.env.VITE_GOOGLE_PLACES_API_KEY || "";
+    const placesApiKey = process.env.GOOGLE_PLACES_API_KEY || process.env.VITE_GOOGLE_PLACES_API_KEY || "";
 
     if (placesApiKey && placesApiKey.trim() !== "") {
       try {

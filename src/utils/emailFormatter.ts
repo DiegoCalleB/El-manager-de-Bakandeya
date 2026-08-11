@@ -59,7 +59,7 @@ export function buildBakandeyaDossierPdfBase64(params?: {
     '0 -18 Td',
     '(- Repertorio, audios de estudio y videos de directo en alta calidad) Tj',
     '0 -30 Td',
-    '(Kit de Prensa Completo (EPK): https://bandmanagement-ai.up.railway.app/epk) Tj',
+    '(Kit de Prensa Completo (EPK): https://bands-manager.up.railway.app/epk) Tj',
     'ET',
   ];
 
@@ -141,7 +141,7 @@ export function formatEmailWithSignatureAndDossier(params: {
   const telefono = firma?.telefono || booking?.telefono || '+34 652 938 521';
   const email = firma?.email || booking?.email || 'bakandeya@gmail.com';
 
-  const dossierPdfUrl = epkConfig?.dossierPdfUrl || epkConfig?.dossierDocumentUrl || 'https://bandmanagement-ai.up.railway.app/epk';
+  const dossierPdfUrl = epkConfig?.dossierPdfUrl || epkConfig?.dossierDocumentUrl || 'https://bands-manager.up.railway.app/epk';
   const dossierPdfName = epkConfig?.dossierPdfName || 'Dossier_Oficial_Bakandeya_2025.pdf';
 
   const spotify = epkConfig?.enlacesRedes?.spotify || 'https://open.spotify.com/artist/bakandeya';

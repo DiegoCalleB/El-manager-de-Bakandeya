@@ -5,6 +5,7 @@ import {
   Instagram, Youtube, Disc
 } from 'lucide-react';
 import { EPKConfig, Song, Concert } from '../types';
+import { SocialPlatformsList } from './SocialPlatformsList';
 
 interface PublicEPKProps {
   initialData?: {
@@ -143,25 +144,13 @@ export const PublicEPK: React.FC<PublicEPKProps> = ({ initialData }) => {
               </p>
 
               {/* Quick links bar */}
-              <div className="pt-2 flex flex-wrap justify-center md:justify-start gap-2 print:hidden">
-                {config.enlacesRedes?.spotify && (
-                  <a href={config.enlacesRedes.spotify} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition">
-                    <Music className="w-3.5 h-3.5" /> Spotify
-                  </a>
-                )}
-                {config.enlacesRedes?.youtube && (
-                  <a href={config.enlacesRedes.youtube} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-red-950/60 border border-red-500/40 text-red-300 hover:bg-red-900/60 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition">
-                    <Youtube className="w-3.5 h-3.5" /> YouTube
-                  </a>
-                )}
-                {config.enlacesRedes?.instagram && (
-                  <a href={config.enlacesRedes.instagram} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-pink-950/60 border border-pink-500/40 text-pink-300 hover:bg-pink-900/60 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition">
-                    <Instagram className="w-3.5 h-3.5" /> Instagram
-                  </a>
+              <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3 print:hidden">
+                {config.enlacesRedes && (
+                  <SocialPlatformsList links={config.enlacesRedes} variant="pills" showTitle={false} />
                 )}
                 {config.dossierPdfUrl && (
-                  <a href={config.dossierPdfUrl} target="_blank" rel="noopener noreferrer" className="px-3.5 py-1.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold rounded-lg flex items-center gap-1.5 transition shadow-sm">
-                    <Download className="w-3.5 h-3.5" /> {config.dossierPdfName || 'Descargar Dossier PDF'}
+                  <a href={config.dossierPdfUrl} target="_blank" rel="noopener noreferrer" className="px-3.5 py-1.5 bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 text-xs font-bold rounded-full flex items-center gap-1.5 transition shadow-sm">
+                    <Download className="w-3.5 h-3.5" /> {config.dossierPdfName || 'Dossier PDF'}
                   </a>
                 )}
               </div>

@@ -92,7 +92,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
   // Incentive state
   const [incentivo, setIncentivo] = useState(epkConfig?.incentivoFans || {
     mensajeAgradecimiento: "¡Muchas gracias por unirte a la familia de la banda!",
-    enlaceDescarga: "https://bandmanagement-ai.up.railway.app/descargas/tema-inedito-directo.mp3",
+    enlaceDescarga: "https://bands-manager.up.railway.app/descargas/tema-inedito-directo.mp3",
     codigoDescuento: "BAKANDEYA-FAN-10"
   });
   const [savedIncentive, setSavedIncentive] = useState(false);
@@ -248,8 +248,11 @@ export const FansPanel: React.FC<FansPanelProps> = ({
 
   const selectedConcert = concerts.find(c => c.id === selectedConcertId);
   const [customSlug, setCustomSlug] = useState('');
-  const [useCustomDomain, setUseCustomDomain] = useState(true); // Default to clean custom domain like bandmanagement-ai.up.railway.app
-  const [customDomain, setCustomDomain] = useState('bandmanagement-ai.up.railway.app');
+  const [useCustomDomain, setUseCustomDomain] = useState(true); // Default to clean custom domain like bands-manager.up.railway.app
+  const defaultDomain = typeof window !== 'undefined' && window.location.hostname.endsWith('railway.app')
+    ? window.location.hostname
+    : 'bands-manager.up.railway.app';
+  const [customDomain, setCustomDomain] = useState(defaultDomain);
   const [routePrefix, setRoutePrefix] = useState('unete');
 
   useEffect(() => {
@@ -264,7 +267,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
   // Build clean target URL
   const rawDomain = useCustomDomain 
     ? (customDomain.trim().startsWith('http') ? customDomain.trim() : `https://${customDomain.trim().replace(/\/$/, '')}`)
-    : (typeof window !== 'undefined' ? window.location.origin : 'https://bandmanagement-ai.up.railway.app');
+    : (typeof window !== 'undefined' ? window.location.origin : 'https://bands-manager.up.railway.app');
 
   const cleanPrefix = routePrefix.trim().replace(/^\/+|\/+$/g, '');
   const cleanSlugVal = customSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
@@ -932,7 +935,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
                     }`}
                   >
                     <span>🌐 Dominio Web Oficial</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Para impresiones/carteles (ej. bandmanagement-ai.up.railway.app)</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Para impresiones/carteles (ej. bands-manager.up.railway.app)</span>
                   </button>
                   <button
                     type="button"
@@ -957,7 +960,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
                         type="text"
                         value={customDomain}
                         onChange={e => setCustomDomain(e.target.value)}
-                        placeholder="bandmanagement-ai.up.railway.app"
+                        placeholder="bands-manager.up.railway.app"
                         className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500 rounded-lg p-2.5 text-xs text-white outline-none font-mono"
                       />
                     </div>
@@ -1021,7 +1024,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
                   {qrConcertUrl}
                 </p>
                 <p className="text-[10px] text-slate-400 leading-relaxed pt-1">
-                  💡 <strong className="text-slate-300">¿Por qué aparecía la URL previa larga?</strong> La URL <code className="text-amber-400/80">ais-dev-...run.app</code> es la dirección técnica interna del contenedor de pruebas en la nube. Con la opción de <strong>Dominio Web Oficial</strong> activada, el QR impreso en tus carteles llevará tu dominio limpio (<strong className="text-slate-200">bandmanagement-ai.up.railway.app/unete</strong>).
+                  💡 <strong className="text-slate-300">¿Por qué aparecía la URL previa larga?</strong> La URL <code className="text-amber-400/80">ais-dev-...run.app</code> es la dirección técnica interna del contenedor de pruebas en la nube. Con la opción de <strong>Dominio Web Oficial</strong> activada, el QR impreso en tus carteles llevará tu dominio limpio (<strong className="text-slate-200">bands-manager.up.railway.app/unete</strong>).
                 </p>
               </div>
 

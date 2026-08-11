@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Heart, Check, Download, Tag, Loader2, PartyPopper, Shield, X, Flame, Music } from 'lucide-react';
-import QRCode from 'react-qr-code';
+import { SocialPlatformsList, SocialLinks } from './SocialPlatformsList';
 
 export const FansLanding: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'redes' | 'form'>('redes');
   const [formData, setFormData] = useState({
     nombre: '',
     email: '',
@@ -20,19 +21,23 @@ export const FansLanding: React.FC = () => {
   const [isConcertLink, setIsConcertLink] = useState(false);
   
   const [logoUrl, setLogoUrl] = useState('/logo_bakandeya_bueno_sin_fondo.png');
+  const [socialLinks, setSocialLinks] = useState<SocialLinks | undefined>(undefined);
   const [imgErrorCount, setImgErrorCount] = useState(0);
 
   useEffect(() => {
-    // Fetch official band logo from public EPK endpoint
+    // Fetch official band logo and social links from public EPK endpoint
     fetch('/api/public/epk')
       .then(res => (res.ok && res.headers.get('content-type')?.includes('application/json')) ? res.json().catch(() => null) : null)
       .then(data => {
         if (data?.epkConfig?.logoUrl) {
           setLogoUrl(data.epkConfig.logoUrl);
         }
+        if (data?.epkConfig?.enlacesRedes) {
+          setSocialLinks(data.epkConfig.enlacesRedes);
+        }
       })
       .catch(err => {
-        console.warn("Could not fetch EPK logo for fans landing:", err);
+        console.warn("Could not fetch EPK data for fans landing:", err);
       });
   }, []);
 
@@ -156,8 +161,17 @@ export const FansLanding: React.FC = () => {
               )}
             </div>
           )}
+
+          {/* Official Social Links in Success View */}
+          <div className="pt-2 border-t border-neutral-800">
+            <SocialPlatformsList 
+              links={socialLinks} 
+              variant="grid" 
+              title="📱 Síguenos en nuestras plataformas" 
+            />
+          </div>
           
-          <div className="pt-4">
+          <div className="pt-2">
             <a href="/" className="text-xs font-mono text-neutral-500 hover:text-amber-500 underline transition-colors">
               Volver al inicio
             </a>
@@ -201,102 +215,175 @@ export const FansLanding: React.FC = () => {
               </span>
             ) : (
               <span className="text-amber-400 font-bold block mb-2 px-3 py-1 bg-amber-400/10 rounded-full inline-block">
-                ¡Gracias por escucharnos! 🎶
+                ¡Gracias por tu apoyo! 🎶
               </span>
             )} 
-            Déjanos tus datos para no perder el contacto, recibir acceso anticipado y enterarte de todo antes que nadie.
+            Apóyanos como prefieras: **síguenos directamente en tus redes favoritas** o **únete al Fan Club** para regalos exclusivos.
           </p>
         </div>
-        
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-          {error && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-mono rounded-xl text-center">
-              {error}
-            </div>
-          )}
-          
-          <div>
-            <label className="text-[10px] font-black text-neutral-300 uppercase font-mono tracking-widest mb-1.5 block">Nombre *</label>
-            <input 
-              type="text" 
-              required
-              value={formData.nombre}
-              onChange={e => setFormData({...formData, nombre: e.target.value})}
-              className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-500 rounded-xl p-3.5 text-white font-mono text-sm outline-none transition-colors"
-              placeholder="Tu nombre completo"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-black text-neutral-300 uppercase font-mono tracking-widest mb-1.5 block">Email *</label>
-            <input 
-              type="email" 
-              required
-              value={formData.email}
-              onChange={e => setFormData({...formData, email: e.target.value})}
-              className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-500 rounded-xl p-3.5 text-white font-mono text-sm outline-none transition-colors"
-              placeholder="tu@email.com"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-black text-neutral-400 uppercase font-mono tracking-widest mb-1.5 block">Ciudad (Opcional)</label>
-            <input 
-              type="text" 
-              value={formData.ciudad}
-              onChange={e => setFormData({...formData, ciudad: e.target.value})}
-              className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-500 rounded-xl p-3.5 text-white font-mono text-sm outline-none transition-colors"
-              placeholder="¿De dónde nos escuchas?"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-black text-neutral-300 uppercase font-mono tracking-widest mb-1.5 block">¿Cómo nos conociste? *</label>
-            <select 
-              required
-              value={formData.comoConocio}
-              onChange={e => setFormData({...formData, comoConocio: e.target.value})}
-              className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-500 rounded-xl p-3.5 text-white font-mono text-sm outline-none transition-colors appearance-none"
-            >
-              <option value="">Selecciona una opción...</option>
-              <option value="Concierto">En un concierto</option>
-              <option value="Redes Sociales">Por Instagram / TikTok / Redes</option>
-              <option value="Amigo">Por recomendación de un amigo</option>
-              <option value="Spotify">Descubrimiento en Spotify / Streaming</option>
-              <option value="Otro">Otro</option>
-            </select>
-          </div>
-          
-          <div className="pt-3 pb-2">
-            <label className="flex items-start gap-3 cursor-pointer group p-3 bg-neutral-950/50 rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors">
-              <div className="relative flex items-center justify-center mt-0.5">
-                <input 
-                  type="checkbox" 
-                  required
-                  checked={formData.consentimiento}
-                  onChange={e => setFormData({...formData, consentimiento: e.target.checked})}
-                  className="peer appearance-none w-5 h-5 border-2 border-neutral-700 rounded bg-neutral-950 checked:bg-amber-500 checked:border-amber-500 transition-colors shrink-0 cursor-pointer"
-                />
-                <Check className="w-3.5 h-3.5 text-neutral-900 absolute pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity" strokeWidth={4} />
-              </div>
-              <span className="text-[10px] text-neutral-400 font-mono leading-relaxed group-hover:text-neutral-300 transition-colors pt-0.5">
-                He leído y acepto la <button type="button" onClick={() => setShowPrivacyModal(true)} className="text-amber-400 underline hover:text-amber-300 font-bold inline">política de privacidad</button>, y doy mi <strong className="text-neutral-200">consentimiento explícito</strong> para que Bakandeya guarde mis datos y me envíe comunicaciones (obligatorio por RGPD).
-              </span>
-            </label>
-          </div>
-          
+
+        {/* Dual Tab Mode Switcher */}
+        <div className="flex bg-neutral-950 p-1.5 rounded-2xl border border-neutral-800 text-xs font-mono">
           <button 
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 mt-2 bg-gradient-to-r from-[#f2ca50] to-[#e0a820] hover:from-[#ffe088] hover:to-[#f2ca50] text-[#121111] font-black text-sm uppercase tracking-widest font-mono rounded-xl shadow-[0_0_20px_rgba(242,202,80,0.15)] transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:pointer-events-none"
+            type="button" 
+            onClick={() => setActiveTab('redes')}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2 ${
+              activeTab === 'redes' 
+                ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-neutral-950 shadow-lg shadow-amber-500/20 font-black' 
+                : 'text-neutral-400 hover:text-white'
+            }`}
           >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Registrando...
-              </>
-            ) : (
-              'Unirme a Bakandeya'
-            )}
+            <span>📱 Síguenos en Redes</span>
           </button>
-        </form>
+          <button 
+            type="button" 
+            onClick={() => setActiveTab('form')}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2 ${
+              activeTab === 'form' 
+                ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-neutral-950 shadow-lg shadow-amber-500/20 font-black' 
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            <span>🎁 Fan Club (Regalo)</span>
+          </button>
+        </div>
+
+        {/* Tab 1: Redes Sociales */}
+        {activeTab === 'redes' && (
+          <div className="space-y-4 animate-fade-in pt-1">
+            <div className="p-3.5 bg-neutral-950/80 rounded-xl border border-neutral-800 text-center space-y-1">
+              <p className="text-xs font-bold text-amber-400">⚡ ¡Ayúdanos a crecer!</p>
+              <p className="text-[11px] text-neutral-400 font-mono leading-relaxed">
+                Elige tu plataforma preferida y danos un **Follow / Guardar**. ¡Es la mejor forma de apoyar la música independiente!
+              </p>
+            </div>
+
+            <SocialPlatformsList 
+              links={socialLinks || {
+                spotify: 'https://open.spotify.com/artist/bakandeya',
+                instagram: 'https://instagram.com/bakandeya',
+                youtube: 'https://youtube.com/@bakandeya',
+                tiktok: 'https://tiktok.com/@bakandeya'
+              }} 
+              variant="grid" 
+              showTitle={false} 
+            />
+
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={() => setActiveTab('form')}
+                className="text-xs font-mono text-amber-400/90 hover:text-amber-300 underline font-bold transition-colors"
+              >
+                🎁 ¿Quieres temas inéditos y descuentos? Únete al Fan Club →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Formulario Fan Club */}
+        {activeTab === 'form' && (
+          <form onSubmit={handleSubmit} className="space-y-4 pt-1 animate-fade-in">
+            {error && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-mono rounded-xl text-center">
+                {error}
+              </div>
+            )}
+            
+            <div>
+              <label className="text-[10px] font-black text-neutral-300 uppercase font-mono tracking-widest mb-1.5 block">Nombre *</label>
+              <input 
+                type="text" 
+                required
+                value={formData.nombre}
+                onChange={e => setFormData({...formData, nombre: e.target.value})}
+                className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-500 rounded-xl p-3.5 text-white font-mono text-sm outline-none transition-colors"
+                placeholder="Tu nombre completo"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-neutral-300 uppercase font-mono tracking-widest mb-1.5 block">Email *</label>
+              <input 
+                type="email" 
+                required
+                value={formData.email}
+                onChange={e => setFormData({...formData, email: e.target.value})}
+                className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-500 rounded-xl p-3.5 text-white font-mono text-sm outline-none transition-colors"
+                placeholder="tu@email.com"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-neutral-400 uppercase font-mono tracking-widest mb-1.5 block">Ciudad (Opcional)</label>
+              <input 
+                type="text" 
+                value={formData.ciudad}
+                onChange={e => setFormData({...formData, ciudad: e.target.value})}
+                className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-500 rounded-xl p-3.5 text-white font-mono text-sm outline-none transition-colors"
+                placeholder="¿De dónde nos escuchas?"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-neutral-300 uppercase font-mono tracking-widest mb-1.5 block">¿Cómo nos conociste? *</label>
+              <select 
+                required
+                value={formData.comoConocio}
+                onChange={e => setFormData({...formData, comoConocio: e.target.value})}
+                className="w-full bg-neutral-950 border border-neutral-800 focus:border-amber-500 rounded-xl p-3.5 text-white font-mono text-sm outline-none transition-colors appearance-none"
+              >
+                <option value="">Selecciona una opción...</option>
+                <option value="Concierto">En un concierto</option>
+                <option value="Redes Sociales">Por Instagram / TikTok / Redes</option>
+                <option value="Amigo">Por recomendación de un amigo</option>
+                <option value="Spotify">Descubrimiento en Spotify / Streaming</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            
+            <div className="pt-2 pb-1">
+              <label className="flex items-start gap-3 cursor-pointer group p-3 bg-neutral-950/50 rounded-xl border border-neutral-800 hover:border-neutral-700 transition-colors">
+                <div className="relative flex items-center justify-center mt-0.5">
+                  <input 
+                    type="checkbox" 
+                    required
+                    checked={formData.consentimiento}
+                    onChange={e => setFormData({...formData, consentimiento: e.target.checked})}
+                    className="peer appearance-none w-5 h-5 border-2 border-neutral-700 rounded bg-neutral-950 checked:bg-amber-500 checked:border-amber-500 transition-colors shrink-0 cursor-pointer"
+                  />
+                  <Check className="w-3.5 h-3.5 text-neutral-900 absolute pointer-events-none opacity-0 peer-checked:opacity-100 transition-opacity" strokeWidth={4} />
+                </div>
+                <span className="text-[10px] text-neutral-400 font-mono leading-relaxed group-hover:text-neutral-300 transition-colors pt-0.5">
+                  He leído y acepto la <button type="button" onClick={() => setShowPrivacyModal(true)} className="text-amber-400 underline hover:text-amber-300 font-bold inline">política de privacidad</button>, y doy mi <strong className="text-neutral-200">consentimiento explícito</strong> para que la banda guarde mis datos y me envíe novedades.
+                </span>
+              </label>
+            </div>
+            
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 mt-1 bg-gradient-to-r from-[#f2ca50] to-[#e0a820] hover:from-[#ffe088] hover:to-[#f2ca50] text-[#121111] font-black text-sm uppercase tracking-widest font-mono rounded-xl shadow-[0_0_20px_rgba(242,202,80,0.15)] transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-70 disabled:pointer-events-none"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Registrando...
+                </>
+              ) : (
+                'Unirme al Fan Club'
+              )}
+            </button>
+
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={() => setActiveTab('redes')}
+                className="text-xs font-mono text-neutral-400 hover:text-amber-400 underline transition-colors"
+              >
+                📱 O si lo prefieres, solo síguenos en redes sociales →
+              </button>
+            </div>
+          </form>
+        )}
+
       </div>
 
       {/* Privacy Policy Modal */}

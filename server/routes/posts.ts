@@ -21,7 +21,32 @@ router.put("/posts/:id", requireAuth, async (req, res) => {
       await updatePostInSheet(state.posts[idx]);
     }
     
-    res.json({ success: true, post: state.posts[idx] });
+    let webhookTriggered = false;
+    let webhookError = null;
+    if (updated.estado === "publicado" && process.env.PUBLISH_WEBHOOK_URL) {
+      try {
+        console.log(`[Publishing Webhook] Triggering webhook for post ${id}...`);
+        const resp = await fetch(process.env.PUBLISH_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "post_published",
+            post: state.posts[idx],
+            timestamp: new Date().toISOString()
+          })
+        });
+        if (resp.ok) {
+          webhookTriggered = true;
+        } else {
+          webhookError = `HTTP ${resp.status}: ${await resp.text()}`;
+        }
+      } catch (err: any) {
+        console.error("Error triggering publish webhook on update:", err);
+        webhookError = err.message || String(err);
+      }
+    }
+    
+    res.json({ success: true, post: state.posts[idx], webhookTriggered, webhookError });
   } else {
     res.status(404).json({ error: "Post not found" });
   }

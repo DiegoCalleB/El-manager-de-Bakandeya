@@ -80,6 +80,82 @@ app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Privacy Policy endpoint required for Google OAuth verification
+app.get("/privacy", (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Política de Privacidad - BandManager.ai</title>
+        <style>
+          body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #1e293b; background: #f8fafc; }
+          h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+          h2 { color: #334155; margin-top: 30px; }
+          p, li { color: #475569; }
+          .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>Política de Privacidad de BandManager.ai</h1>
+          <p><strong>Última actualización:</strong> Agosto de 2026</p>
+          <p>En <strong>BandManager.ai</strong> (desarrollado en el marco del TFM de Gestión Agéntica para Músicos), nos tomamos muy en serio la privacidad y la protección de los datos de las bandas y músicos independientes.</p>
+          
+          <h2>1. Información que Recopilamos</h2>
+          <p>Para el correcto funcionamiento de las herramientas de booking, CRM y automatización de correos, la aplicación puede solicitar autorización de acceso a tu cuenta de Google (Gmail API). Los datos accedidos se limitan estrictamente a:</p>
+          <ul>
+            <li>Dirección de correo electrónico de la cuenta conectada.</li>
+            <li>Permisos para redactar borradores y enviar correos de booking a salas bajo tu supervisión directa (Human-in-the-Loop).</li>
+            <li>Lectura de mensajes de correo relacionados exclusivamente con respuestas de salas de conciertos.</li>
+          </ul>
+
+          <h2>2. Uso de la Información</h2>
+          <p>Los datos y tokens de acceso de OAuth de Google se utilizan exclusivamente en el lado del cliente y del servidor proxy para permitir a los artistas gestionar sus giras, repertorios y comunicaciones. <strong>Nunca compartimos, vendemos ni cedemos datos personales o credenciales de correo a terceros.</strong></p>
+
+          <h2>3. Seguridad de los Datos</h2>
+          <p>Todas las comunicaciones están cifradas mediante protocolos seguros (HTTPS). Las credenciales de acceso se gestionan de forma segura cumpliendo con los estándares de Google OAuth 2.0.</p>
+
+          <h2>4. Contacto</h2>
+          <p>Para cualquier duda relativa a esta política de privacidad, puedes contactar con el equipo de desarrollo a través de la propia plataforma del TFM.</p>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
+// Terms of Service endpoint required for Google OAuth verification
+app.get("/terms", (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Términos de Servicio - BandManager.ai</title>
+        <style>
+          body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #1e293b; background: #f8fafc; }
+          h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+          h2 { color: #334155; margin-top: 30px; }
+          p, li { color: #475569; }
+          .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>Términos de Servicio de BandManager.ai</h1>
+          <p><strong>Última actualización:</strong> Agosto de 2026</p>
+          <p>Bienvenido a <strong>BandManager.ai</strong>. Al utilizar nuestra plataforma de gestión musical y booking automatizado, aceptas los siguientes términos y condiciones:</p>
+
+          <h2>1. Uso Académico y Profesional</h2>
+          <p>BandManager.ai es una herramienta integral diseñada para la optimización logística, financiera y de contratación de bandas musicales. Su uso implica el cumplimiento de las normativas de comunicación comercial y uso legítimo de APIs de terceros.</p>
+
+          <h2>2. Responsabilidad de Envío (Human-in-the-Loop)</h2>
+          <p>La plataforma genera propuestas y borradores de correo mediante inteligencia artificial. El usuario es el único responsable de revisar y aprobar el contenido antes de que se produzca cualquier envío oficial a salas o promotores.</p>
+
+          <h2>3. Modificaciones y Disponibilidad</h2>
+          <p>Al encontrarse en entorno de desarrollo e investigación (TFM), la aplicación se ofrece tal cual, sin garantías absolutas de disponibilidad continua.</p>
+        </div>
+      </body>
+    </html>
+  `);
+});
+
 // System status endpoint
 app.get("/api/debug-key", (req, res) => {
   const rawKey = process.env.GOOGLE_PRIVATE_KEY || process.env.PRIVATE_KEY || "";

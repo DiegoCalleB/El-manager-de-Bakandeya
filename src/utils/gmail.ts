@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { EmailMessage } from '../types';
 
@@ -12,6 +12,8 @@ const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
 provider.addScope('https://www.googleapis.com/auth/gmail.compose');
 provider.addScope('https://www.googleapis.com/auth/gmail.send');
+// Force prompt select account to let user choose diegolimado@gmail.com easily
+provider.setCustomParameters({ prompt: 'select_account' });
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
@@ -46,6 +48,21 @@ const getStoredToken = (): string | null => {
   return null;
 };
 
+// Check redirect result on load
+getRedirectResult(auth)
+  .then((result) => {
+    if (result) {
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        saveTokenToStorage(credential.accessToken);
+        console.log('[Google Auth] Redirect login successful for:', result.user.email);
+      }
+    }
+  })
+  .catch((err) => {
+    console.warn('[Google Auth] Redirect result error:', err);
+  });
+
 // Initialize auth state listener
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
@@ -56,7 +73,6 @@ export const initAuth = (
     if (user && validToken) {
       if (onAuthSuccess) onAuthSuccess(user, validToken);
     } else if (user) {
-      // User is logged in with Firebase, check if we can silently get token or let caller ask
       if (validToken && onAuthSuccess) {
         onAuthSuccess(user, validToken);
       } else if (!isSigningIn && onAuthFailure) {
@@ -73,11 +89,10 @@ export const initAuth = (
   });
 };
 
-// Google Sign-In without forcing prompt select_account if already logged in
+// Google Sign-In with popup and redirect fallback for iframe environments
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;
-    // Do not force 'prompt: select_account' so Google automatically reuses existing session
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
@@ -102,8 +117,16 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       return null;
     }
 
-    if (errCode === 'auth/popup-blocked' || errMsg.includes('popup-blocked')) {
-      throw new Error('El navegador ha bloqueado la ventana emergente. Por favor, permite las ventanas emergentes en tu navegador.');
+    // If popup is blocked or running in restrictive iframe, try redirect method automatically
+    if (errCode === 'auth/popup-blocked' || errMsg.includes('popup-blocked') || window.self !== window.top) {
+      console.log('[Google Auth] Popup blocked or in iframe, initiating redirect sign-in...');
+      try {
+        await signInWithRedirect(auth, provider);
+        return null;
+      } catch (redirectErr) {
+        console.error('Redirect sign-in error:', redirectErr);
+        throw redirectErr;
+      }
     }
 
     if (errCode === 'auth/unauthorized-domain' || errMsg.includes('unauthorized-domain')) {

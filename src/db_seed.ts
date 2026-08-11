@@ -168,7 +168,7 @@ Contacto de la oficina de Bakandeya. Queremos proponer una fecha para nuestra gi
 
 Nuestra fusión de ska instrumental clásico con bases electrónicas potentes encaja como anillo al dedo con el perfil de vuestra sala 2. Ofrecemos una noche de baile total, con el respaldo de nuestra fanbase en Cataluña (tenemos unos 15.000 oyentes mensuales en el área de Barcelona).
 
-Dossier interactivo: https://bandmanagement-ai.up.railway.app/epk
+Dossier interactivo: https://bands-manager.up.railway.app/epk
 
 ¿Cómo tenéis las fechas libres para los fines de semana de Diciembre?
 
@@ -324,7 +324,7 @@ Nos complace presentarles la propuesta musical de Bakandeya de cara a su escenar
 
 Bakandeya ofrece una fusión sin precedentes de ska instrumental, reggae africano y electrónica analógica europea, logrando un sonido multicultural que encaja a la perfección con la filosofía del festival. Nuestro show invita a la danza y el encuentro a través del ritmo.
 
-EPK y dossier: https://bandmanagement-ai.up.railway.app/epk
+EPK y dossier: https://bands-manager.up.railway.app/epk
 
 Esperamos que nuestra propuesta sea de su agrado para complementar las noches de fusión.
 
@@ -624,7 +624,7 @@ Os saludamos desde Bakandeya. Les hacemos llegar nuestro dossier con motivo del 
 
 Nos ponemos a vuestra disposición para tocar en acústico en los estudios de Prado del Rey o realizar una entrevista telefónica sobre el concepto sonoro del violín solista y las percusiones recicladas.
 
-Audio en calidad broadcast y bio: https://bandmanagement-ai.up.railway.app/epk
+Audio en calidad broadcast y bio: https://bands-manager.up.railway.app/epk
 
 Atentamente,
 Bakandeya Agent Manager IA`,

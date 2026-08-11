@@ -48,7 +48,7 @@ const DEFAULT_EPK_CONFIG = {
     youtube: "https://youtube.com/@bakandeya_oficial",
     instagram: "https://instagram.com/bakandeya_oficial",
     tiktok: "https://tiktok.com/@bakandeya_oficial",
-    website: "https://bandmanagement-ai.up.railway.app"
+    website: "https://bands-manager.up.railway.app"
   },
   contactoBooking: {
     nombre: "Diego de la Calle / Mánager Bakandeya",
@@ -58,7 +58,7 @@ const DEFAULT_EPK_CONFIG = {
   temasDestacadosIds: ["s-1", "s-2", "s-3"],
   incentivoFans: {
     mensajeAgradecimiento: "¡Muchas gracias por unirte a la familia de Bakandeya! Aquí tienes tu regalo exclusivo por apoyarnos en el concierto.",
-    enlaceDescarga: "https://bandmanagement-ai.up.railway.app/descargas/tema-inedito-directo.mp3",
+    enlaceDescarga: "https://bands-manager.up.railway.app/descargas/tema-inedito-directo.mp3",
     codigoDescuento: "BAKANDEYA-FAN-10"
   },
   ciudadesConfig: ["Madrid", "Sevilla", "Barcelona", "Málaga", "Valencia", "Granada", "Cádiz"]
@@ -355,29 +355,68 @@ export function ensureUniqueIdsInState(state: any): boolean {
         if (!item || typeof item !== 'object') return;
 
         let key = '';
+        const bid = cleanBidStr(item.band_id || '');
+
         if (colKey === 'registeredBands') {
-          const bid = cleanBidStr(item.band_id || item.id || '');
-          const email = (item.email || '').toLowerCase();
-          key = `${bid}:${email}`;
+          const rBid = cleanBidStr(item.band_id || item.id || '');
+          const email = (item.email || '').trim().toLowerCase();
+          key = email ? `reg:${rBid}:${email}` : (rBid || item.id || `rb-${idx}`);
         } else if (colKey === 'songs') {
           const title = (item.titulo || item.id || '').trim().toLowerCase();
-          const bid = cleanBidStr(item.band_id || '');
-          key = `${title}:${bid}`;
+          key = `song:${title}:${bid}`;
         } else if (colKey === 'setlists') {
           const name = (item.nombreSetlist || item.id || '').trim().toLowerCase();
-          const bid = cleanBidStr(item.band_id || '');
-          key = `${name}:${bid}`;
+          key = `setlist:${name}:${bid}`;
         } else if (colKey === 'bands') {
-          const bid = cleanBidStr(item.band_id || item.id || '');
-          key = bid || item.nombre_banda || item.id;
+          const bId = cleanBidStr(item.band_id || item.id || '');
+          const bName = (item.nombre_banda || '').trim().toLowerCase();
+          key = bName ? `band:${bName}` : (bId || item.id || `b-${idx}`);
         } else if (colKey === 'userBands') {
-          key = `${item.user_id}:${item.band_id}`;
+          key = `ub:${item.user_id}:${item.band_id}`;
+        } else if (colKey === 'users') {
+          const uname = (item.username || '').trim().toLowerCase();
+          const uemail = (item.email || '').trim().toLowerCase();
+          key = uemail ? `user:email:${uemail}` : (uname ? `user:uname:${uname}` : (item.id || `u-${idx}`));
+        } else if (colKey === 'fans') {
+          const femail = (item.email || '').trim().toLowerCase();
+          const fname = (item.nombre || '').trim().toLowerCase();
+          const fciudad = (item.ciudad || '').trim().toLowerCase();
+          key = femail ? `fan:email:${femail}` : (fname && fciudad ? `fan:${fname}:${fciudad}` : (item.id || `fan-${idx}`));
+        } else if (colKey === 'leads') {
+          const lsala = (item.nombre_sala || '').trim().toLowerCase();
+          const lciudad = (item.ciudad || '').trim().toLowerCase();
+          const lemail = (item.email_contacto || '').trim().toLowerCase();
+          key = lemail ? `lead:email:${lemail}` : (lsala && lciudad ? `lead:${lsala}:${lciudad}` : (item.id || `lead-${idx}`));
+        } else if (colKey === 'concerts') {
+          const cfecha = (item.fecha || '').trim();
+          const csala = (item.sala || item.nombre || '').trim().toLowerCase();
+          key = cfecha && csala ? `concert:${cfecha}:${csala}` : (item.id || `concert-${idx}`);
+        } else if (colKey === 'rehearsals') {
+          const rfecha = (item.fecha || '').trim();
+          const rlugar = (item.lugar || item.titulo || '').trim().toLowerCase();
+          key = rfecha && rlugar ? `rehearsal:${rfecha}:${rlugar}` : (item.id || `rehearsal-${idx}`);
+        } else if (colKey === 'posts') {
+          const pfecha = (item.fecha || '').trim();
+          const ptitle = (item.titulo || item.caption || '').trim().toLowerCase();
+          key = ptitle ? `post:${ptitle}` : (item.id || `post-${idx}`);
+        } else if (colKey === 'payments') {
+          const pconc = (item.concepto || '').trim().toLowerCase();
+          const pfecha = (item.fecha || '').trim();
+          const pmonto = String(item.monto || item.cantidad || 0);
+          key = pconc && pfecha ? `payment:${pfecha}:${pconc}:${pmonto}` : (item.id || `payment-${idx}`);
+        } else if (colKey === 'metrics') {
+          const mfecha = (item.fecha || '').trim();
+          const mplat = (item.plataforma || '').trim().toLowerCase();
+          key = mfecha && mplat ? `metric:${mfecha}:${mplat}` : (item.id || `metric-${idx}`);
+        } else if (colKey === 'tours') {
+          const tname = (item.nombre || '').trim().toLowerCase();
+          key = tname ? `tour:${tname}` : (item.id || `tour-${idx}`);
         } else {
           key = item.id || `${colKey}-${idx}`;
         }
 
-        if (!key || !seenKeys.has(key)) {
-          if (key) seenKeys.add(key);
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
           cleanArray.push(item);
         }
       });
@@ -733,6 +772,10 @@ export function loadState(): any {
 
       ensureCategoryTemplatesInState(state);
 
+      if (ensureUniqueIdsInState(state)) {
+        changed = true;
+      }
+
       if (changed) {
         saveState(state);
       }
@@ -786,12 +829,14 @@ export function loadState(): any {
     })
   };
   ensureBakandeyaBandId(defaultState);
+  ensureUniqueIdsInState(defaultState);
   saveState(defaultState);
   return defaultState;
 }
 
 export function saveState(state: any) {
   try {
+    ensureUniqueIdsInState(state);
     const tmpFile = `${DATA_FILE}.tmp`;
     fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), "utf-8");
     fs.renameSync(tmpFile, DATA_FILE);

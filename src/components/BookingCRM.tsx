@@ -2025,6 +2025,7 @@ Bakandeya Agent Manager IA`);
       {savedFilters.map((sf) => {
         const isActive = activeSavedFilterId === sf.id;
         return (
+
           <div
             key={sf.id}
             className={`group relative shrink-0 flex items-center rounded-full border transition-all cursor-pointer ${
