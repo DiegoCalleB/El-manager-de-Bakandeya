@@ -15,7 +15,7 @@ interface FansPanelProps {
   epkConfig: EPKConfig;
   onAddFan: (fan: Fan) => void;
   onDeleteFan: (id: string) => void;
-  onUpdateIncentive: (newIncentive: EPKConfig['incentivoFans']) => void;
+  onUpdateIncentive?: (newIncentive: EPKConfig['incentivoFans']) => void;
   onUpdateEpkConfig?: (newConfig: Partial<EPKConfig>) => void;
 }
 
@@ -30,7 +30,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
   onUpdateIncentive,
   onUpdateEpkConfig
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'fans' | 'qr' | 'incentives'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'fans' | 'qr'>('dashboard');
   const [viewMode, setViewMode] = useState<'grid' | 'table' | 'map'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterOrigen, setFilterOrigen] = useState<string>('');
@@ -240,11 +240,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
     setNewNombre(''); setNewEmail(''); setNewCiudad(''); setNewOrigen('Manual');
   };
 
-  const handleSaveIncentive = () => {
-    onUpdateIncentive(incentivo);
-    setSavedIncentive(true);
-    setTimeout(() => setSavedIncentive(false), 2500);
-  };
+
 
   const selectedConcert = concerts.find(c => c.id === selectedConcertId);
   const [customSlug, setCustomSlug] = useState('');
@@ -422,12 +418,6 @@ export const FansPanel: React.FC<FansPanelProps> = ({
           className={`px-4 py-2.5 flex items-center gap-2 border-b-2 transition cursor-pointer ${activeTab === 'qr' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
         >
           <QrCode className="w-4 h-4" /> Generador de QR
-        </button>
-        <button
-          onClick={() => setActiveTab('incentives')}
-          className={`px-4 py-2.5 flex items-center gap-2 border-b-2 transition cursor-pointer ${activeTab === 'incentives' ? 'border-amber-500 text-amber-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-        >
-          <Sparkles className="w-4 h-4" /> Regalos & Descargas
         </button>
       </div>
 
@@ -1101,67 +1091,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
         </div>
       )}
 
-      {activeTab === 'incentives' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-          <div className="space-y-1 border-b border-slate-800 pb-4">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2 font-display uppercase tracking-widest">
-              <Sparkles className="w-5 h-5 text-amber-400" /> Recompensas para Fans
-            </h3>
-            <p className="text-xs text-slate-400 font-mono">
-              Personaliza el mensaje de agradecimiento y los premios que recibirá el fan al instante.
-            </p>
-          </div>
 
-          {savedIncentive && (
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono font-bold rounded-xl flex items-center gap-2">
-              <Check className="w-4 h-4" /> ¡Recompensas actualizadas!
-            </div>
-          )}
-
-          <div className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-amber-500 uppercase font-mono tracking-widest">Mensaje de Agradecimiento</label>
-              <textarea
-                rows={3}
-                value={incentivo.mensajeAgradecimiento || ''}
-                onChange={e => setIncentivo({ ...incentivo, mensajeAgradecimiento: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-3 text-xs text-white outline-none font-mono leading-relaxed"
-                placeholder="¡Gracias por formar parte!"
-              />
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-amber-500 uppercase font-mono tracking-widest">Enlace de Descarga MP3 (Inédito)</label>
-                <input
-                  type="text"
-                  value={incentivo.enlaceDescarga || ''}
-                  onChange={e => setIncentivo({ ...incentivo, enlaceDescarga: e.target.value })}
-                  placeholder="https://drive.google.com/file/d/..."
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-3 text-xs font-mono text-white outline-none"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-amber-500 uppercase font-mono tracking-widest">Código Descuento Merch</label>
-                <input
-                  type="text"
-                  value={incentivo.codigoDescuento || ''}
-                  onChange={e => setIncentivo({ ...incentivo, codigoDescuento: e.target.value })}
-                  placeholder="BAKANDEYA-FAN-10"
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-3 text-xs font-mono text-white outline-none uppercase"
-                />
-              </div>
-            </div>
-            
-            <button
-              onClick={handleSaveIncentive}
-              className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black font-mono text-xs uppercase tracking-widest rounded-xl shadow-lg transition cursor-pointer"
-            >
-              Guardar Recompensas
-            </button>
-          </div>
-        </div>
-      )}
 
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">

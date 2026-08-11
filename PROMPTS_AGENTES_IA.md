@@ -22,7 +22,7 @@ Sin historial previo de feedback. Usar tono bailable, directo y fresco sin instr
 ## 📁 Pautas, Plantillas y Calificaciones por Categoría
 
 ### Salas y Teatros de Conciertos (`salas`)
-- **Última Actualización**: 11/8/2026, 7:22:19
+- **Última Actualización**: 11/8/2026, 10:11:02
 - **Valoración de Tono y Estilo**: 5 / 5 ⭐
 - **Valoración de Contenido y Estructura**: 5 / 5 ⭐
 
@@ -59,7 +59,7 @@ Bakandeya Agent Manager IA
 ---
 
 ### Festivales de Música (`festivales`)
-- **Última Actualización**: 11/8/2026, 7:22:19
+- **Última Actualización**: 11/8/2026, 10:11:02
 - **Valoración de Tono y Estilo**: 5 / 5 ⭐
 - **Valoración de Contenido y Estructura**: 5 / 5 ⭐
 
@@ -96,7 +96,7 @@ Bakandeya Agent Manager IA
 ---
 
 ### Discotecas y Clubbing Nocturno (`discotecas`)
-- **Última Actualización**: 11/8/2026, 7:22:19
+- **Última Actualización**: 11/8/2026, 10:11:02
 - **Valoración de Tono y Estilo**: 5 / 5 ⭐
 - **Valoración de Contenido y Estructura**: 5 / 5 ⭐
 
@@ -131,7 +131,7 @@ Bakandeya Agent Manager IA
 ---
 
 ### Medios de Comunicación, Radio y Prensa (`medios`)
-- **Última Actualización**: 11/8/2026, 7:22:19
+- **Última Actualización**: 11/8/2026, 10:11:02
 - **Valoración de Tono y Estilo**: 5 / 5 ⭐
 - **Valoración de Contenido y Estructura**: 5 / 5 ⭐
 
@@ -164,7 +164,7 @@ Bakandeya Agent Manager IA
 ---
 
 ### Grupos y Bandas para Intercambio de Fechas (`grupos`)
-- **Última Actualización**: 11/8/2026, 7:22:19
+- **Última Actualización**: 11/8/2026, 10:11:02
 - **Valoración de Tono y Estilo**: 5 / 5 ⭐
 - **Valoración de Contenido y Estructura**: 5 / 5 ⭐
 
@@ -202,7 +202,7 @@ Bakandeya Agent Manager IA
 ---
 
 ### Agencias de Management y Booking (`managements`)
-- **Última Actualización**: 11/8/2026, 7:22:19
+- **Última Actualización**: 11/8/2026, 10:11:02
 - **Valoración de Tono y Estilo**: 5 / 5 ⭐
 - **Valoración de Contenido y Estructura**: 5 / 5 ⭐
 
@@ -235,4 +235,4 @@ Bakandeya Agent Manager IA
 
 ---
 
-*Generado automáticamente por Bakandeya Intelligence System - 2026-08-11T07:22:19.680Z*
+*Generado automáticamente por Bakandeya Intelligence System - 2026-08-11T22:26:50.272Z*

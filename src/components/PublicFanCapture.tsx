@@ -129,9 +129,9 @@ export const PublicFanCapture: React.FC = () => {
           </h1>
           <p className="text-slate-300 text-sm max-w-xs mx-auto">
             {conciertoOrigenNombre ? (
-              <span>Gracias por bailar con nosotros en <strong className="text-amber-400">{conciertoOrigenNombre}</strong>. Regístrate y llévate tu regalo exclusivo.</span>
+              <span>Gracias por bailar con nosotros en <strong className="text-amber-400">{conciertoOrigenNombre}</strong>. Únete a nuestra comunidad oficial.</span>
             ) : (
-              <span>Únete al club oficial para enterarte antes que nadie de conciertos, nuevos lanzamientos y regalos en cada gira.</span>
+              <span>Únete al club oficial para enterarte antes que nadie de conciertos, nuevos lanzamientos y novedades en gira.</span>
             )}
           </p>
         </div>
@@ -230,13 +230,13 @@ export const PublicFanCapture: React.FC = () => {
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>UNIRME & CONSEGUIR MI REGALO</span>
+                  <span>UNIRME AL CLUB</span>
                 </>
               )}
             </button>
           </form>
         ) : (
-          /* THANK YOU & INCENTIVE CARD */
+          /* THANK YOU CARD */
           <div className="bg-slate-900/90 border border-amber-500/40 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 text-center backdrop-blur-md animate-fade-in">
             <div className="w-16 h-16 bg-amber-500/20 text-amber-400 rounded-full mx-auto flex items-center justify-center border border-amber-500/40">
               <CheckCircle2 className="w-8 h-8" />
@@ -245,51 +245,12 @@ export const PublicFanCapture: React.FC = () => {
             <div className="space-y-2">
               <h2 className="text-xl font-black text-white">¡MUCHAS GRACIAS, {nombre.split(' ')[0].toUpperCase()}!</h2>
               <p className="text-slate-300 text-sm leading-relaxed">
-                {incentivoData?.mensajeAgradecimiento || "¡Ya formas parte oficialmente de la familia de Bakandeya! Gracias por apoyar la música independiente en directo."}
+                ¡Ya formas parte oficialmente del club de fans! Te avisaremos de próximas fechas de conciertos, lanzamientos y novedades en gira.
               </p>
             </div>
 
-            {/* INCENTIVE BOX 1: EXCLUSIVE DOWNLOAD */}
-            {incentivoData?.enlaceDescarga && (
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-left space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase">
-                  <Download className="w-4 h-4" /> Regalo #1: Canción Inédita / Exclusiva
-                </div>
-                <p className="text-xs text-slate-400">Descarga directa en mp3 de alta calidad:</p>
-                <a
-                  href={incentivoData.enlaceDescarga}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold rounded-lg flex items-center justify-between transition"
-                >
-                  <span>Descargar Canción Exclusiva</span>
-                  <Download className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            )}
-
-            {/* INCENTIVE BOX 2: DISCOUNT CODE */}
-            {incentivoData?.codigoDescuento && (
-              <div className="bg-slate-950 border border-amber-500/30 rounded-xl p-4 text-left space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase">
-                  <Sparkles className="w-4 h-4" /> Regalo #2: Descuento en Merchandising
-                </div>
-                <p className="text-xs text-slate-400">Usa este código en nuestro stand o tienda online para un 10% Dto.:</p>
-                <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg p-2 font-mono text-sm font-bold text-white">
-                  <span className="tracking-widest text-amber-300">{incentivoData.codigoDescuento}</span>
-                  <button
-                    onClick={() => handleCopyCode(incentivoData.codigoDescuento)}
-                    className="px-2.5 py-1 bg-amber-500 text-slate-950 text-xs font-bold rounded hover:bg-amber-400 flex items-center gap-1 transition"
-                  >
-                    {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedCode ? '¡Copiado!' : 'Copiar'}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
             <div className="pt-2 text-xs text-slate-500 flex items-center justify-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Tus datos están seguros con Bakandeya.
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Tus datos están seguros y protegidos.
             </div>
           </div>
         )}
