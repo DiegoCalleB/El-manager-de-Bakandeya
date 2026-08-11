@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "BUILDING=true NODE_OPTIONS=--max-old-space-size=1536 vite build && BUILDING=true esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs",
-    "start": "node --openssl-legacy-provider dist/server.cjs",
+    "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "esbuild server.ts src/main.tsx --bundle --platform=node --packages=external --outdir=dist/test-lint && rm -rf dist/test-lint",
     "test": "vitest run"
