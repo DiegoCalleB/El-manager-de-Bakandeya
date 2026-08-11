@@ -218,7 +218,7 @@ export const FansLanding: React.FC = () => {
                 ¡Gracias por tu apoyo! 🎶
               </span>
             )} 
-            Apóyanos como prefieras: **síguenos directamente en tus redes favoritas** o **únete al Fan Club** para regalos exclusivos.
+            Apóyanos como prefieras: **síguenos directamente en tus redes favoritas** o **recibe información en tu correo**.
           </p>
         </div>
 
@@ -244,7 +244,7 @@ export const FansLanding: React.FC = () => {
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            <span>🎁 Fan Club (Regalo)</span>
+            <span>✉️ Recibir Novedades</span>
           </button>
         </div>
 
@@ -275,7 +275,7 @@ export const FansLanding: React.FC = () => {
                 onClick={() => setActiveTab('form')}
                 className="text-xs font-mono text-amber-400/90 hover:text-amber-300 underline font-bold transition-colors"
               >
-                🎁 ¿Quieres temas inéditos y descuentos? Únete al Fan Club →
+                ✨ ¿Quieres info directa en tu correo? Apúntate aquí →
               </button>
             </div>
           </div>

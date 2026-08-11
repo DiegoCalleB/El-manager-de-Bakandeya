@@ -129,9 +129,9 @@ export const PublicFanCapture: React.FC = () => {
           </h1>
           <p className="text-slate-300 text-sm max-w-xs mx-auto">
             {conciertoOrigenNombre ? (
-              <span>Gracias por bailar con nosotros en <strong className="text-amber-400">{conciertoOrigenNombre}</strong>. Únete a nuestra comunidad oficial.</span>
+              <span>Gracias por bailar con nosotros en <strong className="text-amber-400">{conciertoOrigenNombre}</strong>. Recibe información directa en tu correo.</span>
             ) : (
-              <span>Únete al club oficial para enterarte antes que nadie de conciertos, nuevos lanzamientos y novedades en gira.</span>
+              <span>Recibe información de Bakandeya directamente en tu correo.</span>
             )}
           </p>
         </div>
@@ -230,7 +230,7 @@ export const PublicFanCapture: React.FC = () => {
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>UNIRME AL CLUB</span>
+                  <span>UNIRME A BAKANDEYA</span>
                 </>
               )}
             </button>
@@ -245,7 +245,7 @@ export const PublicFanCapture: React.FC = () => {
             <div className="space-y-2">
               <h2 className="text-xl font-black text-white">¡MUCHAS GRACIAS, {nombre.split(' ')[0].toUpperCase()}!</h2>
               <p className="text-slate-300 text-sm leading-relaxed">
-                ¡Ya formas parte oficialmente del club de fans! Te avisaremos de próximas fechas de conciertos, lanzamientos y novedades en gira.
+                ¡Ya estás apuntado! Te avisaremos por correo de próximas fechas y novedades.
               </p>
             </div>
 
