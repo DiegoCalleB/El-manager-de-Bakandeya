@@ -31,6 +31,8 @@ export interface BandContact {
   es_favorito?: boolean;
   es_verificado?: boolean;
   fiabilidad_score?: number;
+  estilo_comunicacion?: string;
+  dna_expresion?: any;
 }
 
 export interface InteractionLog {
@@ -62,6 +64,16 @@ export interface EmailMessage {
   mensaje: string;
 }
 
+export interface PitchFeedbackLog {
+  id: string;
+  fecha: string;
+  pitch_previo: string;
+  tono_rating?: number;
+  contenido_rating?: number;
+  comentario?: string;
+  pitch_nuevo: string;
+}
+
 export interface Lead {
   id: string;
   nombre_sala: string;
@@ -91,6 +103,10 @@ export interface Lead {
   es_favorito?: boolean;
   es_verificado?: boolean;
   fiabilidad_score?: number;
+  pitch_feedback_tono?: number;
+  pitch_feedback_contenido?: number;
+  pitch_feedback_comentario?: string;
+  historial_feedback_pitch?: PitchFeedbackLog[];
 }
 
 export interface Rehearsal {
@@ -246,6 +262,7 @@ export interface SocialMetric {
   instagram: number;
   tiktok: number;
   youtube: number;
+  spotify?: number;
   notas: string;
 }
 
@@ -288,7 +305,7 @@ export interface GoogleSheetsStatus {
   error?: string;
 }
 
-export type ThemeName = 'stitch_light' | 'stitch_dark' | 'backstage_neon' | 'roots_ska' | 'indie_velvet' | 'brutalist_fuzz';
+export type ThemeName = 'indie_velvet' | 'stitch_dark' | 'backstage_neon' | 'roots_ska' | 'brutalist_fuzz';
 
 export interface AudioComment {
   id: string;

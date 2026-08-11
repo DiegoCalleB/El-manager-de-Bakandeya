@@ -1,23 +1,23 @@
 import { ThemeName, ThemeColors } from '../types';
 
 export const THEMES: Record<ThemeName, ThemeColors> = {
-  stitch_light: {
-    name: 'Stitch Light Dashboard',
-    bg: 'bg-[#f8fafc] text-slate-900',
-    card: 'bg-white border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.04)] rounded-xl',
-    border: 'border-slate-200',
-    primary: 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm font-semibold tracking-tight transition-all duration-200 rounded-lg',
-    primaryHover: 'hover:bg-slate-800',
-    text: 'text-slate-900',
-    textMuted: 'text-slate-500',
-    accent: 'text-indigo-600',
-    accentBg: 'bg-indigo-50 border border-indigo-200 text-indigo-800',
-    badgeGreen: 'bg-emerald-50 border border-emerald-200/80 text-emerald-800 rounded-md font-mono text-[9px] font-medium',
-    badgeYellow: 'bg-amber-50 border border-amber-200/80 text-amber-800 rounded-md font-mono text-[9px] font-medium',
-    badgeRed: 'bg-rose-50 border border-rose-200/80 text-rose-800 rounded-md font-mono text-[9px] font-medium',
-    badgeBlue: 'bg-sky-50 border border-sky-200/80 text-sky-800 rounded-md font-mono text-[9px] font-medium',
-    neonShadow: 'shadow-sm',
-    fontDisplay: 'font-sans',
+  indie_velvet: {
+    name: 'Studio Graphite (Por Defecto)',
+    bg: 'bg-[#121110] text-[#e5e2e1]',
+    card: 'bg-[#1a1918] border border-neutral-800/80 shadow-sm rounded-xl',
+    border: 'border-neutral-800/80',
+    primary: 'bg-[#eab308] hover:bg-[#facc15] text-[#121110] font-bold tracking-tight transition-all duration-200 rounded-lg',
+    primaryHover: 'hover:bg-[#facc15]',
+    text: 'text-[#e5e2e1]',
+    textMuted: 'text-[#9a9591]',
+    accent: 'text-[#eab308]',
+    accentBg: 'bg-[#22211f] text-[#e5e2e1]',
+    badgeGreen: 'bg-[#4a5d23]/20 text-[#86a760] rounded-md font-mono text-[9px] font-bold uppercase tracking-wider',
+    badgeYellow: 'bg-[#7a591a]/20 text-[#d8a032] rounded-md font-mono text-[9px] font-bold uppercase tracking-wider',
+    badgeRed: 'bg-[#6b2c2c]/20 text-[#c76565] rounded-md font-mono text-[9px] font-bold uppercase tracking-wider',
+    badgeBlue: 'bg-[#2c4a6b]/20 text-[#6592c7] rounded-md font-mono text-[9px] font-bold uppercase tracking-wider',
+    neonShadow: 'shadow-none',
+    fontDisplay: 'font-display',
     fontSans: 'font-sans'
   },
   stitch_dark: {
@@ -75,25 +75,6 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
     badgeBlue: 'bg-sky-500/10 border border-sky-500/20 text-sky-300 rounded-md font-mono text-[9px] font-medium',
     neonShadow: 'shadow-sm',
     fontDisplay: 'font-sans',
-    fontSans: 'font-sans'
-  },
-  indie_velvet: {
-    name: 'Studio Graphite (Sleek Warm Dark)',
-    bg: 'bg-[#121110] text-[#e5e2e1]',
-    card: 'bg-[#1a1918] border border-neutral-800/80 shadow-sm rounded-xl',
-    border: 'border-neutral-800/80',
-    primary: 'bg-[#eab308] hover:bg-[#facc15] text-[#121110] font-bold tracking-tight transition-all duration-200 rounded-lg',
-    primaryHover: 'hover:bg-[#facc15]',
-    text: 'text-[#e5e2e1]',
-    textMuted: 'text-[#9a9591]',
-    accent: 'text-[#eab308]',
-    accentBg: 'bg-[#22211f] text-[#e5e2e1]',
-    badgeGreen: 'bg-[#4a5d23]/20 text-[#86a760] rounded-md font-mono text-[9px] font-bold uppercase tracking-wider',
-    badgeYellow: 'bg-[#7a591a]/20 text-[#d8a032] rounded-md font-mono text-[9px] font-bold uppercase tracking-wider',
-    badgeRed: 'bg-[#6b2c2c]/20 text-[#c76565] rounded-md font-mono text-[9px] font-bold uppercase tracking-wider',
-    badgeBlue: 'bg-[#2c4a6b]/20 text-[#6592c7] rounded-md font-mono text-[9px] font-bold uppercase tracking-wider',
-    neonShadow: 'shadow-none',
-    fontDisplay: 'font-display',
     fontSans: 'font-sans'
   },
   brutalist_fuzz: {

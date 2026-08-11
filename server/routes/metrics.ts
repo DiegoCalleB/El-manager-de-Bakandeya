@@ -57,7 +57,7 @@ router.delete("/metrics/:id", requireAuth, requireLeader, async (req, res) => {
     const spreadsheetId = process.env.SPREADSHEET_ID;
     if (sheets && spreadsheetId) {
       try {
-        const headers = ["id", "fecha", "instagram", "tiktok", "youtube", "notas"];
+        const headers = ["id", "fecha", "instagram", "tiktok", "youtube", "spotify", "notas"];
         const values = [headers, ...state.metrics.map(socialMetricToRow)];
         await sheets.spreadsheets.values.update({
           spreadsheetId,
@@ -90,7 +90,7 @@ router.post("/metrics/sync", requireAuth, async (req, res) => {
     await ensureSheetTabExists(sheets, spreadsheetId, "seguidores");
     const state = loadState();
     
-    const headers = ["id", "fecha", "instagram", "tiktok", "youtube", "notas"];
+    const headers = ["id", "fecha", "instagram", "tiktok", "youtube", "spotify", "notas"];
     const values = [headers, ...state.metrics.map(socialMetricToRow)];
     
     await sheets.spreadsheets.values.update({
@@ -173,6 +173,22 @@ async function liveScrapePlatforms() {
     }
   } catch (e: any) {
     console.warn("Live Instagram scrape failed:", e?.message);
+  }
+
+  // 4. Spotify Live Indexing Scrape
+  try {
+    const res = await fetch("https://html.duckduckgo.com/html/?q=site:open.spotify.com/artist+bakandeya+listeners", { headers, signal: AbortSignal.timeout(5000) });
+    const html = await res.text();
+    const match = html.match(/([0-9.,]+)\s*(monthly listeners|oyentes|listeners)/i);
+    if (match) {
+      const numStr = match[1].replace(/[^0-9]/g, "");
+      if (numStr) {
+        scraped.spotify = Math.max(parseInt(numStr), 150);
+        scraped.details.push(`Spotify open.spotify.com/artist/bakandeya: ${scraped.spotify} oyentes mensuales`);
+      }
+    }
+  } catch (e: any) {
+    console.warn("Live Spotify scrape failed:", e?.message);
   }
 
   return scraped;
@@ -357,6 +373,7 @@ Devuelve un JSON exacto:
     instagram: fetchedData.instagramFollowers || 1385,
     tiktok: fetchedData.tiktokFollowers || 253,
     youtube: fetchedData.youtubeSubscribers || 40,
+    spotify: fetchedData.spotifyListeners || 150,
     notas: `Auto-snapshot diario (${new Date().toLocaleTimeString('es-ES')})`
   };
 

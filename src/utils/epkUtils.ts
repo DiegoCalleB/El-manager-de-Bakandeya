@@ -5,6 +5,39 @@ export interface EPKCompletenessResult {
   missingItems: string[];
 }
 
+export function isBioComplete(epk?: Partial<EPKConfig>): boolean {
+  if (!epk?.biografia) return false;
+  const bio = epk.biografia.trim();
+  if (bio.length < 80) return false;
+  const lower = bio.toLowerCase();
+  if (lower.includes('propuesta musical en directo') && bio.length < 100) return false;
+  if (lower.includes('por definir')) return false;
+  return true;
+}
+
+export function isDossierComplete(epk?: Partial<EPKConfig>): boolean {
+  if (!epk) return false;
+  if (epk.dossierPdfUrl && epk.dossierPdfUrl.trim().length > 5) return true;
+  if (epk.dossierDocumentUrl && epk.dossierDocumentUrl.trim().length > 5) return true;
+  if (!epk.dossierTextoExtra) return false;
+  const text = epk.dossierTextoExtra.trim();
+  if (text.length < 80) return false;
+  const lower = text.toLowerCase();
+  if (lower.includes('por definir') || lower.includes('propuesta musical')) return false;
+  return true;
+}
+
+export function isRiderComplete(epk?: Partial<EPKConfig>): boolean {
+  if (!epk) return false;
+  if (epk.riderPdfUrl && epk.riderPdfUrl.trim().length > 5) return true;
+  if (!epk.riderTecnico) return false;
+  const text = epk.riderTecnico.trim();
+  if (text.length < 80) return false;
+  const lower = text.toLowerCase();
+  if (lower.includes('por definir') || lower === 'rider técnico' || lower === 'rider técnico por definir.') return false;
+  return true;
+}
+
 /**
  * Calculates the completeness score of an Electronic Press Kit (EPK)
  */
@@ -13,10 +46,10 @@ export function calculateEPKCompletenessScore(epk: EPKConfig): EPKCompletenessRe
   const missingItems: string[] = [];
 
   // Biography (20 pts)
-  if (epk.biografia && epk.biografia.trim().length >= 100) {
+  if (isBioComplete(epk)) {
     score += 20;
   } else {
-    missingItems.push('Biografía detallada (mínimo 100 caracteres)');
+    missingItems.push('Biografía detallada (mínimo 80 caracteres redactados)');
   }
 
   // Band Photos (20 pts)
@@ -37,10 +70,10 @@ export function calculateEPKCompletenessScore(epk: EPKConfig): EPKCompletenessRe
   }
 
   // Technical Rider (15 pts)
-  if (epk.riderTecnico && epk.riderTecnico.trim().length > 20) {
+  if (isRiderComplete(epk)) {
     score += 15;
   } else {
-    missingItems.push('Rider técnico y stage plan');
+    missingItems.push('Rider técnico completo (PDF subido o resumen técnico de mín. 80 caracteres)');
   }
 
   // Contact Info (15 pts)

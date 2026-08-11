@@ -39,10 +39,12 @@ export const ProfileCompletenessCard: React.FC<ProfileCompletenessCardProps> = (
   // Read stored songs from localStorage safely
   const storedSongsCount = React.useMemo(() => {
     try {
-      const raw = localStorage.getItem('bakandeya_songs');
-      if (!raw) return 0;
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.length : 0;
+      const raw = localStorage.getItem('bakandeya_songs_catalog') || localStorage.getItem('bakandeya_songs');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.length;
+      }
+      return 0;
     } catch {
       return 0;
     }
@@ -50,10 +52,12 @@ export const ProfileCompletenessCard: React.FC<ProfileCompletenessCardProps> = (
 
   const storedSetlistsCount = React.useMemo(() => {
     try {
-      const raw = localStorage.getItem('bakandeya_setlists');
-      if (!raw) return 0;
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.length : 0;
+      const raw = localStorage.getItem('bakandeya_setlists_data') || localStorage.getItem('bakandeya_setlists');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.length;
+      }
+      return 0;
     } catch {
       return 0;
     }
@@ -61,16 +65,21 @@ export const ProfileCompletenessCard: React.FC<ProfileCompletenessCardProps> = (
 
   // Compute profile completeness pillars
   const pillars = React.useMemo(() => {
-    const hasBio = Boolean(epkConfig?.biografia && epkConfig.biografia.trim().length > 20);
+    const hasBio = Boolean(
+      epkConfig?.biografia && 
+      epkConfig.biografia.trim().length >= 80 && 
+      !epkConfig.biografia.toLowerCase().includes('por definir') &&
+      !epkConfig.biografia.includes('Propuesta musical en directo')
+    );
     const hasPhotoLogo = Boolean(epkConfig?.logoUrl || (epkConfig?.bandPhotos && epkConfig.bandPhotos.length > 0));
     const hasDossierPdf = Boolean(
-      epkConfig?.dossierPdfUrl || 
-      epkConfig?.dossierDocumentUrl || 
-      (epkConfig?.dossierTextoExtra && epkConfig.dossierTextoExtra.trim().length > 20)
+      (epkConfig?.dossierPdfUrl && epkConfig.dossierPdfUrl.trim().length > 5) || 
+      (epkConfig?.dossierDocumentUrl && epkConfig.dossierDocumentUrl.trim().length > 5) || 
+      (epkConfig?.dossierTextoExtra && epkConfig.dossierTextoExtra.trim().length >= 80 && !epkConfig.dossierTextoExtra.toLowerCase().includes('por definir'))
     );
     const hasRiderPdf = Boolean(
-      epkConfig?.riderPdfUrl || 
-      (epkConfig?.riderTecnico && epkConfig.riderTecnico.trim().length > 40)
+      (epkConfig?.riderPdfUrl && epkConfig.riderPdfUrl.trim().length > 5) || 
+      (epkConfig?.riderTecnico && epkConfig.riderTecnico.trim().length >= 80 && !epkConfig.riderTecnico.toLowerCase().includes('por definir'))
     );
     const hasLeads = leads.length > 0;
     const hasVerifiedEmails = leads.some(l => l.email_contacto && l.email_contacto.includes('@'));
@@ -86,7 +95,7 @@ export const ProfileCompletenessCard: React.FC<ProfileCompletenessCardProps> = (
         completed: hasBio && hasPhotoLogo,
         weight: 10,
         view: 'epk',
-        missingLabel: 'Rellenar Bio y Logo',
+        missingLabel: 'Rellenar Bio (mín 80 chars)',
         agentImpact: 'El Agente Redactor usa la Bio e identidad de la banda para los emails de presentación.'
       },
       {
@@ -95,7 +104,7 @@ export const ProfileCompletenessCard: React.FC<ProfileCompletenessCardProps> = (
         completed: hasDossierPdf,
         weight: 15,
         view: 'epk',
-        missingLabel: 'Adjuntar Dossier PDF',
+        missingLabel: 'Subir Dossier (mín 80 chars)',
         agentImpact: 'Los programadores de salas solicitan el Dossier PDF adjunto para valorar el proyecto de un vistazo.'
       },
       {
@@ -104,7 +113,7 @@ export const ProfileCompletenessCard: React.FC<ProfileCompletenessCardProps> = (
         completed: hasRiderPdf,
         weight: 15,
         view: 'epk',
-        missingLabel: 'Adjuntar Rider Técnico',
+        missingLabel: 'Subir Rider (mín 80 chars)',
         agentImpact: 'Las salas necesitan confirmar qué microfonía y líneas requiere la banda antes de reservar fecha.'
       },
       {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lead, LeadStatus, InteractionLog } from '../../types';
 import { LeadHealthBadge } from './LeadHealthBadge';
 import { VerifiedBadge } from '../common/VerifiedBadge';
@@ -21,7 +21,11 @@ import {
   Send,
   AlertCircle,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Star,
+  MessageSquare,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 
 interface VenueDetailPanelProps {
@@ -60,9 +64,83 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
   const [isEditingLeadInfo, setIsEditingLeadInfo] = useState(false);
   const [editedLeadInfo, setEditedLeadInfo] = useState<Partial<Lead>>({ ...selectedLead });
 
-  // Pitch Editing State
+  // Pitch Editing & Feedback State
   const [isEditingPitch, setIsEditingPitch] = useState(false);
   const [editedPitch, setEditedPitch] = useState(selectedLead.pitch_generado || '');
+  const [toneRating, setToneRating] = useState<number>(0);
+  const [contentRating, setContentRating] = useState<number>(0);
+  const [feedbackComment, setFeedbackComment] = useState<string>('');
+  const [isRegeneratingPitch, setIsRegeneratingPitch] = useState(false);
+  const [feedbackSuccessMsg, setFeedbackSuccessMsg] = useState<string | null>(null);
+  const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
+
+  // Clean helper for values like #ERROR!
+  const cleanVal = (val?: string) => {
+    if (!val || val.includes('#ERROR!') || val.includes('#N/A') || val.includes('#VALUE!')) return '';
+    return val;
+  };
+
+  // Sync state when selected lead changes or pitch updates
+  useEffect(() => {
+    setEditedPitch(selectedLead.pitch_generado || '');
+    setEditedLeadInfo({
+      ...selectedLead,
+      telefono: cleanVal(selectedLead.telefono),
+      contacto_nombre: cleanVal(selectedLead.contacto_nombre),
+      email_contacto: cleanVal(selectedLead.email_contacto),
+      direccion: cleanVal(selectedLead.direccion),
+    });
+  }, [selectedLead.id, selectedLead.pitch_generado]);
+
+  const handleRegeneratePitchWithFeedback = async () => {
+    setIsRegeneratingPitch(true);
+    setFeedbackSuccessMsg(null);
+    try {
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(`/api/leads/${selectedLead.id}/regenerate-pitch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          tono_rating: toneRating || undefined,
+          contenido_rating: contentRating || undefined,
+          comentario: feedbackComment || undefined
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.newPitchText) {
+        setEditedPitch(data.newPitchText);
+        setIsEditingPitch(false);
+        selectedLead.pitch_generado = data.newPitchText;
+        const updatedHistory = data.feedbackLog 
+          ? [data.feedbackLog, ...(selectedLead.historial_feedback_pitch || [])]
+          : (selectedLead.historial_feedback_pitch || []);
+        selectedLead.historial_feedback_pitch = updatedHistory;
+
+        onUpdateLead(selectedLead.id, {
+          pitch_generado: data.newPitchText,
+          historial_feedback_pitch: updatedHistory
+        });
+
+        // Reset feedback form after successful save & regenerate
+        setToneRating(0);
+        setContentRating(0);
+        setFeedbackComment('');
+        setFeedbackSuccessMsg('¡Pitch reescrito aplicando tus notas y registrado en la memoria de la IA!');
+        setTimeout(() => setFeedbackSuccessMsg(null), 4500);
+      } else {
+        alert(data.error || 'No se pudo regenerar el pitch.');
+      }
+    } catch (err: any) {
+      console.error('Error al regenerar pitch:', err);
+      alert('Error de conexión al reescribir el pitch con IA.');
+    } finally {
+      setIsRegeneratingPitch(false);
+    }
+  };
 
   // Bitácora state
   const [interactionType, setInteractionType] = useState<InteractionLog['tipo']>('Llamada');
@@ -400,17 +478,65 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
                     onChange={(e) =>
                       setEditedLeadInfo({ ...editedLeadInfo, nombre_sala: e.target.value })
                     }
-                    className="w-full p-2 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 focus:outline-none"
+                    className="w-full p-2 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* DIRECCIÓN / CALLE */}
+                <div>
+                  <label className="block text-[10px] uppercase font-mono text-amber-400 font-bold mb-1 flex items-center gap-1">
+                    📍 Dirección Exacta (Calle, Número...)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Calle San Vicente Ferrer 33, 28004 Madrid"
+                    value={editedLeadInfo.direccion || ''}
+                    onChange={(e) =>
+                      setEditedLeadInfo({ ...editedLeadInfo, direccion: e.target.value })
+                    }
+                    className="w-full p-2 rounded bg-zinc-900 border border-amber-500/50 text-zinc-100 focus:outline-none focus:border-amber-400"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">
-                      Contacto
+                      Ciudad
                     </label>
                     <input
                       type="text"
+                      placeholder="Ej. Madrid"
+                      value={editedLeadInfo.ciudad || ''}
+                      onChange={(e) =>
+                        setEditedLeadInfo({ ...editedLeadInfo, ciudad: e.target.value })
+                      }
+                      className="w-full p-2 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">
+                      Región / Provincia
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Comunidad de Madrid"
+                      value={editedLeadInfo.region || ''}
+                      onChange={(e) =>
+                        setEditedLeadInfo({ ...editedLeadInfo, region: e.target.value })
+                      }
+                      className="w-full p-2 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">
+                      Persona de Contacto
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Carlos (Programador)"
                       value={editedLeadInfo.contacto_nombre || ''}
                       onChange={(e) =>
                         setEditedLeadInfo({ ...editedLeadInfo, contacto_nombre: e.target.value })
@@ -424,6 +550,7 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
                     </label>
                     <input
                       type="email"
+                      placeholder="contacto@sala.com"
                       value={editedLeadInfo.email_contacto || ''}
                       onChange={(e) =>
                         setEditedLeadInfo({ ...editedLeadInfo, email_contacto: e.target.value })
@@ -440,6 +567,7 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
                     </label>
                     <input
                       type="text"
+                      placeholder="Ej. +34 612 345 678"
                       value={editedLeadInfo.telefono || ''}
                       onChange={(e) =>
                         setEditedLeadInfo({ ...editedLeadInfo, telefono: e.target.value })
@@ -449,13 +577,45 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">
-                      Aforo
+                      Aforo (personas)
                     </label>
                     <input
                       type="number"
+                      placeholder="Ej. 500"
                       value={editedLeadInfo.aforo || 0}
                       onChange={(e) =>
                         setEditedLeadInfo({ ...editedLeadInfo, aforo: Number(e.target.value) })
+                      }
+                      className="w-full p-2 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">
+                      Sitio Web
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://..."
+                      value={editedLeadInfo.website || ''}
+                      onChange={(e) =>
+                        setEditedLeadInfo({ ...editedLeadInfo, website: e.target.value })
+                      }
+                      className="w-full p-2 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">
+                      Instagram
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="@salaeltren"
+                      value={editedLeadInfo.instagram || ''}
+                      onChange={(e) =>
+                        setEditedLeadInfo({ ...editedLeadInfo, instagram: e.target.value })
                       }
                       className="w-full p-2 rounded bg-zinc-900 border border-zinc-700 text-zinc-100 focus:outline-none"
                     />
@@ -520,17 +680,156 @@ export const VenueDetailPanel: React.FC<VenueDetailPanelProps> = ({
             ) : (
               <div
                 onClick={() => {
-                  setEditedPitch(selectedLead.pitch_generado || '');
+                  setEditedPitch(editedPitch || selectedLead.pitch_generado || '');
                   setIsEditingPitch(true);
                 }}
                 className="p-3 bg-[#121110] rounded-xl border border-zinc-800 text-xs text-zinc-200 font-sans whitespace-pre-wrap leading-relaxed cursor-pointer hover:border-amber-500/40 transition-colors group relative"
               >
-                {selectedLead.pitch_generado || 'Sin pitch generado.'}
+                {editedPitch || selectedLead.pitch_generado || 'Sin pitch generado.'}
                 <span className="absolute bottom-2 right-2 text-[10px] text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity font-bold">
                   Clic para editar ✏️
                 </span>
               </div>
             )}
+
+            {/* SECCIÓN DE FEEDBACK Y ENTRENAMIENTO IA DEL PITCH */}
+            <div className="mt-4 p-3.5 bg-gradient-to-br from-[#181716] to-[#121110] rounded-xl border border-amber-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-bold text-amber-300 font-sans uppercase tracking-wider">
+                    Feedback & Entrenar Agente Redactor
+                  </span>
+                </div>
+                {selectedLead.historial_feedback_pitch && selectedLead.historial_feedback_pitch.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFeedbackHistory(!showFeedbackHistory)}
+                    className="text-[10px] text-amber-400/80 hover:text-amber-300 underline font-mono cursor-pointer"
+                  >
+                    {showFeedbackHistory ? 'Ocultar historial' : `Historial (${selectedLead.historial_feedback_pitch.length})`}
+                  </button>
+                )}
+              </div>
+
+              {/* Ratings for Tone and Content */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                {/* Tono Rating */}
+                <div className="p-2.5 bg-black/40 rounded-lg border border-zinc-800 space-y-1.5">
+                  <span className="text-[11px] font-bold text-zinc-300 block">Tono e Intención</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={`tone-${star}`}
+                        type="button"
+                        onClick={() => setToneRating(star)}
+                        className={`p-1 rounded hover:bg-zinc-800 transition-colors cursor-pointer ${
+                          toneRating >= star ? 'text-amber-400' : 'text-zinc-600'
+                        }`}
+                        title={`Calificar tono: ${star}/5`}
+                      >
+                        <Star className="w-4 h-4 fill-current" />
+                      </button>
+                    ))}
+                    <span className="text-[10px] font-mono text-zinc-400 ml-1">
+                      {toneRating > 0 ? `${toneRating}/5` : 'Sin calificar'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Content Rating */}
+                <div className="p-2.5 bg-black/40 rounded-lg border border-zinc-800 space-y-1.5">
+                  <span className="text-[11px] font-bold text-zinc-300 block">Contenido y Estructura</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={`content-${star}`}
+                        type="button"
+                        onClick={() => setContentRating(star)}
+                        className={`p-1 rounded hover:bg-zinc-800 transition-colors cursor-pointer ${
+                          contentRating >= star ? 'text-amber-400' : 'text-zinc-600'
+                        }`}
+                        title={`Calificar contenido: ${star}/5`}
+                      >
+                        <Star className="w-4 h-4 fill-current" />
+                      </button>
+                    ))}
+                    <span className="text-[10px] font-mono text-zinc-400 ml-1">
+                      {contentRating > 0 ? `${contentRating}/5` : 'Sin calificar'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Comments Area */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-zinc-300 flex items-center gap-1">
+                  <MessageSquare className="w-3 h-3 text-amber-400" />
+                  <span>Sugerencias o comentarios para mejorar este pitch:</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={feedbackComment}
+                  onChange={(e) => setFeedbackComment(e.target.value)}
+                  placeholder="Ej: 'Menciona que tocamos en el Viña Rock', 'Hazlo más corto y directo', 'Insiste en fecha para un sábado'..."
+                  className="w-full p-2.5 bg-black/60 rounded-lg border border-zinc-700/80 text-xs text-zinc-200 placeholder-zinc-500 font-sans focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              {/* Success Banner */}
+              {feedbackSuccessMsg && (
+                <div className="p-2 bg-emerald-500/20 border border-emerald-500/40 rounded-lg text-emerald-300 text-xs font-medium flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span>{feedbackSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Action button */}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleRegeneratePitchWithFeedback}
+                  disabled={isRegeneratingPitch}
+                  className="w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all font-sans"
+                >
+                  {isRegeneratingPitch ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Entrenando IA y reescribiendo pitch...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Reescribir Pitch con IA + Entrenar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* History drawer if enabled */}
+              {showFeedbackHistory && selectedLead.historial_feedback_pitch && selectedLead.historial_feedback_pitch.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-zinc-800 space-y-2">
+                  <span className="text-[11px] font-bold text-amber-400 font-mono block uppercase">
+                    Historial de Aprendizaje e Iteraciones IA
+                  </span>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {selectedLead.historial_feedback_pitch.map((log) => (
+                      <div key={log.id} className="p-2.5 bg-black/50 rounded-lg border border-zinc-800/80 text-[11px] space-y-1">
+                        <div className="flex justify-between text-zinc-400 text-[10px] font-mono">
+                          <span>{new Date(log.fecha).toLocaleString()}</span>
+                          <span>Tono: {log.tono_rating ? `${log.tono_rating}/5` : '-'} | Contenido: {log.contenido_rating ? `${log.contenido_rating}/5` : '-'}</span>
+                        </div>
+                        {log.comentario && (
+                          <p className="text-amber-200/90 italic font-sans">
+                            &ldquo;{log.comentario}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -14,6 +14,7 @@ interface BandPitchModalProps {
   proposedMonth: string;
   setProposedMonth: (val: string) => void;
   generatePitchText: (band: BandContact) => string;
+  customPitchText?: string;
 }
 
 export const BandPitchModal: React.FC<BandPitchModalProps> = ({
@@ -27,13 +28,14 @@ export const BandPitchModal: React.FC<BandPitchModalProps> = ({
   setProposedVenueBakandeya,
   proposedMonth,
   setProposedMonth,
-  generatePitchText
+  generatePitchText,
+  customPitchText
 }) => {
   const [copiedPitch, setCopiedPitch] = useState(false);
 
   if (!isOpen || !band) return null;
 
-  const pitchText = generatePitchText(band);
+  const pitchText = customPitchText || generatePitchText(band);
 
   return (
     <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">

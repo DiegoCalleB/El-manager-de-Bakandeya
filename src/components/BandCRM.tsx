@@ -3,6 +3,7 @@ import { BandContact, BandRelationshipStatus, ThemeColors, Lead } from '../types
 import { api, getAuthHeaders } from '../services/api';
 import BandMap from './BandMap';
 import { BandPitchModal } from './bandCRM/BandPitchModal';
+import { BandToneModal, ToneAnalysisData } from './bandCRM/BandToneModal';
 import { uploadFileToServer } from '../utils/audioStorage';
 import { FavoriteButton } from './common/FavoriteButton';
 import { VerifiedBadge } from './common/VerifiedBadge';
@@ -297,6 +298,55 @@ export default function BandCRM({ colors, leads = [], onAddLead, onUpdateLead, c
  const [proposedMonth, setProposedMonth] = useState('Octubre / Noviembre 2026');
  const [proposedVenueBakandeya, setProposedVenueBakandeya] = useState('Sala Caracol / Gruta 77');
  const [copiedPitch, setCopiedPitch] = useState(false);
+ const [customPitchText, setCustomPitchText] = useState<string>('');
+
+ // Tone & Communication Scraper Modal State
+ const [isToneModalOpen, setIsToneModalOpen] = useState(false);
+ const [selectedToneBand, setSelectedToneBand] = useState<BandContact | null>(null);
+ const [toneData, setToneData] = useState<ToneAnalysisData | null>(null);
+ const [isAnalyzingTone, setIsAnalyzingTone] = useState(false);
+
+ const handleAnalyzeTone = async (band: BandContact) => {
+   setSelectedToneBand(band);
+   setIsToneModalOpen(true);
+   setIsAnalyzingTone(true);
+   setToneData(null);
+
+   try {
+     const res = await fetch('/api/bands/analyze-tone', {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json',
+         ...getAuthHeaders()
+       },
+       body: JSON.stringify({
+         nombre_entidad: band.nombre_banda,
+         instagram: band.instagram,
+         estilo_musical: band.estilo_musical,
+         localizacion: band.localizacion,
+         tipo: 'Banda',
+         save_to_band_id: band.id
+       })
+     });
+
+     const resData = await res.json();
+     if (resData.success && resData.data) {
+       setToneData(resData.data);
+       setBands(prev => prev.map(b => b.id === band.id ? {
+         ...b,
+         estilo_comunicacion: resData.data.tono_comunicacion || b.estilo_comunicacion,
+         dna_expresion: resData.data
+       } : b));
+     } else {
+       alert(resData.error || 'No se pudo obtener el análisis de tono.');
+     }
+   } catch (err) {
+     console.error('Error analizando tono:', err);
+     alert('Error de conexión al analizar el tono de comunicación.');
+   } finally {
+     setIsAnalyzingTone(false);
+   }
+ };
 
  // Form Fields State
  const [formName, setFormName] = useState('');
@@ -1166,13 +1216,24 @@ Bakandeya Agent Manager IA & Músicos`;
 
  {/* Action Buttons */}
  <div className="flex items-center gap-2">
+ {/* Analyze Tone */}
+ <button
+ onClick={() => handleAnalyzeTone(band)}
+ className="py-1.5 px-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+ title="Analizar forma de expresarse y tono en redes sociales con IA Grounding"
+ >
+ <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+ <span>Tono Redes</span>
+ </button>
+
  {/* Generate Pitch */}
  <button
  onClick={() => {
+ setCustomPitchText('');
  setSelectedPitchBand(band);
  setIsPitchModalOpen(true);
  }}
- className="flex-1 py-1.5 px-2 bg-sky-500/15 hover:bg-sky-500/15 text-sky-400 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+ className="flex-1 py-1.5 px-2 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
  title="Generar Pitch de Date Swap"
  >
  <Repeat className="w-3.5 h-3.5 text-sky-400" />
@@ -1249,11 +1310,21 @@ Bakandeya Agent Manager IA & Músicos`;
  <td className="p-3.5 text-right">
  <div className="flex items-center justify-end gap-1.5">
  <button
+ onClick={() => handleAnalyzeTone(band)}
+ className="px-2 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 rounded-lg text-[10px] transition-all cursor-pointer flex items-center gap-1"
+ title="Analizar forma de expresarse"
+ >
+ <Sparkles className="w-3 h-3 text-amber-400" />
+ <span>Tono</span>
+ </button>
+
+ <button
  onClick={() => {
+ setCustomPitchText('');
  setSelectedPitchBand(band);
  setIsPitchModalOpen(true);
  }}
- className="px-2 py-1 bg-sky-500/15 hover:bg-sky-500/15 text-sky-400 rounded-lg text-[10px] transition-all cursor-pointer flex items-center gap-1"
+ className="px-2 py-1 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 rounded-lg text-[10px] transition-all cursor-pointer flex items-center gap-1"
  >
  <Repeat className="w-3 h-3 text-sky-400" />
  <span>Pitch</span>
@@ -1692,6 +1763,23 @@ Bakandeya Agent Manager IA & Músicos`;
  proposedMonth={proposedMonth}
  setProposedMonth={setProposedMonth}
  generatePitchText={generatePitchText}
+ customPitchText={customPitchText}
+ />
+
+ {/* 6. MODAL: TONE & COMMUNICATION STYLE SCRAPER */}
+ <BandToneModal
+ isOpen={isToneModalOpen}
+ onClose={() => setIsToneModalOpen(false)}
+ band={selectedToneBand}
+ isStitchLight={isStitchLight}
+ toneData={toneData}
+ isLoading={isAnalyzingTone}
+ onReAnalyze={() => selectedToneBand && handleAnalyzeTone(selectedToneBand)}
+ onUseTailoredPitch={(tailoredText) => {
+   setCustomPitchText(tailoredText);
+   setSelectedPitchBand(selectedToneBand);
+   setIsPitchModalOpen(true);
+ }}
  />
 
  </div>

@@ -9,7 +9,6 @@
       "DOM",
       "DOM.Iterable"
     ],
-    "skipLibCheck": true,
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
@@ -21,6 +20,15 @@
       ]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true
-  }
+    "noEmit": true,
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "maxNodeModuleJsDepth": 0,
+    "disableReferencedProjectLoad": true,
+    "incremental": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
+    "types": ["node", "react", "react-dom", "express"]
+  },
+  "include": ["src/**/*", "server/**/*", "server.ts", "vite.config.ts"],
+  "exclude": ["node_modules", "dist", "public", "public/uploads", "**/*.spec.ts", "**/*.test.ts"]
 }

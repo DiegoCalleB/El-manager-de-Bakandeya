@@ -168,7 +168,7 @@ Contacto de la oficina de Bakandeya. Queremos proponer una fecha para nuestra gi
 
 Nuestra fusión de ska instrumental clásico con bases electrónicas potentes encaja como anillo al dedo con el perfil de vuestra sala 2. Ofrecemos una noche de baile total, con el respaldo de nuestra fanbase en Cataluña (tenemos unos 15.000 oyentes mensuales en el área de Barcelona).
 
-Dossier interactivo: https://bakandeya.es/epk
+Dossier interactivo: https://bandmanagement-ai.up.railway.app/epk
 
 ¿Cómo tenéis las fechas libres para los fines de semana de Diciembre?
 
@@ -324,7 +324,7 @@ Nos complace presentarles la propuesta musical de Bakandeya de cara a su escenar
 
 Bakandeya ofrece una fusión sin precedentes de ska instrumental, reggae africano y electrónica analógica europea, logrando un sonido multicultural que encaja a la perfección con la filosofía del festival. Nuestro show invita a la danza y el encuentro a través del ritmo.
 
-EPK y dossier: https://bakandeya.es/epk
+EPK y dossier: https://bandmanagement-ai.up.railway.app/epk
 
 Esperamos que nuestra propuesta sea de su agrado para complementar las noches de fusión.
 
@@ -624,7 +624,7 @@ Os saludamos desde Bakandeya. Les hacemos llegar nuestro dossier con motivo del 
 
 Nos ponemos a vuestra disposición para tocar en acústico en los estudios de Prado del Rey o realizar una entrevista telefónica sobre el concepto sonoro del violín solista y las percusiones recicladas.
 
-Audio en calidad broadcast y bio: https://bakandeya.es/epk
+Audio en calidad broadcast y bio: https://bandmanagement-ai.up.railway.app/epk
 
 Atentamente,
 Bakandeya Agent Manager IA`,
@@ -1016,6 +1016,7 @@ export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
     instagram: 290,
     tiktok: 110,
     youtube: 15,
+    spotify: 85,
     notas: 'Inicio de la monitorización de campaña de primavera.'
   },
   {
@@ -1024,6 +1025,7 @@ export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
     instagram: 310,
     tiktok: 135,
     youtube: 18,
+    spotify: 92,
     notas: 'Lanzamiento del EPK digital de la banda.'
   },
   {
@@ -1032,6 +1034,7 @@ export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
     instagram: 340,
     tiktok: 165,
     youtube: 22,
+    spotify: 105,
     notas: 'Anuncio de la participación en el Cabo de Plata.'
   },
   {
@@ -1040,6 +1043,7 @@ export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
     instagram: 800,
     tiktok: 150,
     youtube: 30,
+    spotify: 120,
     notas: 'Campaña publicitaria del directo en Trinchera Málaga.'
   },
   {
@@ -1048,6 +1052,7 @@ export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
     instagram: 1100,
     tiktok: 200,
     youtube: 32,
+    spotify: 135,
     notas: 'Post del Sold Out en Málaga tuvo impacto orgánico en TikTok.'
   },
   {
@@ -1056,6 +1061,7 @@ export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
     instagram: 1348,
     tiktok: 252,
     youtube: 38,
+    spotify: 142,
     notas: 'Registro previo a la actuación del Cabo de Plata.'
   },
   {
@@ -1064,6 +1070,7 @@ export const INITIAL_SOCIAL_METRICS: SocialMetric[] = [
     instagram: 1385,
     tiktok: 253,
     youtube: 42,
+    spotify: 150,
     notas: 'Escaneo oficial verificado de redes sociales.'
   }
 ];

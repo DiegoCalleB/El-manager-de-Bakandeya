@@ -365,9 +365,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email,
-            name: displayName,
+            name: (view === 'register' && regLeaderName.trim()) ? regLeaderName.trim() : displayName,
             uid: res.user.uid,
-            accessToken: res.accessToken
+            accessToken: res.accessToken,
+            bandName: (view === 'register' && regBandName.trim()) ? regBandName.trim() : undefined,
+            leaderName: (view === 'register' && regLeaderName.trim()) ? regLeaderName.trim() : undefined
           })
         });
 

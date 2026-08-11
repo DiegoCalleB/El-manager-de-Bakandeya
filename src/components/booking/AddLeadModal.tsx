@@ -6,6 +6,7 @@ export interface NewLeadDataState {
   nombre_sala: string;
   ciudad: string;
   region: string;
+  direccion?: string;
   aforo: number;
   genero: string;
   tipo?: LeadType;
@@ -225,6 +226,23 @@ export function AddLeadModal({
               {modalScrapeSuccessMsg}
             </div>
           )}
+
+          <div>
+            <label className={`block text-[10px] uppercase font-sans tracking-wider mb-1 ${textSub}`}>
+              Dirección Exacta (Calle, Número...)
+            </label>
+            <input
+              type="text"
+              placeholder="Ej. Calle San Vicente Ferrer 33"
+              value={newLeadData.direccion || ''}
+              onChange={e => setNewLeadData(prev => ({ ...prev, direccion: e.target.value }))}
+              className={`w-full rounded-xl px-2 py-1 text-[10px] focus:outline-none font-sans ${
+                isStitchLight
+                  ? 'bg-slate-50 text-slate-800 focus:ring-indigo-500'
+                  : 'bg-[#121215] text-[#e5e2e1] focus:ring-[#f2ca50]'
+              }`}
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>

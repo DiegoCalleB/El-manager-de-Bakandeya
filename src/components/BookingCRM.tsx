@@ -7,11 +7,12 @@ import {
  Search, ShieldCheck, Mail, Clock, Check, X, RefreshCw, 
  MapPin, Users, Bot, MessageSquare, Edit3, Settings, Sparkles, Send, LogOut, Loader2, Building, Radio, Building2, Tent, Landmark, Disc3, Briefcase,
  PlusCircle, Newspaper, Tv, Headphones, Globe, FileText, Plus, SlidersHorizontal, Map as MapIcon, List, LayoutGrid,
- Share2, Repeat, Truck, Handshake, Music, Zap, Upload, Image as ImageIcon, Download, Phone, PhoneCall, MessageCircle, Bookmark, BookmarkCheck, Filter, Trash2, History, Calendar, ListFilter, CheckCircle2, Save
+ Share2, Repeat, Truck, Handshake, Music, Zap, Upload, Image as ImageIcon, Download, Phone, PhoneCall, MessageCircle, Bookmark, BookmarkCheck, Filter, Trash2, History, Calendar, ListFilter, CheckCircle2, Save, Star
 } from 'lucide-react';
 import { initAuth, googleSignIn, logout, fetchGmailThreadsForEmail } from '../utils/gmail';
 import { VenueMap } from './VenueMap';
 import { AddLeadModal } from './booking/AddLeadModal';
+import { GooglePlacesExplorerModal } from './booking/GooglePlacesExplorerModal';
 import { TemplateConfigSection } from './booking/TemplateConfigSection';
 import { NegotiationSimulationModal } from './booking/NegotiationSimulationModal';
 import { LeadsTable } from './booking/LeadsTable';
@@ -343,6 +344,16 @@ export default function BookingCRM({
  const interventionPanelRef = React.useRef<HTMLDivElement>(null);
  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
+ // Keep selectedLead synchronized with the latest leads prop data
+ useEffect(() => {
+   if (selectedLead) {
+     const updated = leads.find(l => l.id === selectedLead.id);
+     if (updated && updated !== selectedLead) {
+       setSelectedLead(updated);
+     }
+   }
+ }, [leads]);
+
  // Automatically detect & save address when a lead is selected
  useEffect(() => {
  if (selectedLead && !selectedLead.direccion && selectedLead.nombre_sala) {
@@ -363,11 +374,13 @@ export default function BookingCRM({
  const [editedLeadInfo, setEditedLeadInfo] = useState<Partial<Lead>>({});
 
  // New Lead / Medio Modal
+ const [isPlacesExplorerOpen, setIsPlacesExplorerOpen] = useState(false);
  const [isAddingLeadModalOpen, setIsAddingLeadModalOpen] = useState(false);
  const [newLeadData, setNewLeadData] = useState({
  nombre_sala: '',
  ciudad: '',
  region: 'Nacional',
+ direccion: '',
  aforo: 0,
  tipo: 'medio' as LeadType,
  email_contacto: '',
@@ -836,6 +849,59 @@ Bakandeya Agent Manager IA`);
  const [templateTab, setTemplateTab] = useState<TemplateCategory>('salas');
  const [testPromptResult, setTestPromptResult] = useState('');
  const [isTestingPrompt, setIsTestingPrompt] = useState(false);
+ const [isOptimizingTemplate, setIsOptimizingTemplate] = useState(false);
+ const [optimizationFeedbackMsg, setOptimizationFeedbackMsg] = useState<string | null>(null);
+ const [templateCustomInstruction, setTemplateCustomInstruction] = useState('');
+  const [templateToneRating, setTemplateToneRating] = useState<number>(0);
+  const [templateContentRating, setTemplateContentRating] = useState<number>(0);
+
+ const handleOptimizeTemplate = async () => {
+   setIsOptimizingTemplate(true);
+   setOptimizationFeedbackMsg(null);
+   try {
+     const activeData = getActiveTemplateData();
+     const res = await fetch('/api/templates/optimize', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({
+         category: templateTab,
+         currentSubject: activeData.subject,
+         currentBody: activeData.body,
+         currentGuidelines: activeData.guidelines,
+         customInstruction: templateCustomInstruction,
+         toneRating: templateToneRating,
+         contentRating: templateContentRating
+       })
+     });
+     const data = await res.json();
+     if (res.ok && data.success && data.optimized) {
+       activeData.setSubject(data.optimized.subject);
+       activeData.setBody(data.optimized.body);
+       activeData.setGuidelines(data.optimized.guidelines);
+       
+       setTestPromptResult(`Asunto: ${data.optimized.subject}\n\n${data.optimized.body}`);
+       
+       const countNote = data.feedbackCountUsed > 0 
+         ? `Aplicado aprendizaje de ${data.feedbackCountUsed} valoraciones previas del mánager.`
+         : 'Refrescada con pautas de estilo de Bakandeya.';
+       const ratingsAppliedNote = (templateToneRating > 0 || templateContentRating > 0)
+         ? ` (Estrellitas aplicadas: Tono ${templateToneRating || '-'}/5, Contenido ${templateContentRating || '-'}/5)`
+         : '';
+
+       setOptimizationFeedbackMsg(`✨ Plantilla re-generada con IA: ${data.optimized.explanation || countNote}${ratingsAppliedNote}`);
+       setTemplateCustomInstruction('');
+       setTemplateToneRating(0);
+       setTemplateContentRating(0);
+     } else {
+       setOptimizationFeedbackMsg('⚠️ No se pudo re-generar la plantilla. Inténtalo de nuevo.');
+     }
+   } catch (err) {
+     console.error('Error optimizing template:', err);
+     setOptimizationFeedbackMsg('⚠️ Error de conexión al re-generar la plantilla.');
+   } finally {
+     setIsOptimizingTemplate(false);
+   }
+ };
 
  // Helper to retrieve current active template fields by category
  const getActiveTemplateData = () => {
@@ -976,7 +1042,7 @@ Bakandeya Agent Manager IA`);
  }
 
  setIsModalScraping(true);
- setModalScrapeStatus('Iniciando Agente Scout IA con Google Search Grounding...');
+ setModalScrapeStatus('Consultando Google Places API & Extraedor de Emails IA...');
  setModalScrapeError('');
  setModalScrapeSuccessMsg('');
 
@@ -1523,9 +1589,87 @@ Bakandeya Agent Manager IA`);
  }, 1200);
  };
 
- const handleSaveTemplates = () => {
- const activeData = getActiveTemplateData();
- alert(`¡Plantilla de Pitch y Directrices AI para [${activeData.title}] guardadas correctamente! Los agentes Python redactores usarán esta configuración en el próximo escaneo.`);
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/templates', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.templates) {
+          const t = data.templates;
+          if (t.salas) {
+            setSubjectTemplateSala(t.salas.subject);
+            setBodyTemplateSala(t.salas.body);
+            setAiGuidelinesSala(t.salas.guidelines);
+          }
+          if (t.festivales) {
+            setSubjectTemplateFestival(t.festivales.subject);
+            setBodyTemplateFestival(t.festivales.body);
+            setAiGuidelinesFestival(t.festivales.guidelines);
+          }
+          if (t.discotecas) {
+            setSubjectTemplateDiscoteca(t.discotecas.subject);
+            setBodyTemplateDiscoteca(t.discotecas.body);
+            setAiGuidelinesDiscoteca(t.discotecas.guidelines);
+          }
+          if (t.medios) {
+            setSubjectTemplateMedio(t.medios.subject);
+            setBodyTemplateMedio(t.medios.body);
+            setAiGuidelinesMedio(t.medios.guidelines);
+          }
+          if (t.grupos) {
+            setSubjectTemplateGrupo(t.grupos.subject);
+            setBodyTemplateGrupo(t.grupos.body);
+            setAiGuidelinesGrupo(t.grupos.guidelines);
+          }
+          if (t.managements) {
+            setSubjectTemplateManagement(t.managements.subject);
+            setBodyTemplateManagement(t.managements.body);
+            setAiGuidelinesManagement(t.managements.guidelines);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not load saved templates from API:', err);
+      }
+    };
+    fetchTemplates();
+  }, []);
+
+ const handleSaveTemplates = async () => {
+   const activeData = getActiveTemplateData();
+   try {
+     const token = localStorage.getItem('token');
+     const res = await fetch('/api/templates/save', {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json',
+         ...(token ? { Authorization: `Bearer ${token}` } : {})
+       },
+       body: JSON.stringify({
+         category: templateTab,
+         subject: activeData.subject,
+         body: activeData.body,
+         guidelines: activeData.guidelines,
+         customInstruction: templateCustomInstruction,
+         toneRating: templateToneRating,
+         contentRating: templateContentRating
+       })
+     });
+     const data = await res.json();
+     if (res.ok && data.success) {
+       setOptimizationFeedbackMsg(`✅ Plantilla y Pautas para [${activeData.title}] guardadas en Memoria IA, Google Sheets (tab plantillas_pautas_ia) y PROMPTS_AGENTES_IA.md.`);
+       setTemplateCustomInstruction('');
+       setTemplateToneRating(0);
+       setTemplateContentRating(0);
+     } else {
+       alert('⚠️ Error al guardar en el servidor.');
+     }
+   } catch (err) {
+     console.error('Error saving template:', err);
+     alert('⚠️ Error de conexión al guardar la plantilla.');
+   }
  };
 
  const subCardBg = isStitchLight ? 'bg-slate-50/60' : 'bg-[#131313]';
@@ -1537,10 +1681,10 @@ Bakandeya Agent Manager IA`);
  <div className={`space-y-4 ${isStitchLight ? 'text-slate-800' : 'text-[#e5e2e1]'} font-sans w-full max-w-full overflow-x-hidden`}>
  
  {/* 2. LEADS CRM WORKSPACE */}
- <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+ <div className={`grid grid-cols-1 ${selectedLead ? 'lg:grid-cols-3 gap-8' : 'w-full'} items-start transition-all duration-300`}>
  
- {/* LEADS LIST AREA (2/3 width on wide screen) */}
- <div className="lg:col-span-2 space-y-8">
+ {/* LEADS LIST AREA (Takes 100% width when no lead is selected, or 2/3 when detail panel is open) */}
+ <div className={`${selectedLead ? 'lg:col-span-2' : 'w-full lg:col-span-3'} space-y-8 transition-all duration-300`}>
  <div className="space-y-6">
  
  {/* Header, View Switcher & Search */}
@@ -1561,12 +1705,23 @@ Bakandeya Agent Manager IA`);
  </div>
  <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
  <button
+   id="open-places-explorer-btn"
+   type="button"
+   onClick={() => setIsPlacesExplorerOpen(true)}
+   className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 bg-[#f2ca50] hover:bg-[#d8b03e] text-[#2c2200] shadow-md active:scale-95 border border-[#f2ca50]"
+   title="Descubre salas y festivales reales en cualquier ciudad con Google Places API y extrae sus emails con IA"
+ >
+   <Search className="w-4 h-4" />
+   <span>🔎 Buscador Google Places & Emails IA</span>
+ </button>
+ <button
  id="add-new-lead-btn"
  onClick={() => {
  setNewLeadData({
  nombre_sala: '',
  ciudad: '',
  region: 'Nacional',
+ direccion: '',
  aforo: 0,
  tipo: sectionTab === 'medios' ? 'medio' : 'sala',
  email_contacto: '',
@@ -2056,22 +2211,24 @@ Bakandeya Agent Manager IA`);
   </div>
   </div>
 
-  {/* DETAILED WORKSPACE PANEL (Desktop view - hidden on mobile bottom sheet) */}
-  <div ref={interventionPanelRef} className="hidden sm:block space-y-6">
-    <VenueDetailPanel
-      selectedLead={selectedLead}
-      onClose={() => setSelectedLead(null)}
-      onUpdateLead={onUpdateLead}
-      getStatusBadgeClass={getStatusBadgeClass}
-      getStatusLabel={getStatusLabel}
-      getStatusDotColor={getStatusDotColor}
-      normalizeStatus={normalizeStatus}
-      normalizeType={normalizeType}
-      autoDetectVenueAddress={autoDetectVenueAddress}
-      sectionTab={sectionTab}
-      isStitchLight={isStitchLight}
-    />
-  </div>
+  {/* DETAILED WORKSPACE PANEL (Desktop view - rendered when a lead is selected) */}
+  {selectedLead && (
+    <div ref={interventionPanelRef} className="hidden lg:block space-y-6 lg:col-span-1 transition-all duration-300">
+      <VenueDetailPanel
+        selectedLead={selectedLead}
+        onClose={() => setSelectedLead(null)}
+        onUpdateLead={onUpdateLead}
+        getStatusBadgeClass={getStatusBadgeClass}
+        getStatusLabel={getStatusLabel}
+        getStatusDotColor={getStatusDotColor}
+        normalizeStatus={normalizeStatus}
+        normalizeType={normalizeType}
+        autoDetectVenueAddress={autoDetectVenueAddress}
+        sectionTab={sectionTab}
+        isStitchLight={isStitchLight}
+      />
+    </div>
+  )}
 
   {/* MOBILE BOTTOM SHEET FOR TOUCH / SMARTPHONES */}
   <MobileBottomSheet
@@ -2164,6 +2321,13 @@ Bakandeya Agent Manager IA`);
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
  {/* Form Side */}
  <div className="space-y-4">
+ {optimizationFeedbackMsg && (
+   <div className="p-3 bg-amber-500/15 border border-amber-500/30 text-amber-200 text-[11px] rounded-xl flex items-center justify-between font-sans animate-in fade-in">
+     <span>{optimizationFeedbackMsg}</span>
+     <button onClick={() => setOptimizationFeedbackMsg(null)} className="text-amber-400 font-bold ml-2 hover:text-white cursor-pointer">✕</button>
+   </div>
+ )}
+
  <div className="space-y-1.5">
  <label className={`block text-[10px] uppercase font-sans tracking-wider ${isStitchLight ? 'text-slate-600' : 'text-neutral-300'}`}>Asunto del Email por Defecto</label>
  <input
@@ -2201,7 +2365,7 @@ Bakandeya Agent Manager IA`);
  </label>
  <textarea
  id="template-guidelines"
- rows={4}
+ rows={3}
  value={activeTemplate.guidelines}
  onChange={(e) => activeTemplate.setGuidelines(e.target.value)}
  className={`w-full rounded-lg p-3 text-[10px] focus:outline-none transition-all font-sans leading-relaxed ${
@@ -2213,7 +2377,109 @@ Bakandeya Agent Manager IA`);
  />
  </div>
 
- <div className="flex gap-3 pt-2">
+ <div className="space-y-3 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10">
+ <div className="flex items-center justify-between">
+ <label className="block text-[10px] uppercase font-sans font-bold tracking-wider text-amber-300 flex items-center gap-1.5">
+ <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30" /> Evaluación y Entrenamiento de la Plantilla
+ </label>
+ {(templateToneRating > 0 || templateContentRating > 0 || templateCustomInstruction) && (
+ <button 
+ type="button" 
+ onClick={() => {
+   setTemplateToneRating(0);
+   setTemplateContentRating(0);
+   setTemplateCustomInstruction('');
+ }}
+ className="text-[9px] text-amber-400 font-bold hover:underline cursor-pointer"
+ >
+ Limpiar todo
+ </button>
+ )}
+ </div>
+
+ {/* Estrellitas de Tono y Contenido */}
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+ {/* Tono y Estilo */}
+ <div className="p-2 bg-[#131313] rounded-lg border border-amber-500/20 space-y-1">
+ <div className="flex items-center justify-between">
+ <span className="text-[10px] font-bold text-amber-200">Tono y Estilo</span>
+ <span className="text-[10px] font-mono text-amber-400 font-bold">
+ {templateToneRating > 0 ? `${templateToneRating}/5` : 'Sin calificar'}
+ </span>
+ </div>
+ <div className="flex items-center gap-1">
+ {[1, 2, 3, 4, 5].map((star) => (
+ <button
+ key={`crm-template-tone-${star}`}
+ type="button"
+ onClick={() => setTemplateToneRating(templateToneRating === star ? 0 : star)}
+ className={`p-0.5 rounded hover:bg-amber-500/20 transition-colors cursor-pointer ${
+   templateToneRating >= star ? 'text-amber-400' : 'text-neutral-600'
+ }`}
+ title={`Calificar tono y estilo: ${star}/5`}
+ >
+ <Star className="w-4 h-4 fill-current" />
+ </button>
+ ))}
+ </div>
+ </div>
+
+ {/* Contenido y Estructura */}
+ <div className="p-2 bg-[#131313] rounded-lg border border-amber-500/20 space-y-1">
+ <div className="flex items-center justify-between">
+ <span className="text-[10px] font-bold text-amber-200">Contenido y Estructura</span>
+ <span className="text-[10px] font-mono text-amber-400 font-bold">
+ {templateContentRating > 0 ? `${templateContentRating}/5` : 'Sin calificar'}
+ </span>
+ </div>
+ <div className="flex items-center gap-1">
+ {[1, 2, 3, 4, 5].map((star) => (
+ <button
+ key={`crm-template-content-${star}`}
+ type="button"
+ onClick={() => setTemplateContentRating(templateContentRating === star ? 0 : star)}
+ className={`p-0.5 rounded hover:bg-amber-500/20 transition-colors cursor-pointer ${
+   templateContentRating >= star ? 'text-amber-400' : 'text-neutral-600'
+ }`}
+ title={`Calificar contenido y estructura: ${star}/5`}
+ >
+ <Star className="w-4 h-4 fill-current" />
+ </button>
+ ))}
+ </div>
+ </div>
+ </div>
+
+ <div className="space-y-1 pt-1">
+ <label className="block text-[10px] uppercase font-sans font-bold tracking-wider text-amber-300 flex items-center gap-1.5">
+ <MessageSquare className="w-3.5 h-3.5 text-amber-400" /> Comentario o Corrección Directa
+ </label>
+ <textarea
+ id="template-custom-instruction"
+ rows={2}
+ value={templateCustomInstruction}
+ onChange={(e) => setTemplateCustomInstruction(e.target.value)}
+ className="w-full rounded-lg p-2.5 text-[10px] bg-[#131313] text-[#e5e2e1] border border-amber-500/30 focus:border-amber-400 focus:outline-none font-sans leading-relaxed"
+ placeholder="Ej: 'Haz la plantilla de salas un 20% más corta, resalta nuestro directo enérgico sin instrumentos de viento y pide propuesta de fecha para el próximo trimestre...'"
+ />
+ </div>
+ <div className="text-[9px] text-amber-300/80 font-sans leading-tight">
+ 💡 Califica con estrellas el tono y el contenido e introduce comentarios. Al hacer clic abajo en <strong>Regenerar</strong>, la IA usará tus valoraciones para optimizar la plantilla.
+ </div>
+ </div>
+
+ <div className="flex flex-wrap gap-2 pt-2">
+ <button
+ id="template-btn-optimize"
+ type="button"
+ onClick={handleOptimizeTemplate}
+ disabled={isOptimizingTemplate}
+ className="py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-sans font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+ title="Re-redacta la plantilla y sus pautas integrando todo el feedback histórico de valoraciones del mánager"
+ >
+ <Sparkles className={`w-3.5 h-3.5 text-amber-400 ${isOptimizingTemplate ? 'animate-spin' : ''}`} />
+ <span>{isOptimizingTemplate ? 'Regenerando con IA...' : '✨ Regenerar Plantilla con IA y Aprendizaje'}</span>
+ </button>
  <button
  id="template-btn-test"
  onClick={handleTestPrompt}
@@ -2258,12 +2524,90 @@ Bakandeya Agent Manager IA`);
  </div>
 
  {testPromptResult ? (
- <div className={` rounded-lg p-3.5 text-[10px] font-sans whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto animate-in fade-in duration-300 select-text ${
+ <div className="space-y-3">
+ <div className={`rounded-lg p-3.5 text-[10px] font-sans whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto animate-in fade-in duration-300 select-text ${
  isStitchLight
- ? 'bg-white text-slate-700'
- : 'bg-[#1c1b1b] text-neutral-300'
+ ? 'bg-white text-slate-700 border border-slate-200'
+ : 'bg-[#1c1b1b] text-neutral-300 border border-neutral-800'
  }`}>
  {testPromptResult}
+ </div>
+
+ {/* Valoración directa del resultado generado en la simulación */}
+ <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/30 space-y-2">
+ <div className="flex items-center justify-between">
+ <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5 font-sans">
+ <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30" /> Valorar esta plantilla / resultado
+ </span>
+ {(templateToneRating > 0 || templateContentRating > 0) && (
+ <span className="text-[9px] text-amber-400 font-mono">
+ Tono: {templateToneRating || '-'}/5 | Contenido: {templateContentRating || '-'}/5
+ </span>
+ )}
+ </div>
+
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+ {/* Tono */}
+ <div className="p-2 bg-[#131313] rounded-lg border border-amber-500/20 space-y-1">
+ <div className="flex items-center justify-between">
+ <span className="text-[10px] font-bold text-amber-200">Tono y Estilo</span>
+ <span className="text-[10px] font-mono text-amber-400 font-bold">
+ {templateToneRating > 0 ? `${templateToneRating}/5` : '⭐'}
+ </span>
+ </div>
+ <div className="flex items-center gap-1">
+ {[1, 2, 3, 4, 5].map((star) => (
+ <button
+ key={`sandbox-tone-${star}`}
+ type="button"
+ onClick={() => setTemplateToneRating(templateToneRating === star ? 0 : star)}
+ className={`p-0.5 rounded hover:bg-amber-500/20 transition-colors cursor-pointer ${
+ templateToneRating >= star ? 'text-amber-400' : 'text-neutral-600'
+ }`}
+ title={`Calificar tono: ${star}/5`}
+ >
+ <Star className="w-4 h-4 fill-current" />
+ </button>
+ ))}
+ </div>
+ </div>
+
+ {/* Contenido */}
+ <div className="p-2 bg-[#131313] rounded-lg border border-amber-500/20 space-y-1">
+ <div className="flex items-center justify-between">
+ <span className="text-[10px] font-bold text-amber-200">Contenido y Estructura</span>
+ <span className="text-[10px] font-mono text-amber-400 font-bold">
+ {templateContentRating > 0 ? `${templateContentRating}/5` : '⭐'}
+ </span>
+ </div>
+ <div className="flex items-center gap-1">
+ {[1, 2, 3, 4, 5].map((star) => (
+ <button
+ key={`sandbox-content-${star}`}
+ type="button"
+ onClick={() => setTemplateContentRating(templateContentRating === star ? 0 : star)}
+ className={`p-0.5 rounded hover:bg-amber-500/20 transition-colors cursor-pointer ${
+ templateContentRating >= star ? 'text-amber-400' : 'text-neutral-600'
+ }`}
+ title={`Calificar contenido: ${star}/5`}
+ >
+ <Star className="w-4 h-4 fill-current" />
+ </button>
+ ))}
+ </div>
+ </div>
+ </div>
+
+ <button
+ type="button"
+ onClick={handleOptimizeTemplate}
+ disabled={isOptimizingTemplate}
+ className="w-full py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-black font-bold text-[10px] rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+ >
+ <Sparkles className={`w-3.5 h-3.5 ${isOptimizingTemplate ? 'animate-spin' : ''}`} />
+ <span>Re-generar plantilla usando estas valoraciones ✨</span>
+ </button>
+ </div>
  </div>
  ) : (
  <div className={`border-2 border-dashed rounded-lg p-12 text-center text-[10px] font-sans ${
@@ -2330,6 +2674,17 @@ Bakandeya Agent Manager IA`);
     onSubmit={handleAddNewLeadSubmit}
     onModalScrape={handleModalScrape}
     onLeadLogoUpload={(file) => handleLeadLogoUpload(file, false)}
+  />
+
+  <GooglePlacesExplorerModal
+    isOpen={isPlacesExplorerOpen}
+    isStitchLight={isStitchLight}
+    onClose={() => setIsPlacesExplorerOpen(false)}
+    onImportLeads={(importedLeads) => {
+      importedLeads.forEach(l => {
+        if (onAddLead) onAddLead(l);
+      });
+    }}
   />
 
  </div>

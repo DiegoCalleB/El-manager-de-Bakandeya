@@ -3,7 +3,8 @@ import { GoogleGenAI } from "@google/genai";
 export const GEMINI_MODEL = "gemini-3.6-flash";
 
 export const FALLBACK_MODELS = [
-  "gemini-3.6-flash"
+  "gemini-3.6-flash",
+  "gemini-2.5-flash",
 ];
 
 let cachedClient: { key: string; client: GoogleGenAI } | null = null;

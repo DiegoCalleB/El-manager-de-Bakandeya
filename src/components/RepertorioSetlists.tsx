@@ -573,7 +573,7 @@ export default function RepertorioSetlists({
  if (item.tipoItem === 'cancion' && item.songId) {
  const song = songs.find(s => s.id === item.songId);
  if (song) {
- rawUrl = song.audioPrincipalUrl || (song.audioIdeas && song.audioIdeas[0]?.audioUrl) || '';
+ rawUrl = song.audioPrincipalUrl || (song.audioIdeas && song.audioIdeas[0]?.audioUrl) || (song as any).audioUrl || '';
  durationSec = song.duracionSegundos || parseMmSsToSeconds(song.duracion) || 210;
  }
  } else {

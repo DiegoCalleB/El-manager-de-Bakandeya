@@ -87,7 +87,7 @@ export default function GithubWorkflowTracker({
  }
  };
 
- const isStitchLight = currentTheme === 'stitch_light';
+ const isStitchLight = false;
 
  // Format relative time in Spanish
  const formatRelativeTime = (dateStr: string) => {

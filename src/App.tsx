@@ -24,6 +24,7 @@ import { UserManagementModal } from './components/UserManagementModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { FontSelectorModal } from './components/FontSelectorModal';
 import { MetronomeModal } from './components/MetronomeModal';
+import { TunerModal } from './components/TunerModal';
 import { BandSwitcherModal } from './components/BandSwitcherModal';
 import { FontPresetKey, applyFontPreset, getStoredFontPreset } from './utils/typography';
 import { 
@@ -127,6 +128,7 @@ export default function App() {
     }, 0);
   }, []);
   const [showMetronomeModal, setShowMetronomeModal] = useState(false);
+  const [showTunerModal, setShowTunerModal] = useState(false);
   const [showBandSwitcherModal, setShowBandSwitcherModal] = useState(false);
 
   // Redirect non-admins away from finanzas if they end up there
@@ -138,7 +140,11 @@ export default function App() {
 
   // Active Theme State
   const [currentTheme, setCurrentTheme] = useState<ThemeName>(() => {
-    return (localStorage.getItem('bakandeya_theme') as ThemeName) || 'stitch_light';
+    const saved = localStorage.getItem('bakandeya_theme') as ThemeName;
+    if (!saved || saved === ('stitch_light' as any) || !(saved in THEMES)) {
+      return 'indie_velvet';
+    }
+    return saved;
   });
 
   // Active Font State
@@ -194,7 +200,7 @@ export default function App() {
     };
   }, []);
 
-  const colors: ThemeColors = THEMES[currentTheme];
+  const colors: ThemeColors = THEMES[currentTheme] || THEMES.indie_velvet;
 
   // Persist Theme Selection
   const handleThemeChange = (theme: ThemeName) => {
@@ -282,7 +288,7 @@ export default function App() {
     <img 
      src={currentActiveBandLogo} 
      alt="Logo" 
-     className="w-12 h-12 object-contain p-1 bg-neutral-950/90 rounded-xl border border-amber-500/50 shadow-md shrink-0 group-hover:border-amber-400"
+     className="w-12 h-12 sm:w-14 sm:h-14 object-contain p-1 bg-neutral-950/90 rounded-xl border border-amber-500/50 shadow-md shrink-0 group-hover:border-amber-400"
      referrerPolicy="no-referrer"
     />
    ) : (
@@ -295,7 +301,7 @@ export default function App() {
 
   <div className="flex flex-col">
    <div className="flex items-center gap-1.5">
-    <h1 className="text-sm font-bold font-display tracking-wider uppercase text-zinc-100 group-hover:text-amber-400 transition-colors leading-none">
+    <h1 className={`font-bold font-display tracking-wider uppercase text-zinc-100 group-hover:text-amber-400 transition-colors leading-none truncate max-w-[150px] sm:max-w-[200px] ${currentActiveBandName.length > 20 ? 'text-xs' : 'text-xs sm:text-sm'}`}>
      {currentActiveBandName}
     </h1>
     <ChevronDown className="w-3.5 h-3.5 text-amber-400 group-hover:translate-y-0.5 transition-transform" />
@@ -398,7 +404,7 @@ export default function App() {
  </div>
  )}
  <div className="flex flex-col">
- <h1 className="text-base font-bold font-display tracking-wider uppercase text-zinc-100 leading-none">
+ <h1 className={`font-bold font-display tracking-wider uppercase text-zinc-100 leading-tight ${currentActiveBandName.length > 20 ? 'text-xs' : currentActiveBandName.length > 12 ? 'text-sm' : 'text-base'}`}>
  {currentActiveBandName}
  </h1>
  <div className="flex items-center gap-1.5 mt-1">
@@ -476,6 +482,36 @@ export default function App() {
  })}
  </nav>
 
+ {/* Drawer Quick Tools (Metrónomo y Afinador) */}
+ <div className="px-3 py-2 border-t border-[#22211F]/60 space-y-1.5">
+   <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-500 px-1">Herramientas</p>
+   <div className="grid grid-cols-2 gap-2">
+     <button
+       onClick={() => { setShowMetronomeModal(true); setIsMobileMenuOpen(false); }}
+       className="flex items-center gap-2 p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 transition-all cursor-pointer text-left active:scale-95"
+       title="Abrir Metrónomo WebAudio Pro"
+     >
+       <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+       <div className="flex flex-col min-w-0">
+         <span className="text-[11px] font-bold truncate leading-tight">Metrónomo</span>
+         <span className="text-[9px] text-amber-400/70 font-mono truncate">Tap Tempo</span>
+       </div>
+     </button>
+
+     <button
+       onClick={() => { setShowTunerModal(true); setIsMobileMenuOpen(false); }}
+       className="flex items-center gap-2 p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-300 transition-all cursor-pointer text-left active:scale-95"
+       title="Abrir Afinador de Guitarra y Bajo"
+     >
+       <Guitar className="w-4 h-4 text-emerald-400 shrink-0" />
+       <div className="flex flex-col min-w-0">
+         <span className="text-[11px] font-bold truncate leading-tight">Afinador</span>
+         <span className="text-[9px] text-emerald-400/70 font-mono truncate">Guitar & Bass</span>
+       </div>
+     </button>
+   </div>
+ </div>
+
  {/* Drawer User Footer */}
  <div className="p-4 mt-auto border-[#22211F]/50">
  {currentUser && (
@@ -535,7 +571,7 @@ export default function App() {
  {/* Brand Header (Clickable Netflix Style Switcher) */}
  <div 
   onClick={() => setShowBandSwitcherModal(true)}
-  className="p-5 flex flex-col gap-3 items-center text-center border-b border-[#22211F]/60 bg-gradient-to-b from-[#1c1a18] to-[#121110] cursor-pointer group transition-all duration-300 hover:bg-[#181716] relative"
+  className="p-3.5 flex flex-col gap-2 items-center text-center border-b border-[#22211F]/60 bg-gradient-to-b from-[#1c1a18] to-[#121110] cursor-pointer group transition-all duration-300 hover:bg-[#181716] relative"
   title="Haz clic para cambiar de banda (Estilo Netflix)"
  >
   <div className="relative group/logo">
@@ -543,50 +579,36 @@ export default function App() {
   <img 
   src={currentActiveBandLogo} 
   alt="Logo" 
-  className="w-36 h-36 xl:w-44 xl:h-44 object-contain p-2 bg-neutral-950/80 rounded-2xl shadow-xl shadow-black/60 border border-[#333130] group-hover:border-amber-400/90 group-hover:scale-105 transition-all duration-300 shrink-0"
+  className="w-24 h-24 xl:w-28 xl:h-28 object-contain p-2 bg-neutral-950/80 rounded-2xl shadow-lg shadow-black/60 border border-[#333130] group-hover:border-amber-400/90 group-hover:scale-105 transition-all duration-300 shrink-0"
   referrerPolicy="no-referrer"
   />
   ) : (
-  <div className="w-36 h-36 xl:w-44 xl:h-44 rounded-2xl shadow-xl shadow-black/50 border border-[#333130] group-hover:border-amber-400 bg-[#1A1918] flex flex-col items-center justify-center text-amber-400 gap-2 p-4 shrink-0 group-hover:scale-105 transition-all duration-300">
-  <Guitar className="w-14 h-14 opacity-80 group-hover:scale-110 transition-transform" />
-  <span className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-widest text-center">
+  <div className="w-24 h-24 xl:w-28 xl:h-28 rounded-2xl shadow-lg shadow-black/50 border border-[#333130] group-hover:border-amber-400 bg-[#1A1918] flex flex-col items-center justify-center text-amber-400 gap-1 p-2 shrink-0 group-hover:scale-105 transition-all duration-300">
+  <Guitar className="w-6 h-6 opacity-80 group-hover:scale-110 transition-transform" />
+  <span className="text-[9px] font-bold font-mono text-zinc-300 uppercase tracking-widest text-center">
   {currentActiveBandName}
   </span>
   </div>
   )}
   </div>
 
-  <div className="flex flex-col items-center w-full">
-  <div className="flex items-center justify-center gap-1.5 w-full">
-   <h1 className="text-xl xl:text-2xl font-black font-display tracking-wider uppercase text-zinc-100 group-hover:text-amber-400 transition-colors leading-none line-clamp-1">
+  <div className="flex flex-col items-center w-full px-1">
+  <div className="flex items-center justify-center gap-1 w-full">
+   <h1 className={`font-black font-display tracking-wider uppercase text-zinc-100 group-hover:text-amber-400 transition-colors leading-tight text-center break-words line-clamp-2 max-w-full ${
+     currentActiveBandName.length > 22 
+       ? 'text-xs' 
+       : currentActiveBandName.length > 14 
+       ? 'text-sm' 
+       : currentActiveBandName.length > 9 
+       ? 'text-base' 
+       : 'text-lg'
+   }`}>
    {currentActiveBandName}
    </h1>
-   <ChevronDown className="w-5 h-5 text-amber-400 group-hover:translate-y-0.5 transition-transform shrink-0" />
+   <ChevronDown className="w-4 h-4 text-amber-400 group-hover:translate-y-0.5 transition-transform shrink-0" />
   </div>
 
   </div>
- </div>
-
- {/* Metronome Pro Quick Launcher */}
- <div className="px-3 pt-2 pb-1">
- <button
- onClick={() => setShowMetronomeModal(true)}
- className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/30 text-amber-300 transition-all cursor-pointer group active:scale-95 shadow-xs"
- title="Abrir Metrónomo WebAudio Pro"
- >
- <div className="flex items-center gap-2.5">
- <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
- <Clock className="w-4 h-4" />
- </div>
- <div className="flex flex-col text-left">
- <span className="text-xs font-bold font-sans">Metrónomo Pro</span>
- <span className="text-[10px] text-amber-400/80 font-mono">Click & Tap Tempo</span>
- </div>
- </div>
- <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
- BPM
- </span>
- </button>
  </div>
 
  {/* Navigation */}
@@ -652,6 +674,40 @@ export default function App() {
  );
  })}
  </nav>
+
+ {/* Bottom Quick Tools (Metrónomo y Afinador) */}
+ <div className="px-3 pt-3 pb-2 border-t border-[#22211F]/60 space-y-1.5">
+   <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-500 px-1">Herramientas</p>
+   <div className="grid grid-cols-2 gap-1.5">
+     <button
+       onClick={() => setShowMetronomeModal(true)}
+       className="flex items-center gap-2 p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 transition-all cursor-pointer text-left active:scale-95 group"
+       title="Abrir Metrónomo WebAudio Pro"
+     >
+       <div className="p-1 rounded-lg bg-amber-500/20 text-amber-400 group-hover:scale-105 transition-transform shrink-0">
+         <Clock className="w-3.5 h-3.5" />
+       </div>
+       <div className="flex flex-col min-w-0">
+         <span className="text-[11px] font-bold truncate leading-tight">Metrónomo</span>
+         <span className="text-[9px] text-amber-400/80 font-mono truncate">Click & Tap</span>
+       </div>
+     </button>
+
+     <button
+       onClick={() => setShowTunerModal(true)}
+       className="flex items-center gap-2 p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 transition-all cursor-pointer text-left active:scale-95 group"
+       title="Abrir Afinador de Guitarra y Bajo"
+     >
+       <div className="p-1 rounded-lg bg-emerald-500/20 text-emerald-400 group-hover:scale-105 transition-transform shrink-0">
+         <Guitar className="w-3.5 h-3.5" />
+       </div>
+       <div className="flex flex-col min-w-0">
+         <span className="text-[11px] font-bold truncate leading-tight">Afinador</span>
+         <span className="text-[9px] text-emerald-400/80 font-mono truncate">Guitar & Bass</span>
+       </div>
+     </button>
+   </div>
+ </div>
 
  {/* Bottom User Profile */}
  <div className="p-4 mt-auto border-[#22211F]/50">
@@ -1374,6 +1430,13 @@ export default function App() {
  isOpen={showMetronomeModal}
  onClose={() => setShowMetronomeModal(false)}
  songs={[]}
+ colors={colors}
+ />
+
+ {/* Tuner Pro Modal */}
+ <TunerModal
+ isOpen={showTunerModal}
+ onClose={() => setShowTunerModal(false)}
  colors={colors}
  />
 

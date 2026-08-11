@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Lead, LeadType, ThemeColors, SocialMetric, Concert, Rehearsal, EPKConfig, Tour, Fan, SocialPost } from '../types';
 import { isSameBandId } from '../utils/bandUtils';
 import DirectionsCard from './DirectionsCard';
@@ -6,6 +6,8 @@ import { AddLeadModal } from './dashboard/AddLeadModal';
 import { ProfileCompletenessCard } from './dashboard/ProfileCompletenessCard';
 import { EmailTemplatesModal } from './dashboard/EmailTemplatesModal';
 import { AgentAutonomySettingsModal } from './dashboard/AgentAutonomySettingsModal';
+import { MobileBottomSheet } from './booking/MobileBottomSheet';
+import { autoDetectVenueAddress, normalizeStatus, normalizeType } from '../utils/bookingUtils';
 import { 
  Search, MapPin, Music, Mic, DoorClosed, Globe, Phone, Instagram, 
  Plus, X, Calendar, AlertCircle, Sparkles, Loader2, Check, RefreshCw, 
@@ -117,10 +119,12 @@ export default function Dashboard({
 
  const storedSongsCount = React.useMemo(() => {
    try {
-     const raw = localStorage.getItem('bakandeya_songs');
-     if (!raw) return 0;
-     const parsed = JSON.parse(raw);
-     return Array.isArray(parsed) ? parsed.length : 0;
+     const raw = localStorage.getItem('bakandeya_songs_catalog') || localStorage.getItem('bakandeya_songs');
+     if (raw) {
+       const parsed = JSON.parse(raw);
+       if (Array.isArray(parsed) && parsed.length > 0) return parsed.length;
+     }
+     return 0;
    } catch {
      return 0;
    }
@@ -868,9 +872,22 @@ export default function Dashboard({
    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
      {/* Dossier & EPK Card */}
      {(() => {
-       const hasBioLogo = Boolean(epkConfig?.biografia && (epkConfig?.logoUrl || (epkConfig?.bandPhotos && epkConfig.bandPhotos.length > 0)));
-       const hasDossierPdf = Boolean(epkConfig?.dossierPdfUrl || epkConfig?.dossierDocumentUrl);
-       const hasRiderPdf = Boolean(epkConfig?.riderPdfUrl || (epkConfig?.riderTecnico && epkConfig.riderTecnico.trim().length > 40));
+       const hasBioLogo = Boolean(
+         epkConfig?.biografia && 
+         epkConfig.biografia.trim().length >= 80 && 
+         !epkConfig.biografia.toLowerCase().includes('por definir') &&
+         !epkConfig.biografia.includes('Propuesta musical en directo') &&
+         (epkConfig?.logoUrl || (epkConfig?.bandPhotos && epkConfig.bandPhotos.length > 0))
+       );
+       const hasDossierPdf = Boolean(
+         (epkConfig?.dossierPdfUrl && epkConfig.dossierPdfUrl.trim().length > 5) || 
+         (epkConfig?.dossierDocumentUrl && epkConfig.dossierDocumentUrl.trim().length > 5) || 
+         (epkConfig?.dossierTextoExtra && epkConfig.dossierTextoExtra.trim().length >= 80 && !epkConfig.dossierTextoExtra.toLowerCase().includes('por definir'))
+       );
+       const hasRiderPdf = Boolean(
+         (epkConfig?.riderPdfUrl && epkConfig.riderPdfUrl.trim().length > 5) || 
+         (epkConfig?.riderTecnico && epkConfig.riderTecnico.trim().length >= 80 && !epkConfig.riderTecnico.toLowerCase().includes('por definir'))
+       );
        const itemsReadyCount = [hasBioLogo, hasDossierPdf, hasRiderPdf].filter(Boolean).length;
 
        return (
@@ -1686,6 +1703,59 @@ export default function Dashboard({
  newNotas={newNotas}
  setNewNotas={setNewNotas}
  />
+
+ {/* MODAL / BOTTOM SHEET MOBILE FOR SELECTED LEAD IN DASHBOARD */}
+ {selectedLead && (
+   <MobileBottomSheet
+     selectedLead={selectedLead}
+     onClose={() => setSelectedLead(null)}
+     onUpdateLead={onUpdateLead}
+     getStatusBadgeClass={(status) => {
+       const norm = normalizeStatus(status);
+       switch (norm) {
+         case 'nuevo': return 'bg-stone-500/20 text-stone-300';
+         case 'pendiente_aprobacion': return 'bg-amber-500/20 text-amber-300';
+         case 'aprobado': return 'bg-emerald-500/20 text-emerald-300';
+         case 'esperando_respuesta': return 'bg-sky-500/20 text-sky-300';
+         case 'interesado': return 'bg-emerald-500/20 text-emerald-300';
+         case 'negociando': return 'bg-purple-500/20 text-purple-300';
+         case 'no_interesado': return 'bg-zinc-800 text-zinc-400';
+         default: return 'bg-zinc-800 text-zinc-300';
+       }
+     }}
+     getStatusLabel={(status) => {
+       const norm = normalizeStatus(status);
+       switch (norm) {
+         case 'nuevo': return 'Por Contactar';
+         case 'pendiente_aprobacion': return 'Por Aprobar';
+         case 'aprobado': return 'Aprobado';
+         case 'esperando_respuesta': return 'Email Enviado';
+         case 'interesado': return 'Interesado';
+         case 'negociando': return 'Negociando';
+         case 'no_interesado': return 'No Interesado';
+         default: return String(status).toUpperCase();
+       }
+     }}
+     getStatusDotColor={(status) => {
+       const norm = normalizeStatus(status);
+       switch (norm) {
+         case 'nuevo': return 'bg-[#a39e9b]';
+         case 'pendiente_aprobacion': return 'bg-[#f2ca50] animate-pulse';
+         case 'aprobado': return 'bg-[#10b981]';
+         case 'esperando_respuesta': return 'bg-[#38bdf8]';
+         case 'interesado': return 'bg-[#10b981]';
+         case 'negociando': return 'bg-[#38bdf8]';
+         case 'no_interesado': return 'bg-[#85736b]';
+         default: return 'bg-[#85736b]';
+       }
+     }}
+     normalizeStatus={normalizeStatus}
+     normalizeType={normalizeType}
+     autoDetectVenueAddress={autoDetectVenueAddress}
+     sectionTab="salas"
+     isStitchLight={isStitchLight}
+   />
+ )}
 
  </div>
  );

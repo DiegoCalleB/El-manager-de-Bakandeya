@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Lead, LeadStatus } from '../../types';
 import { VenueDetailPanel } from './VenueDetailPanel';
-import { X, ChevronDown } from 'lucide-react';
+import { X, Building2 } from 'lucide-react';
 
 interface MobileBottomSheetProps {
   selectedLead: Lead | null;
@@ -30,9 +31,6 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
   sectionTab,
   isStitchLight = false
 }) => {
-  const [startY, setStartY] = useState<number | null>(null);
-  const [currentY, setCurrentY] = useState<number>(0);
-
   useEffect(() => {
     if (selectedLead) {
       document.body.style.overflow = 'hidden';
@@ -46,63 +44,58 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
 
   if (!selectedLead) return null;
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setStartY(e.touches[0].clientY);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (startY !== null) {
-      const deltaY = e.touches[0].clientY - startY;
-      if (deltaY > 0) {
-        setCurrentY(deltaY);
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (currentY > 120) {
-      onClose();
-    }
-    setStartY(null);
-    setCurrentY(0);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 sm:hidden flex flex-col justify-end">
+  return createPortal(
+    <div className="fixed inset-0 z-[999999] lg:hidden flex flex-col justify-end sm:justify-center sm:items-center p-0 sm:p-4 animate-in fade-in duration-150">
       {/* Backdrop overlay */}
       <div
         onClick={onClose}
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/80 backdrop-blur-md transition-opacity cursor-pointer z-[999998]"
       />
 
-      {/* Sliding Sheet Drawer */}
+      {/* Sheet Drawer Container */}
       <div
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        style={{ transform: `translateY(${currentY}px)` }}
-        className="relative w-full max-h-[88vh] bg-[#121110] border-t-2 border-[#f2ca50] rounded-t-3xl p-4 overflow-y-auto shadow-2xl transition-transform duration-100 ease-out pb-10"
+        className="relative z-[999999] w-full sm:max-w-2xl max-h-[90vh] sm:max-h-[85vh] bg-[#121110] border-t-2 sm:border-2 border-[#f2ca50] rounded-t-3xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col text-zinc-100 overflow-hidden"
       >
-        {/* Grab Handle Bar for tactile swipe down */}
-        <div className="w-full flex justify-center pb-2 cursor-grab active:cursor-grabbing">
-          <div className="w-12 h-1.5 rounded-full bg-zinc-600/80 hover:bg-amber-400 transition-colors" />
+        {/* Header Bar */}
+        <div className="w-full flex justify-between items-center pb-3 border-b border-zinc-800 mb-3 shrink-0">
+          <div className="flex items-center gap-2 truncate pr-2">
+            <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-xs font-mono uppercase tracking-widest text-amber-400 font-bold truncate">
+              Ficha: {selectedLead.nombre_sala}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center justify-center px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/50 transition-colors cursor-pointer shadow-md text-xs font-bold shrink-0 gap-1"
+            title="Cerrar ficha"
+          >
+            <X className="w-4 h-4" />
+            <span>Cerrar</span>
+          </button>
         </div>
 
-        {/* Content Panel */}
-        <VenueDetailPanel
-          selectedLead={selectedLead}
-          onClose={onClose}
-          onUpdateLead={onUpdateLead}
-          getStatusBadgeClass={getStatusBadgeClass}
-          getStatusLabel={getStatusLabel}
-          getStatusDotColor={getStatusDotColor}
-          normalizeStatus={normalizeStatus}
-          normalizeType={normalizeType}
-          autoDetectVenueAddress={autoDetectVenueAddress}
-          sectionTab={sectionTab}
-          isStitchLight={isStitchLight}
-        />
+        {/* Content Panel - Scrollable container */}
+        <div className="flex-1 overflow-y-auto pr-1">
+          <VenueDetailPanel
+            selectedLead={selectedLead}
+            onClose={onClose}
+            onUpdateLead={onUpdateLead}
+            getStatusBadgeClass={getStatusBadgeClass}
+            getStatusLabel={getStatusLabel}
+            getStatusDotColor={getStatusDotColor}
+            normalizeStatus={normalizeStatus}
+            normalizeType={normalizeType}
+            autoDetectVenueAddress={autoDetectVenueAddress}
+            sectionTab={sectionTab}
+            isStitchLight={isStitchLight}
+          />
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
+
+

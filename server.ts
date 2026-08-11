@@ -47,12 +47,13 @@ import reelsRouter from "./server/routes/reels.js";
 import repertorioRouter from "./server/routes/repertorio.js";
 import epkFansRouter from "./server/routes/epk_fans.js";
 import uploadRouter from "./server/routes/upload.js";
+import concertToAlbumRouter from "./server/routes/concert_to_album.js";
 
 import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -70,8 +71,14 @@ app.use("/api", agentRouter);
 app.use("/api", reelsRouter);
 app.use("/api", repertorioRouter);
 app.use("/api", epkFansRouter);
+app.use("/api/concert-to-album", concertToAlbumRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
+
+// Healthcheck endpoint for Railway and deployment monitoring
+app.get("/api/health", (req, res) => {
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
 
 // System status endpoint
 app.get("/api/debug-key", (req, res) => {
@@ -656,7 +663,8 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR === "true" ? false : undefined
+        hmr: false,
+        ws: false
       },
       appType: "spa",
     });
@@ -673,26 +681,18 @@ async function startServer() {
     console.log(`Bakandeya Virtual Manager server running on http://localhost:${PORT}`);
   });
 
-  let retries = 0;
   server.on("error", (err: any) => {
     if (err.code === "EADDRINUSE") {
-      if (retries < 3) {
-        retries++;
-        console.warn(`Port ${PORT} in use, retrying (${retries}/3)...`);
-        setTimeout(() => {
-          try { server.close(); } catch {}
-          server.listen(PORT, "0.0.0.0");
-        }, 1000);
-      } else {
-        console.error(`Port ${PORT} is already occupied. Terminating duplicate process.`);
-        process.exit(1);
-      }
+      console.error(`Port ${PORT} is already in use. Exiting process so process manager can restart.`);
+      process.exit(1);
     } else {
       console.error("Server error:", err);
     }
   });
 }
 
-startServer();
+if (process.env.BUILDING !== "true") {
+  startServer();
+}
 
 export default app;

@@ -15,11 +15,14 @@ export const PublicFanCapture: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [incentivoData, setIncentivoData] = useState<any>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [bandInfo, setBandInfo] = useState<{ name: string; logoUrl: string }>({ name: '', logoUrl: '' });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const cId = params.get('concertId') || params.get('cId') || '';
     const cName = params.get('concertName') || params.get('cName') || '';
+    const bandId = params.get('band_id') || params.get('band') || '';
+
     if (cId) setConciertoOrigenId(cId);
     if (cName) {
       setConciertoOrigenNombre(cName);
@@ -27,6 +30,19 @@ export const PublicFanCapture: React.FC = () => {
     } else {
       setComoConocio("En directo / Concierto");
     }
+
+    fetch(`/api/public/epk${bandId ? `?band_id=${encodeURIComponent(bandId)}` : ''}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data?.bandName) {
+          const isBkn = (data.bandId || '').includes('bakandeya') || data.bandName.toLowerCase().includes('bakandeya');
+          setBandInfo({
+            name: data.bandName,
+            logoUrl: data.epkConfig?.logoUrl || (isBkn ? '/logo_bakandeya.jpg' : '')
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -92,18 +108,24 @@ export const PublicFanCapture: React.FC = () => {
         {/* LOGO & BRAND HEADER */}
         <div className="text-center space-y-3">
           <div className="inline-block relative">
-            <img
-              src="/logo_bakandeya.jpg"
-              alt="Bakandeya Logo"
-              className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl mx-auto object-cover border-2 border-amber-500 shadow-xl shadow-amber-500/20"
-            />
+            {bandInfo.logoUrl ? (
+              <img
+                src={bandInfo.logoUrl}
+                alt={bandInfo.name || "Logo"}
+                className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl mx-auto object-cover border-2 border-amber-500 shadow-xl shadow-amber-500/20"
+              />
+            ) : (
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl mx-auto bg-slate-900 border-2 border-amber-500/80 flex items-center justify-center text-amber-400 shadow-xl">
+                <Music className="w-10 h-10" />
+              </div>
+            )}
             <span className="absolute -bottom-2 -right-2 bg-amber-500 text-slate-950 p-1.5 rounded-full shadow-lg">
               <Heart className="w-4 h-4 fill-slate-950" />
             </span>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-            ¡SÚMATE A LA FAMILIA BAKANDEYA!
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white uppercase">
+            {bandInfo.name ? `¡SÚMATE A LA FAMILIA DE ${bandInfo.name.toUpperCase()}!` : '¡SÚMATE A NUESTRA COMUNIDAD!'}
           </h1>
           <p className="text-slate-300 text-sm max-w-xs mx-auto">
             {conciertoOrigenNombre ? (

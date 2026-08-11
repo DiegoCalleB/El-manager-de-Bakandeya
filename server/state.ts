@@ -4,6 +4,7 @@ import express from "express";
 import { INITIAL_LEADS, INITIAL_REHEARSALS, INITIAL_CONCERTS, INITIAL_SOCIAL_POSTS, INITIAL_PAYMENTS, INITIAL_MESSAGES, INITIAL_SOCIAL_METRICS, INITIAL_USERS, INITIAL_SONGS, INITIAL_SETLISTS, INITIAL_BANDS, INITIAL_TOURS } from "../src/db_seed.js";
 import { ACTIVE_SESSIONS, hashPassword, getUserFromRequest, createAuthMiddleware, createLeaderMiddleware, createCronOrAuthMiddleware } from "./auth.js";
 import { generateUniqueSlugId, slugify } from "./utils/slug.js";
+import { ensureCategoryTemplatesInState, updatePromptsMarkdownFile, getGlobalPitchFeedbackSummary, formatGlobalPitchFeedbackForPrompt } from "./promptsManager.js";
 
 const DATA_FILE = path.join(process.cwd(), "data.json");
 
@@ -47,7 +48,7 @@ const DEFAULT_EPK_CONFIG = {
     youtube: "https://youtube.com/@bakandeya_oficial",
     instagram: "https://instagram.com/bakandeya_oficial",
     tiktok: "https://tiktok.com/@bakandeya_oficial",
-    website: "https://bakandeya.es"
+    website: "https://bandmanagement-ai.up.railway.app"
   },
   contactoBooking: {
     nombre: "Diego de la Calle / Mánager Bakandeya",
@@ -57,7 +58,7 @@ const DEFAULT_EPK_CONFIG = {
   temasDestacadosIds: ["s-1", "s-2", "s-3"],
   incentivoFans: {
     mensajeAgradecimiento: "¡Muchas gracias por unirte a la familia de Bakandeya! Aquí tienes tu regalo exclusivo por apoyarnos en el concierto.",
-    enlaceDescarga: "https://bakandeya.es/descargas/tema-inedito-directo.mp3",
+    enlaceDescarga: "https://bandmanagement-ai.up.railway.app/descargas/tema-inedito-directo.mp3",
     codigoDescuento: "BAKANDEYA-FAN-10"
   },
   ciudadesConfig: ["Madrid", "Sevilla", "Barcelona", "Málaga", "Valencia", "Granada", "Cádiz"]
@@ -615,6 +616,9 @@ export function loadState(): any {
   if (fs.existsSync(DATA_FILE)) {
     try {
       const content = fs.readFileSync(DATA_FILE, "utf-8");
+      if (!content || content.trim() === "") {
+        throw new Error("data.json is empty");
+      }
       const state = JSON.parse(content);
       
       let changed = false;
@@ -727,8 +731,18 @@ export function loadState(): any {
         changed = true;
       }
 
+      ensureCategoryTemplatesInState(state);
+
       if (changed) {
         saveState(state);
+      }
+
+      try {
+        const feedbackSummary = getGlobalPitchFeedbackSummary(state.leads);
+        const globalMemoryStr = formatGlobalPitchFeedbackForPrompt(state.leads);
+        updatePromptsMarkdownFile(state.categoryTemplates, globalMemoryStr);
+      } catch (err) {
+        // Non-blocking
       }
       
       return state;
@@ -778,7 +792,9 @@ export function loadState(): any {
 
 export function saveState(state: any) {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), "utf-8");
+    const tmpFile = `${DATA_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), "utf-8");
+    fs.renameSync(tmpFile, DATA_FILE);
   } catch (e) {
     console.error("Error saving data.json", e);
   }

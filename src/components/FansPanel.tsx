@@ -91,8 +91,8 @@ export const FansPanel: React.FC<FansPanelProps> = ({
   
   // Incentive state
   const [incentivo, setIncentivo] = useState(epkConfig?.incentivoFans || {
-    mensajeAgradecimiento: "¡Muchas gracias por unirte a la familia de Bakandeya!",
-    enlaceDescarga: "https://bakandeya.es/descargas/tema-inedito-directo.mp3",
+    mensajeAgradecimiento: "¡Muchas gracias por unirte a la familia de la banda!",
+    enlaceDescarga: "https://bandmanagement-ai.up.railway.app/descargas/tema-inedito-directo.mp3",
     codigoDescuento: "BAKANDEYA-FAN-10"
   });
   const [savedIncentive, setSavedIncentive] = useState(false);
@@ -248,8 +248,8 @@ export const FansPanel: React.FC<FansPanelProps> = ({
 
   const selectedConcert = concerts.find(c => c.id === selectedConcertId);
   const [customSlug, setCustomSlug] = useState('');
-  const [useCustomDomain, setUseCustomDomain] = useState(true); // Default to clean custom domain like bakandeya.es
-  const [customDomain, setCustomDomain] = useState('bakandeya.es');
+  const [useCustomDomain, setUseCustomDomain] = useState(true); // Default to clean custom domain like bandmanagement-ai.up.railway.app
+  const [customDomain, setCustomDomain] = useState('bandmanagement-ai.up.railway.app');
   const [routePrefix, setRoutePrefix] = useState('unete');
 
   useEffect(() => {
@@ -264,7 +264,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
   // Build clean target URL
   const rawDomain = useCustomDomain 
     ? (customDomain.trim().startsWith('http') ? customDomain.trim() : `https://${customDomain.trim().replace(/\/$/, '')}`)
-    : 'https://bandmanagement-ai.vercel.app';
+    : (typeof window !== 'undefined' ? window.location.origin : 'https://bandmanagement-ai.up.railway.app');
 
   const cleanPrefix = routePrefix.trim().replace(/^\/+|\/+$/g, '');
   const cleanSlugVal = customSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
@@ -337,16 +337,17 @@ export const FansPanel: React.FC<FansPanelProps> = ({
         </head>
         <body>
           <div class="card">
-            <img src="/logo_bakandeya.jpg" class="header-logo" alt="Bakandeya" />
+            ${epkConfig?.logoUrl ? `<img src="${epkConfig.logoUrl}" class="header-logo" alt="Logo" />` : (epkConfig?.contactoBooking?.nombre || '').toLowerCase().includes('bakandeya') ? `<img src="/logo_bakandeya.jpg" class="header-logo" alt="Bakandeya" />` : ''}
             <h1>${concertTitle}</h1>
-            <p class="desc">Escanea este código QR para unirte a Bakandeya, recibir contenido exclusivo y no perder el contacto.</p>
+            <p class="desc">Escanea este código QR para unirte a la comunidad, recibir contenido exclusivo y no perder el contacto.</p>
             <div class="qr-box">
               <div id="print-qr-svg"></div>
+              ${(epkConfig?.logoUrl || (epkConfig?.contactoBooking?.nombre || '').toLowerCase().includes('bakandeya')) ? `
               <div class="qr-center-overlay">
                 <div class="badge-logo">
-                  <img src="/logo_bakandeya.jpg" alt="Bakandeya" />
+                  <img src="${epkConfig?.logoUrl || '/logo_bakandeya.jpg'}" alt="Logo" />
                 </div>
-              </div>
+              </div>` : ''}
             </div>
             <div class="url">${qrConcertUrl}</div>
           </div>
@@ -931,7 +932,7 @@ export const FansPanel: React.FC<FansPanelProps> = ({
                     }`}
                   >
                     <span>🌐 Dominio Web Oficial</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Para impresiones/carteles (ej. bakandeya.es)</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Para impresiones/carteles (ej. bandmanagement-ai.up.railway.app)</span>
                   </button>
                   <button
                     type="button"
@@ -949,14 +950,14 @@ export const FansPanel: React.FC<FansPanelProps> = ({
 
                 {useCustomDomain && (
                   <div className="space-y-1 pt-1">
-                    <label className="text-[11px] font-mono text-slate-400">Web / Dominio de Bakandeya:</label>
+                    <label className="text-[11px] font-mono text-slate-400">Web / Dominio del Proyecto:</label>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-slate-500 bg-slate-900 px-3 py-2.5 rounded-lg border border-slate-800">https://</span>
                       <input
                         type="text"
                         value={customDomain}
                         onChange={e => setCustomDomain(e.target.value)}
-                        placeholder="bakandeya.es"
+                        placeholder="bandmanagement-ai.up.railway.app"
                         className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500 rounded-lg p-2.5 text-xs text-white outline-none font-mono"
                       />
                     </div>
@@ -1020,12 +1021,12 @@ export const FansPanel: React.FC<FansPanelProps> = ({
                   {qrConcertUrl}
                 </p>
                 <p className="text-[10px] text-slate-400 leading-relaxed pt-1">
-                  💡 <strong className="text-slate-300">¿Por qué aparecía la URL previa larga?</strong> La URL <code className="text-amber-400/80">ais-dev-...run.app</code> es la dirección técnica interna del contenedor de pruebas en la nube. Con la opción de <strong>Dominio Web Oficial</strong> activada, el QR impreso en tus carteles llevará tu nombre limpio (<strong className="text-slate-200">bakandeya.es/unete</strong>).
+                  💡 <strong className="text-slate-300">¿Por qué aparecía la URL previa larga?</strong> La URL <code className="text-amber-400/80">ais-dev-...run.app</code> es la dirección técnica interna del contenedor de pruebas en la nube. Con la opción de <strong>Dominio Web Oficial</strong> activada, el QR impreso en tus carteles llevará tu dominio limpio (<strong className="text-slate-200">bandmanagement-ai.up.railway.app/unete</strong>).
                 </p>
               </div>
 
               <a
-                href={qrConcertUrl.startsWith('http') && useCustomDomain && !qrConcertUrl.includes('bandmanagement-ai.vercel.app') ? `https://bandmanagement-ai.vercel.app${pathFormatted}` : qrConcertUrl}
+                href={qrConcertUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold font-mono text-xs uppercase tracking-widest rounded-xl border border-slate-700 flex items-center justify-center gap-2 transition"
@@ -1038,14 +1039,27 @@ export const FansPanel: React.FC<FansPanelProps> = ({
               <div id="qr-code-svg-container" className="p-4 bg-white rounded-2xl shadow-2xl border-4 border-amber-500 inline-block relative">
                 <QRCode value={qrConcertUrl} size={220} level="H" />
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-16 h-16 bg-slate-950 rounded-xl flex items-center justify-center overflow-hidden border-2 border-amber-500 shadow-xl p-0.5">
-                    <img 
-                      src={epkConfig?.logoUrl || "/logo_bakandeya_bueno_sin_fondo.png"} 
-                      onError={(e) => { (e.target as HTMLImageElement).src = '/logo_bakandeya_bueno_sin_fondo.png'; }}
-                      alt="Logo Bakandeya" 
-                      className="w-full h-full object-contain rounded-lg" 
-                    />
-                  </div>
+                  {epkConfig?.logoUrl ? (
+                    <div className="w-16 h-16 bg-slate-950 rounded-xl flex items-center justify-center overflow-hidden border-2 border-amber-500 shadow-xl p-0.5">
+                      <img 
+                        src={epkConfig.logoUrl} 
+                        alt="Logo" 
+                        className="w-full h-full object-contain rounded-lg" 
+                      />
+                    </div>
+                  ) : (epkConfig?.contactoBooking?.nombre || '').toLowerCase().includes('bakandeya') ? (
+                    <div className="w-16 h-16 bg-slate-950 rounded-xl flex items-center justify-center overflow-hidden border-2 border-amber-500 shadow-xl p-0.5">
+                      <img 
+                        src="/logo_bakandeya_bueno_sin_fondo.png" 
+                        alt="Logo Bakandeya" 
+                        className="w-full h-full object-contain rounded-lg" 
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 bg-amber-500 text-slate-950 rounded-xl flex items-center justify-center border-2 border-slate-950 shadow-xl">
+                      <Users className="w-6 h-6" />
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="text-center space-y-1 mt-2">

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Song, ThemeColors } from '../../types';
-import { Disc3, Star, Play, Pause, Trash2, ArrowUp, ArrowDown, Edit3, Plus, Music, Clock, ChevronDown, ChevronUp, Layers } from 'lucide-react';
+import { Disc3, Star, Play, Pause, Trash2, ArrowUp, ArrowDown, Edit3, Plus, Music, Clock, ChevronDown, ChevronUp, Layers, Scissors, Sparkles } from 'lucide-react';
 import { AlbumCover } from '../AlbumCover';
 import { uploadFileToServer, saveSongsToLocalStorageSafely } from '../../utils/audioStorage';
 import { apiFetch } from '../../utils/api';
+import { LiveConcertToAlbumModal, TrackCutItem } from './LiveConcertToAlbumModal';
 
 interface DiscografiaViewProps {
   songs: Song[];
@@ -61,6 +62,63 @@ export const DiscografiaView: React.FC<DiscografiaViewProps> = ({
 }) => {
   const [activeFilterTab, setActiveFilterTab] = useState<'todos' | 'albumes' | 'singles'>('todos');
   const [expandedAlbums, setExpandedAlbums] = useState<Record<string, boolean>>({});
+  const [isLiveConcertModalOpen, setIsLiveConcertModalOpen] = useState(false);
+
+  const handleSaveLiveConcertAlbum = (albumTitle: string, tracks: TrackCutItem[]) => {
+    const createdSongs: Song[] = tracks.map((t) => {
+      const mins = Math.floor(t.duration / 60);
+      const secs = Math.floor(t.duration % 60);
+      const durationStr = `${mins}:${String(secs).padStart(2, '0')}`;
+      const songAudioUrl = t.audioUrl || '';
+
+      return {
+        id: `live_song_${Date.now()}_${t.index}`,
+        titulo: t.title,
+        artista: 'Nuestra Banda',
+        album: albumTitle,
+        albumDisco: albumTitle,
+        duracion: durationStr,
+        duracionSegundos: t.duration,
+        audioPrincipalUrl: songAudioUrl,
+        audioUrl: songAudioUrl,
+        audioIdeas: songAudioUrl
+          ? [
+              {
+                id: `idea_live_${Date.now()}_${t.index}`,
+                titulo: 'Audio Recortado Directo',
+                seccion: 'general' as const,
+                audioUrl: songAudioUrl,
+                subidoPor: 'Concierto en Directo',
+                fecha: new Date().toISOString(),
+              },
+            ]
+          : [],
+        tipo: t.type === 'musica' ? 'cancion' : 'interludio',
+        ordenAlbum: t.index,
+        speechTranscription: t.speechTranscription || '',
+        cifradoTexto: t.lyricsWithChords || '',
+        tonalidad: t.tonalidad || 'Mim',
+        bpm: t.bpm || 120,
+        favorite: false,
+      };
+    });
+
+    const updatedSongs = [...songs, ...createdSongs];
+    setSongs(updatedSongs);
+    saveSongsToLocalStorageSafely(updatedSongs);
+
+    // Save each new song to backend API
+    createdSongs.forEach((song) => {
+      apiFetch('/api/songs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(song),
+      }).catch((err) => console.warn('Could not persist live song to backend:', err));
+    });
+
+    // Auto expand new album in UI
+    setExpandedAlbums((prev) => ({ ...prev, [albumTitle]: true }));
+  };
 
   const safeSongs = (songs || []).filter((s): s is Song => Boolean(s && typeof s === 'object' && s.id));
   const safeAlbumsList = (albumsList || []).filter((a): a is string => Boolean(a && typeof a === 'string'));
@@ -211,6 +269,16 @@ export const DiscografiaView: React.FC<DiscografiaViewProps> = ({
               <span>{areAllExpanded ? 'Plegar Todos' : 'Desplegar Todos'}</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setIsLiveConcertModalOpen(true)}
+            className="px-4 py-2 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs font-mono flex items-center gap-1.5 cursor-pointer shadow-xl transition-all hover:scale-105 active:scale-95"
+            title="Crear un disco automáticamente a partir del vídeo/audio de un concierto en vivo"
+          >
+            <Scissors className="w-4 h-4" />
+            <span>🔴 Concierto a Disco (IA/FFmpeg)</span>
+          </button>
 
           {onCreateAlbum && (
             <button
@@ -556,6 +624,16 @@ export const DiscografiaView: React.FC<DiscografiaViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Live Concert to Album Modal */}
+      <LiveConcertToAlbumModal
+        isOpen={isLiveConcertModalOpen}
+        onClose={() => setIsLiveConcertModalOpen(false)}
+        bandName="Nuestra Banda"
+        colors={colors}
+        isStitchLight={isStitchLight}
+        onSaveAlbumToCatalog={handleSaveLiveConcertAlbum}
+      />
     </div>
   );
 };

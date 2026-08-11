@@ -106,6 +106,14 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       throw new Error('El navegador ha bloqueado la ventana emergente. Por favor, permite las ventanas emergentes en tu navegador.');
     }
 
+    if (errCode === 'auth/unauthorized-domain' || errMsg.includes('unauthorized-domain')) {
+      throw new Error('El dominio actual de la app no está en la lista de "Dominios autorizados" en la consola de Firebase Authentication.');
+    }
+
+    if (errCode === 'auth/operation-not-allowed' || errMsg.includes('operation-not-allowed')) {
+      throw new Error('El proveedor de inicio de sesión con Google no está habilitado en Firebase Authentication.');
+    }
+
     console.error('Error al iniciar sesión con Google:', error);
     throw error;
   } finally {

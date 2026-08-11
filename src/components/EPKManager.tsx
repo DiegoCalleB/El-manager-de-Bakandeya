@@ -19,43 +19,43 @@ interface EPKManagerProps {
 }
 
 const DEFAULT_EPK_CONFIG: EPKConfig = {
-  biografia: 'Bakandeya es una propuesta vibrante de mestizaje, ska-rock, reggae y ritmos latinos con sección de metales potente y letras combativas pero festivas. Con más de 40 conciertos a sus espaldas en salas y festivales de la península, Bakandeya ofrece un directo arrollador de 90 minutos concebido para hacer bailar e involucrar a todo el público de principio a fin.',
-  logoUrl: '/logo_bakandeya.jpg',
+  biografia: 'Propuesta musical en directo.',
+  logoUrl: '',
   dossierPdfUrl: '',
   dossierPdfName: '',
   dossierTextoExtra: '',
   bandPhotos: [],
-  temasDestacadosIds: ['song-1', 'song-2'],
+  temasDestacadosIds: [],
   contactoBooking: {
-    nombre: 'Diego / Filgue (Mánagers)',
-    email: 'booking@bakandeya.es',
-    telefono: '+34 600 000 000'
+    nombre: 'Booking & Management',
+    email: '',
+    telefono: ''
   },
   enlacesRedes: {
-    spotify: 'https://open.spotify.com/artist/bakandeya',
-    youtube: 'https://youtube.com/@bakandeya_oficial',
-    instagram: 'https://instagram.com/bakandeya_oficial'
+    spotify: '',
+    youtube: '',
+    instagram: ''
   },
-  riderTecnico: 'PA 2000W mín, manguera 16 canales, 4 envíos de monitor, 3 micros vocales SM58, microfonía metales...',
+  riderTecnico: 'Rider técnico por definir.',
   firmaEmail: {
-    nombreRemitente: 'Diego & Filgue',
-    cargo: 'Booking & Management Team',
-    telefono: '+34 652 93 85 21',
-    email: 'booking@bakandeya.es',
-    textoPie: 'Bakandeya — Electrónica-Fusión & Balkan Ska Directo',
+    nombreRemitente: 'Booking & Management Team',
+    cargo: 'Booking & Management',
+    telefono: '',
+    email: '',
+    textoPie: 'Directo en vivo',
     incluirIconosRedes: true,
     adjuntarDossierPorDefecto: true,
     redesSociales: {
-      spotify: 'https://open.spotify.com/artist/bakandeya',
-      instagram: 'https://instagram.com/bakandeya_oficial',
-      youtube: 'https://youtube.com/@bakandeya_oficial',
-      tiktok: 'https://tiktok.com/@bakandeya',
-      facebook: 'https://facebook.com/bakandeya',
+      spotify: '',
+      instagram: '',
+      youtube: '',
+      tiktok: '',
+      facebook: '',
       twitter: '',
       appleMusic: '',
       bandcamp: '',
-      website: 'https://bakandeya.es',
-      whatsapp: '+34652938521'
+      website: '',
+      whatsapp: ''
     }
   }
 };
@@ -67,6 +67,8 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
   currentUser
 }) => {
   const activeBandId = currentUser?.band_id || 'band-bakandeya';
+  const cleanBandId = activeBandId.replace(/^(band|reg)-/, '').toLowerCase();
+  const isBakandeya = cleanBandId === 'bakandeya' || (currentUser?.bandName || '').toLowerCase().includes('bakandeya');
   const [config, setConfig] = useState<EPKConfig>(() => ({
     ...DEFAULT_EPK_CONFIG,
     ...(epkConfig || {}),
@@ -99,7 +101,11 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
   const [isUploadingRider, setIsUploadingRider] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const publicEpkUrl = typeof window !== 'undefined' ? `${window.location.origin}/epk` : '/epk';
+  const publicEpkUrl = typeof window !== 'undefined' 
+    ? (window.location.origin.includes('localhost') || window.location.origin.includes('ais-dev') || window.location.origin.includes('ais-pre')
+        ? 'https://bandmanagement-ai.up.railway.app/epk' 
+        : `${window.location.origin}/epk`) 
+    : 'https://bandmanagement-ai.up.railway.app/epk';
 
   const handleSave = async () => {
     try {
@@ -333,12 +339,24 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
 
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <div className="relative shrink-0">
-                <img
-                  src={config.logoUrl || "/logo_bakandeya_bueno_sin_fondo.png"}
-                  alt="Logo de la banda"
-                  className="w-28 h-28 rounded-2xl object-contain p-1 border-2 border-amber-500/60 shadow-lg bg-slate-950"
-                  onError={(e) => { (e.target as HTMLImageElement).src = '/logo_bakandeya_bueno_sin_fondo.png'; }}
-                />
+                {config.logoUrl ? (
+                  <img
+                    src={config.logoUrl}
+                    alt="Logo de la banda"
+                    className="w-28 h-28 rounded-2xl object-contain p-1 border-2 border-amber-500/60 shadow-lg bg-slate-950"
+                  />
+                ) : isBakandeya ? (
+                  <img
+                    src="/logo_bakandeya_bueno_sin_fondo.png"
+                    alt="Bakandeya Logo"
+                    className="w-28 h-28 rounded-2xl object-contain p-1 border-2 border-amber-500/60 shadow-lg bg-slate-950"
+                  />
+                ) : (
+                  <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-slate-700 bg-slate-950 flex flex-col items-center justify-center text-slate-500 p-2 text-center">
+                    <ImageIcon className="w-8 h-8 text-slate-600 mb-1" />
+                    <span className="text-[10px] font-medium text-slate-400">Sin Logo</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3 flex-1 w-full">
@@ -358,9 +376,9 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
                   {config.logoUrl && (
                     <button
                       type="button"
-                      onClick={() => setConfig({ ...config, logoUrl: '/logo_bakandeya_bueno_sin_fondo.png' })}
+                      onClick={() => setConfig({ ...config, logoUrl: '' })}
                       className="p-2.5 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition"
-                      title="Restablecer logo oficial transparente por defecto"
+                      title="Eliminar logo"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -470,33 +488,65 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
 
           {/* TEXTO EXTRA DEL DOSSIER / INFORMACIÓN DETALLADA PARA AGENTES Y CHATBOT */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 lg:col-span-2">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
               <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
                 <Info className="w-5 h-5" /> Información Adicional de la Banda (Para Dossier y Agentes de IA)
               </h3>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
-                Uso por el Chatbot & Emails
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${
+                  (config.dossierPdfUrl && config.dossierPdfUrl.trim().length > 5) || 
+                  (config.dossierTextoExtra && config.dossierTextoExtra.trim().length >= 80 && !config.dossierTextoExtra.toLowerCase().includes('por definir'))
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                }`}>
+                  {(config.dossierPdfUrl && config.dossierPdfUrl.trim().length > 5) || 
+                  (config.dossierTextoExtra && config.dossierTextoExtra.trim().length >= 80 && !config.dossierTextoExtra.toLowerCase().includes('por definir'))
+                    ? '✓ Listo (Completado)'
+                    : 'Mínimo 80 caracteres o PDF'}
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
+                  Uso por el Chatbot & Emails
+                </span>
+              </div>
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed">
               Escribe o pega aquí cualquier detalle relevante de la banda (trayectoria, integrantes, estilo, rango de caché orientativo, requerimientos de escenario, prensa, enlaces extra, etc.). Toda esta información estará almacenada y el Chatbot y los Agentes la usarán para personalizar las propuestas comerciales enviadas a las salas.
             </p>
 
-            <textarea
-              rows={5}
-              value={config.dossierTextoExtra || ''}
-              onChange={e => setConfig({ ...config, dossierTextoExtra: e.target.value })}
-              placeholder="Ejemplo: Bakandeya cuenta con 4 integrantes (Jon Quel, José Filgueira, Elyar Pashang, Raúl Pérez). Caché orientativo para salas de 800€-1500€ según aforo y distancia. Ofrecemos un show festivo de 90 minutos con metales y percusión en directo..."
-              className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-3.5 text-xs sm:text-sm text-slate-200 outline-none leading-relaxed font-sans"
-            />
+            <div className="space-y-1.5">
+              <textarea
+                rows={5}
+                value={config.dossierTextoExtra || ''}
+                onChange={e => setConfig({ ...config, dossierTextoExtra: e.target.value })}
+                placeholder="Ejemplo: Bakandeya cuenta con 4 integrantes (Jon Quel, José Filgueira, Elyar Pashang, Raúl Pérez). Caché orientativo para salas de 800€-1500€ según aforo y distancia. Ofrecemos un show festivo de 90 minutos con metales y percusión en directo..."
+                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-3.5 text-xs sm:text-sm text-slate-200 outline-none leading-relaxed font-sans"
+              />
+              <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+                <span>Mínimo 80 caracteres para marcar como completado (si no hay PDF adjunto)</span>
+                <span className={(config.dossierTextoExtra || '').trim().length >= 80 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                  {(config.dossierTextoExtra || '').trim().length} / 80 min.
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* BIOGRAPHY */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-            <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2 border-b border-slate-800 pb-3">
-              <FileText className="w-5 h-5" /> Biografía Oficial / Resumen Ejecutivo
-            </h3>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
+              <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                <FileText className="w-5 h-5" /> Biografía Oficial / Resumen Ejecutivo
+              </h3>
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${
+                config.biografia && config.biografia.trim().length >= 80 && !config.biografia.toLowerCase().includes('por definir') && !config.biografia.includes('Propuesta musical en directo')
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+              }`}>
+                {config.biografia && config.biografia.trim().length >= 80 && !config.biografia.toLowerCase().includes('por definir') && !config.biografia.includes('Propuesta musical en directo')
+                  ? '✓ Bio Lista'
+                  : 'Mínimo 80 caracteres'}
+              </span>
+            </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300">Biografía de Presentación</label>
               <textarea
@@ -506,6 +556,12 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
                 placeholder="Escribe la biografía oficial de la banda..."
                 className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-3 text-xs sm:text-sm text-slate-200 outline-none leading-relaxed"
               />
+              <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+                <span>Mínimo 80 caracteres para completar el perfil</span>
+                <span className={(config.biografia || '').trim().length >= 80 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                  {(config.biografia || '').trim().length} / 80 min.
+                </span>
+              </div>
             </div>
           </div>
 
@@ -585,13 +641,26 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
 
           {/* RIDER TECNICO */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 lg:col-span-2">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
               <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
                 <FileText className="w-5 h-5" /> Rider Técnico (Texto y Fichero PDF / Documento)
               </h3>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
-                Documentación Técnica
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${
+                  (config.riderPdfUrl && config.riderPdfUrl.trim().length > 5) || 
+                  (config.riderTecnico && config.riderTecnico.trim().length >= 80 && !config.riderTecnico.toLowerCase().includes('por definir'))
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                }`}>
+                  {(config.riderPdfUrl && config.riderPdfUrl.trim().length > 5) || 
+                  (config.riderTecnico && config.riderTecnico.trim().length >= 80 && !config.riderTecnico.toLowerCase().includes('por definir'))
+                    ? '✓ Rider Listo'
+                    : 'Mínimo 80 caracteres o PDF'}
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
+                  Documentación Técnica
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -669,15 +738,23 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
               </div>
 
               {/* TEXTO RESUMIDO DEL RIDER */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300">Resumen Ejecutivo del Rider (para email y salas)</label>
-                <textarea
-                  rows={6}
-                  value={config.riderTecnico}
-                  onChange={e => setConfig({ ...config, riderTecnico: e.target.value })}
-                  placeholder="Especifica necesidades de PA, monitores, canales, micros, contra-rider, etc..."
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-3 text-xs sm:text-sm font-mono text-slate-200 outline-none leading-relaxed h-[calc(100%-1.75rem)]"
-                />
+              <div className="space-y-2 flex flex-col justify-between">
+                <div>
+                  <label className="text-xs font-bold text-slate-300">Resumen Ejecutivo del Rider (para email y salas)</label>
+                  <textarea
+                    rows={6}
+                    value={config.riderTecnico}
+                    onChange={e => setConfig({ ...config, riderTecnico: e.target.value })}
+                    placeholder="Especifica necesidades de PA, monitores, canales, micros, contra-rider, etc..."
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl p-3 text-xs sm:text-sm font-mono text-slate-200 outline-none leading-relaxed mt-1"
+                  />
+                </div>
+                <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+                  <span>Mínimo 80 caracteres (si no hay PDF adjunto)</span>
+                  <span className={(config.riderTecnico || '').trim().length >= 80 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                    {(config.riderTecnico || '').trim().length} / 80 min.
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -779,7 +856,7 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
                     ...config,
                     firmaEmail: { ...(config.firmaEmail || {}), email: e.target.value }
                   })}
-                  placeholder="booking@bakandeya.es"
+                  placeholder="booking@bandmanagement-ai.up.railway.app"
                   className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white outline-none font-mono"
                 />
               </div>
@@ -849,8 +926,8 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
                   { key: 'facebook', label: '📘 Facebook', placeholder: 'https://facebook.com/...' },
                   { key: 'twitter', label: '🐦 Twitter / X', placeholder: 'https://x.com/...' },
                   { key: 'appleMusic', label: '🍎 Apple Music', placeholder: 'https://music.apple.com/...' },
-                  { key: 'bandcamp', label: '⛺ Bandcamp', placeholder: 'https://bakandeya.bandcamp.com' },
-                  { key: 'website', label: '🌐 Sitio Web', placeholder: 'https://bakandeya.es' },
+                  { key: 'bandcamp', label: '⛺ Bandcamp', placeholder: 'https://bandmanagement-ai.up.railway.app' },
+                  { key: 'website', label: '🌐 Sitio Web', placeholder: 'https://bandmanagement-ai.up.railway.app' },
                   { key: 'whatsapp', label: '💬 WhatsApp', placeholder: '+34652938521' }
                 ].map(item => (
                   <div key={item.key} className="space-y-1">
@@ -893,12 +970,23 @@ export const EPKManager: React.FC<EPKManagerProps> = ({
 
               <div className="pt-2 space-y-3">
                 <div className="flex items-start gap-4">
-                  <img
-                    src={config.logoUrl || '/logo_bakandeya_bueno_sin_fondo.png'}
-                    alt="Logo"
-                    className="w-16 h-16 rounded-xl object-contain bg-slate-950 p-1 border border-amber-500 shrink-0"
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/logo_bakandeya_bueno_sin_fondo.png'; }}
-                  />
+                  {config.logoUrl ? (
+                    <img
+                      src={config.logoUrl}
+                      alt="Logo"
+                      className="w-16 h-16 rounded-xl object-contain bg-slate-950 p-1 border border-amber-500 shrink-0"
+                    />
+                  ) : isBakandeya ? (
+                    <img
+                      src="/logo_bakandeya_bueno_sin_fondo.png"
+                      alt="Bakandeya Logo"
+                      className="w-16 h-16 rounded-xl object-contain bg-slate-950 p-1 border border-amber-500 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-400 font-bold text-lg shrink-0">
+                      <Music className="w-8 h-8 text-slate-400" />
+                    </div>
+                  )}
 
                   <div className="space-y-1 flex-1">
                     <h4 className="font-extrabold text-slate-900 text-sm">

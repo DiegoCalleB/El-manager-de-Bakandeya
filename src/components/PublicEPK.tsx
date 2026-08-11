@@ -54,15 +54,20 @@ export const PublicEPK: React.FC<PublicEPKProps> = ({ initialData }) => {
     );
   }
 
+  const bandName = epkData?.bandName || epkData?.registeredBand?.nombre_banda || "Banda";
+  const isBakandeya = (epkData?.bandId || '').includes('bakandeya') || bandName.toLowerCase().includes('bakandeya');
+
   const config: EPKConfig = epkData?.epkConfig || {
-    biografia: "Bakandeya es una propuesta vibrante de mestizaje, ska-rock, reggae y ritmos latinos...",
-    logoUrl: "/logo_bakandeya.jpg",
-    bandPhotos: ["/logo_bakandeya.jpg"],
-    riderTecnico: "PA 2000W mín, 16 canales, 3 micrófonos vocales, microfonía metales...",
+    biografia: isBakandeya ? "Bakandeya es una propuesta vibrante de mestizaje, ska-rock, reggae y ritmos latinos..." : "Propuesta musical en directo.",
+    logoUrl: isBakandeya ? "/logo_bakandeya.jpg" : "",
+    bandPhotos: isBakandeya ? ["/logo_bakandeya.jpg"] : [],
+    riderTecnico: "PA y microfonía profesional de directo...",
     enlacesRedes: {},
-    contactoBooking: { nombre: "Diego", email: "booking@bakandeya.es", telefono: "+34 612 345 678" },
+    contactoBooking: { nombre: bandName, email: "", telefono: "" },
     temasDestacadosIds: []
   };
+
+  const displayLogo = config.logoUrl || (isBakandeya ? "/logo_bakandeya.jpg" : "");
 
   const songs: Song[] = epkData?.highlightedSongs || [];
   const concerts: Concert[] = epkData?.upcomingConcerts || [];
@@ -72,8 +77,14 @@ export const PublicEPK: React.FC<PublicEPKProps> = ({ initialData }) => {
       {/* Top Floating Action Bar (Hidden on Print) */}
       <div className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 z-50 py-3 px-4 flex items-center justify-between shadow-lg print:hidden">
         <div className="flex items-center gap-3">
-          <img src={config.logoUrl || "/logo_bakandeya.jpg"} alt="Logo Bakandeya" className="w-8 h-8 rounded-full object-cover border border-amber-500/50" />
-          <span className="font-bold text-amber-400 tracking-wide text-sm sm:text-base">BAKANDEYA — EPK / Press Kit</span>
+          {displayLogo ? (
+            <img src={displayLogo} alt={`Logo ${bandName}`} className="w-8 h-8 rounded-full object-cover border border-amber-500/50" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-slate-800 border border-amber-500/50 flex items-center justify-center text-amber-400 font-bold text-xs">
+              {bandName.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <span className="font-bold text-amber-400 tracking-wide text-sm sm:text-base">{bandName} — EPK / Press Kit</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <button
@@ -100,11 +111,18 @@ export const PublicEPK: React.FC<PublicEPKProps> = ({ initialData }) => {
         <header className="relative rounded-2xl overflow-hidden border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 p-6 sm:p-10 mb-8 print:border-none print:p-0 print:bg-none">
           <div className="flex flex-col md:flex-row items-center gap-8">
             <div className="relative shrink-0">
-              <img
-                src={config.logoUrl || "/logo_bakandeya.jpg"}
-                alt="Bakandeya Logo Oficial"
-                className="w-40 h-40 sm:w-48 sm:h-48 rounded-2xl object-cover border-2 border-amber-500/60 shadow-2xl shadow-amber-500/10"
-              />
+              {displayLogo ? (
+                <img
+                  src={displayLogo}
+                  alt={`Logo Oficial ${bandName}`}
+                  className="w-40 h-40 sm:w-48 sm:h-48 rounded-2xl object-cover border-2 border-amber-500/60 shadow-2xl shadow-amber-500/10"
+                />
+              ) : (
+                <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-2xl bg-slate-900 border-2 border-slate-700 flex flex-col items-center justify-center text-amber-400 p-4">
+                  <Music className="w-12 h-12 mb-2 opacity-80" />
+                  <span className="font-bold text-center text-sm">{bandName}</span>
+                </div>
+              )}
               <span className="absolute -bottom-2 -right-2 bg-amber-500 text-slate-950 text-xs font-black uppercase px-2.5 py-1 rounded-full shadow-md">
                 Directo Rumba / Ska
               </span>

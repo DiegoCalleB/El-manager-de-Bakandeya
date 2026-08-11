@@ -1,5 +1,5 @@
-import React from 'react';
-import { Settings, Sparkles, RefreshCw, Building2, Tent, Disc3, Radio, Users, Briefcase } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings, Sparkles, RefreshCw, Building2, Tent, Disc3, Radio, Users, Briefcase, MessageSquare, Star } from 'lucide-react';
 import { ThemeColors } from '../../types';
 
 export type TemplateCategory = 'salas' | 'festivales' | 'discotecas' | 'medios' | 'grupos' | 'managements';
@@ -27,6 +27,15 @@ interface TemplateConfigSectionProps {
   testPromptResult: string;
   onTestPrompt: () => void;
   onSaveTemplates: () => void;
+  onOptimizeTemplate?: () => void;
+  isOptimizingTemplate?: boolean;
+  optimizationFeedbackMsg?: string | null;
+  customInstruction?: string;
+  onCustomInstructionChange?: (val: string) => void;
+  toneRating?: number;
+  onToneRatingChange?: (rating: number) => void;
+  contentRating?: number;
+  onContentRatingChange?: (rating: number) => void;
 }
 
 export function TemplateConfigSection({
@@ -41,7 +50,28 @@ export function TemplateConfigSection({
   testPromptResult,
   onTestPrompt,
   onSaveTemplates,
+  onOptimizeTemplate,
+  isOptimizingTemplate,
+  optimizationFeedbackMsg,
+  customInstruction: customInstructionProp,
+  onCustomInstructionChange,
+  toneRating: toneRatingProp,
+  onToneRatingChange,
+  contentRating: contentRatingProp,
+  onContentRatingChange,
 }: TemplateConfigSectionProps) {
+  const [internalInstruction, setInternalInstruction] = useState('');
+  const [internalToneRating, setInternalToneRating] = useState(0);
+  const [internalContentRating, setInternalContentRating] = useState(0);
+
+  const customInstruction = customInstructionProp !== undefined ? customInstructionProp : internalInstruction;
+  const setCustomInstruction = onCustomInstructionChange || setInternalInstruction;
+
+  const toneRating = toneRatingProp !== undefined ? toneRatingProp : internalToneRating;
+  const setToneRating = onToneRatingChange || setInternalToneRating;
+
+  const contentRating = contentRatingProp !== undefined ? contentRatingProp : internalContentRating;
+  const setContentRating = onContentRatingChange || setInternalContentRating;
   return (
     <div className={`${colors.card} p-5 space-y-6`}>
       <div
@@ -130,6 +160,12 @@ export function TemplateConfigSection({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Form Side */}
         <div className="space-y-4">
+          {optimizationFeedbackMsg && (
+            <div className="p-3 bg-amber-500/15 border border-amber-500/30 text-amber-200 text-[11px] rounded-xl font-sans animate-in fade-in">
+              {optimizationFeedbackMsg}
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <label
               className={`block text-[10px] uppercase font-sans tracking-wider ${
@@ -183,7 +219,7 @@ export function TemplateConfigSection({
             </label>
             <textarea
               id="template-guidelines"
-              rows={4}
+              rows={3}
               value={activeTemplate.guidelines}
               onChange={(e) => activeTemplate.setGuidelines(e.target.value)}
               className={`w-full rounded-lg p-3 text-[10px] focus:outline-none transition-all font-sans leading-relaxed ${
@@ -195,7 +231,112 @@ export function TemplateConfigSection({
             />
           </div>
 
-          <div className="flex gap-3 pt-2">
+          {/* Evaluation & Training Box for Template */}
+          <div className="space-y-3 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10">
+            <div className="flex items-center justify-between">
+              <label className="block text-[10px] uppercase font-sans font-bold tracking-wider text-amber-300 flex items-center gap-1.5">
+                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30" /> Evaluación y Entrenamiento de la Plantilla
+              </label>
+              {(toneRating > 0 || contentRating > 0 || customInstruction) && (
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setToneRating(0);
+                    setContentRating(0);
+                    setCustomInstruction('');
+                  }}
+                  className="text-[9px] text-amber-400 font-bold hover:underline cursor-pointer"
+                >
+                  Limpiar todo
+                </button>
+              )}
+            </div>
+
+            {/* Estrellitas de Tono y Contenido */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Tono y Estilo */}
+              <div className="p-2 bg-[#131313] rounded-lg border border-amber-500/20 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-amber-200">Tono y Estilo</span>
+                  <span className="text-[10px] font-mono text-amber-400 font-bold">
+                    {toneRating > 0 ? `${toneRating}/5` : 'Sin calificar'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={`template-tone-${star}`}
+                      type="button"
+                      onClick={() => setToneRating(toneRating === star ? 0 : star)}
+                      className={`p-0.5 rounded hover:bg-amber-500/20 transition-colors cursor-pointer ${
+                        toneRating >= star ? 'text-amber-400' : 'text-neutral-600'
+                      }`}
+                      title={`Calificar tono y estilo: ${star}/5`}
+                    >
+                      <Star className="w-4 h-4 fill-current" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Contenido y Estructura */}
+              <div className="p-2 bg-[#131313] rounded-lg border border-amber-500/20 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-amber-200">Contenido y Estructura</span>
+                  <span className="text-[10px] font-mono text-amber-400 font-bold">
+                    {contentRating > 0 ? `${contentRating}/5` : 'Sin calificar'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={`template-content-${star}`}
+                      type="button"
+                      onClick={() => setContentRating(contentRating === star ? 0 : star)}
+                      className={`p-0.5 rounded hover:bg-amber-500/20 transition-colors cursor-pointer ${
+                        contentRating >= star ? 'text-amber-400' : 'text-neutral-600'
+                      }`}
+                      title={`Calificar contenido y estructura: ${star}/5`}
+                    >
+                      <Star className="w-4 h-4 fill-current" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Comentario / Instrucción */}
+            <div className="space-y-1 pt-1">
+              <label className="block text-[10px] uppercase font-sans font-bold tracking-wider text-amber-300 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-amber-400" /> Comentario o Corrección Directa
+              </label>
+              <textarea
+                id="template-custom-instruction-standalone"
+                rows={2}
+                value={customInstruction}
+                onChange={(e) => setCustomInstruction(e.target.value)}
+                className="w-full rounded-lg p-2.5 text-[10px] bg-[#131313] text-[#e5e2e1] border border-amber-500/30 focus:border-amber-400 focus:outline-none font-sans leading-relaxed"
+                placeholder="Ej: 'Haz la plantilla de salas un 20% más corta, resalta nuestro directo enérgico sin instrumentos de viento y pide propuesta de fecha para el próximo trimestre...'"
+              />
+            </div>
+
+            <div className="text-[9px] text-amber-300/80 font-sans leading-tight">
+              💡 Califica con estrellas el tono y el contenido e introduce comentarios. Al hacer clic abajo en <strong>Regenerar</strong>, la IA aplicará tus valoraciones para optimizar la plantilla.
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-2">
+            {onOptimizeTemplate && (
+              <button
+                type="button"
+                onClick={onOptimizeTemplate}
+                disabled={isOptimizingTemplate}
+                className="py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-sans font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className={`w-3.5 h-3.5 text-amber-400 ${isOptimizingTemplate ? 'animate-spin' : ''}`} />
+                <span>{isOptimizingTemplate ? 'Regenerando con IA...' : '✨ Regenerar Plantilla con IA y Aprendizaje'}</span>
+              </button>
+            )}
             <button
               id="template-btn-test"
               onClick={onTestPrompt}
@@ -253,14 +394,94 @@ export function TemplateConfigSection({
             </div>
 
             {testPromptResult ? (
-              <div
-                className={`border rounded-lg p-3.5 text-[10px] font-sans whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto animate-in fade-in duration-300 select-text ${
-                  isStitchLight
-                    ? 'bg-white text-slate-700 border-slate-200'
-                    : 'bg-[#1c1b1b] text-neutral-300 border-neutral-800'
-                }`}
-              >
-                {testPromptResult}
+              <div className="space-y-3">
+                <div
+                  className={`border rounded-lg p-3.5 text-[10px] font-sans whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto animate-in fade-in duration-300 select-text ${
+                    isStitchLight
+                      ? 'bg-white text-slate-700 border-slate-200'
+                      : 'bg-[#1c1b1b] text-neutral-300 border-neutral-800'
+                  }`}
+                >
+                  {testPromptResult}
+                </div>
+
+                {/* Valoración directa del resultado generado en la simulación */}
+                <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                      <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30" /> Valorar esta plantilla / resultado
+                    </span>
+                    {(toneRating > 0 || contentRating > 0) && (
+                      <span className="text-[9px] text-amber-400 font-mono">
+                        Tono: {toneRating || '-'}/5 | Contenido: {contentRating || '-'}/5
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Tono */}
+                    <div className="p-2 bg-[#131313] rounded-lg border border-amber-500/20 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-amber-200">Tono y Estilo</span>
+                        <span className="text-[10px] font-mono text-amber-400 font-bold">
+                          {toneRating > 0 ? `${toneRating}/5` : '⭐'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={`template-sandbox-tone-${star}`}
+                            type="button"
+                            onClick={() => setToneRating(toneRating === star ? 0 : star)}
+                            className={`p-0.5 rounded hover:bg-amber-500/20 transition-colors cursor-pointer ${
+                              toneRating >= star ? 'text-amber-400' : 'text-neutral-600'
+                            }`}
+                            title={`Calificar tono: ${star}/5`}
+                          >
+                            <Star className="w-4 h-4 fill-current" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Contenido */}
+                    <div className="p-2 bg-[#131313] rounded-lg border border-amber-500/20 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-amber-200">Contenido y Estructura</span>
+                        <span className="text-[10px] font-mono text-amber-400 font-bold">
+                          {contentRating > 0 ? `${contentRating}/5` : '⭐'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={`template-sandbox-content-${star}`}
+                            type="button"
+                            onClick={() => setContentRating(contentRating === star ? 0 : star)}
+                            className={`p-0.5 rounded hover:bg-amber-500/20 transition-colors cursor-pointer ${
+                              contentRating >= star ? 'text-amber-400' : 'text-neutral-600'
+                            }`}
+                            title={`Calificar contenido: ${star}/5`}
+                          >
+                            <Star className="w-4 h-4 fill-current" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {onOptimizeTemplate && (
+                    <button
+                      type="button"
+                      onClick={onOptimizeTemplate}
+                      disabled={isOptimizingTemplate}
+                      className="w-full py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-black font-bold text-[10px] rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 ${isOptimizingTemplate ? 'animate-spin' : ''}`} />
+                      <span>Re-generar plantilla usando estas valoraciones ✨</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <div

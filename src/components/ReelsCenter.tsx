@@ -29,6 +29,7 @@ import {
   getStartTimeInSeconds 
 } from '../utils/reelsUtils';
 import { ReelsMetricsView } from './reels/ReelsMetricsView';
+import { BandToneModal, ToneAnalysisData } from './bandCRM/BandToneModal';
 
 export type { ReelCard, HighlightClip, OptimalTime };
 
@@ -79,6 +80,38 @@ export default function ReelsCenter({
 }: ReelsCenterProps) {
  // Tabs: 'pipeline' (existing Kanban + Writer) vs 'analyzer' (new AI Video Highlight Extractor) vs 'metrics'
  const [activeTab, setActiveTab] = useState<'pipeline' | 'analyzer' | 'metrics'>('pipeline');
+
+ // Bakandeya Tone Analysis State
+ const [isBakandeyaToneModalOpen, setIsBakandeyaToneModalOpen] = useState(false);
+ const [bakandeyaToneData, setBakandeyaToneData] = useState<ToneAnalysisData | null>(null);
+ const [isAnalyzingBakandeyaTone, setIsAnalyzingBakandeyaTone] = useState(false);
+
+ const handleAnalyzeBakandeyaTone = async () => {
+   setIsAnalyzingBakandeyaTone(true);
+   setIsBakandeyaToneModalOpen(true);
+   try {
+     const res = await apiFetch('/api/bands/analyze-tone', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({
+         nombre_entidad: 'Bakandeya',
+         instagram: 'bakandeya',
+         estilo_musical: 'Balkan Ska Reggae',
+         localizacion: 'Madrid / Sevilla',
+         tipo: 'Banda / Artista Emisora',
+         is_sender: true
+       })
+     });
+     const json = await res.json();
+     if (json.success && json.data) {
+       setBakandeyaToneData(json.data);
+     }
+   } catch (err) {
+     console.error('Error analyzing Bakandeya tone:', err);
+   } finally {
+     setIsAnalyzingBakandeyaTone(false);
+   }
+ };
 
  // Sync state
  const [isSyncingReels, setIsSyncingReels] = useState(false);
@@ -612,7 +645,21 @@ export default function ReelsCenter({
  if (data.videos && data.videos.length > 0) {
  setRealVideos(data.videos);
  }
- setMetricSuccess(`✓ Lectura en directo realizada desde perfiles oficiales (IG: ${data.instagramFollowers}, TK: ${data.tiktokFollowers}, YT: ${data.youtubeSubscribers}).`);
+
+ if (onAddMetric) {
+ const todayStr = new Date().toISOString().split('T')[0];
+ await onAddMetric({
+ id: `scan-${Date.now()}`,
+ fecha: todayStr,
+ instagram: data.instagramFollowers || 0,
+ tiktok: data.tiktokFollowers || 0,
+ youtube: data.youtubeSubscribers || 0,
+ spotify: data.spotifyListeners || 150,
+ notas: `Escaneo automático multicanal en directo (@bakandeya)`
+ });
+ }
+
+ setMetricSuccess(`✓ Sincronización en directo realizada desde perfiles oficiales (IG: ${data.instagramFollowers}, TK: ${data.tiktokFollowers}, YT: ${data.youtubeSubscribers}, Spotify: ${data.spotifyListeners || 150}).`);
  setTimeout(() => setMetricSuccess(''), 6000);
  } else {
  alert(resData.error || 'Error al escanear datos reales.');
@@ -928,6 +975,15 @@ export default function ReelsCenter({
         <p className="text-sm font-mono text-zinc-400 uppercase tracking-widest">Analítica Social y Prensa</p>
       </div>
  <div className="flex gap-2.5 items-center flex-wrap">
+ <button
+ onClick={handleAnalyzeBakandeyaTone}
+ className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 transition-all cursor-pointer shadow-md"
+ title="Escanear Reels y Posts de @bakandeya para fijar el Tono de Voz y Expresión de la banda"
+ >
+ <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+ <span>Tono Redes Bakandeya</span>
+ </button>
+
  <button
  id="sync-reels-excel-btn"
  onClick={handleSyncReels}
@@ -1947,6 +2003,10 @@ export default function ReelsCenter({
  onAddMetric={onAddMetric}
  onUpdateMetric={onUpdateMetric}
  onDeleteMetric={onDeleteMetric}
+ onScanRealMetrics={handleScanRealMetrics}
+ onSyncMetrics={handleSyncMetricsTab}
+ isScanningMetrics={isScanningMetrics}
+ isSyncingMetrics={isSyncingMetrics}
  />
  )}
 
@@ -3249,6 +3309,23 @@ export default function ReelsCenter({
  </div>
  </div>
  )}
+
+  {/* Modal de Tono de Expresión Bakandeya */}
+  <BandToneModal
+    isOpen={isBakandeyaToneModalOpen}
+    onClose={() => setIsBakandeyaToneModalOpen(false)}
+    band={{
+      id: 'bakandeya',
+      nombre_banda: 'Bakandeya',
+      estilo_musical: 'Balkan Ska Reggae',
+      localizacion: 'Madrid / Sevilla',
+      estado_relacion: 'colegas_aliados',
+      ultimo_contacto: 'Hoy'
+    }}
+    toneData={bakandeyaToneData}
+    isLoading={isAnalyzingBakandeyaTone}
+    onReAnalyze={handleAnalyzeBakandeyaTone}
+  />
 
  </div>
  );

@@ -539,17 +539,19 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  // Confirm action callback
  async function handleConfirmAction(msgId: string, action: ProposedAction) {
  // 1. Apply changes
- if (action.type === 'propose_lead_approval') {
+  if (action.type === 'propose_lead_approval') {
  const targetLead = leads.find(l => l.id === action.leadId);
  if (targetLead) {
  const today = new Date().toISOString().split('T')[0];
  const nowStr = `${today} ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
  
- let gmailMessageId = '';
- let gmailError = '';
  const emailBody = action.body || targetLead.pitch_generado || '';
  const emailSubject = action.subject || `Propuesta de Concierto - Bakandeya en ${targetLead.nombre_sala}`;
  const recipientEmail = targetLead.email_contacto;
+ const isDraftOnly = autonomyConfig.dispatchLevel === 'draft_only' || autonomyConfig.dispatchLevel !== 'autonomous_first_contact';
+
+ let gmailId = '';
+ let gmailError = '';
 
  if (recipientEmail) {
  try {
@@ -566,21 +568,48 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
    senderName: action.senderName || cleanUserName,
    bandName: bandDisplayName
  });
- const res = await sendGmailMessage(recipientEmail, emailSubject, formatted.html, token, true);
- gmailMessageId = res.id;
+ if (isDraftOnly) {
+   const res = await createGmailDraft(recipientEmail, emailSubject, formatted.html, token, true);
+   gmailId = res.id;
+ } else {
+   const res = await sendGmailMessage(recipientEmail, emailSubject, formatted.html, token, true);
+   gmailId = res.id;
+ }
  } else {
  gmailError = 'Sin conexión Google OAuth activa.';
  }
  } catch (err: any) {
- console.error('Error sending email on lead approval:', err);
- gmailError = err.message || 'Error al enviar por Gmail API';
+ console.error('Error processing email on lead approval:', err);
+ gmailError = err.message || 'Error al procesar por Gmail API';
  }
  } else if (!recipientEmail) {
  gmailError = 'La sala no tiene un correo de contacto (email_contacto).';
  }
 
- const updatedNotes = `*** [${nowStr}] Correo APROBADO Y ENVIADO vía Chatbot AI Assistant${gmailMessageId ? ` [Gmail ID: ${gmailMessageId}]` : ''} ***\n${targetLead.notas || ''}`;
+ if (isDraftOnly) {
+ const updatedNotes = `*** [${nowStr}] Borrador Creado en Gmail por Mánager IA (Modo Sólo Borradores Activo)${gmailId ? ` [Gmail Draft ID: ${gmailId}]` : ''} ***\n${targetLead.notas || ''}`;
+ onUpdateLead(action.leadId, {
+ estado: 'pendiente_aprobacion',
+ pitch_generado: emailBody || targetLead.pitch_generado,
+ notas: updatedNotes
+ }, targetLead.estado);
 
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) return { ...m, actionStatus: 'applied' };
+ return m;
+ }));
+
+ const draftMsg: ChatMessage = {
+ id: `sys-${Date.now()}`,
+ sender: 'bot',
+ text: gmailId
+ ? `📝 **Borrador Creado en Gmail (Modo Sólo Borradores Activo):**\n\n🔒 Por seguridad y al estar la autonomía fijada en **SÓLO BORRADORES**, el correo NO se ha enviado directamente.\nSe ha generado el **borrador real** en tu bandeja de Gmail para **"${recipientEmail}"** (${targetLead.nombre_sala}).\n- **Borrador ID:** \`${gmailId}\`\n- **Estado:** Guardado en Gmail para revisión humana obligatoria.`
+ : `📝 **Borrador Guardado en Google Sheets:** Se ha registrado el borrador para **"${targetLead.nombre_sala}"** en la base de datos.${gmailError ? `\n\n⚠️ *Aviso:* ${gmailError}` : ''}`,
+ timestamp: new Date()
+ };
+ setMessages(prev => [...prev, draftMsg]);
+ } else {
+ const updatedNotes = `*** [${nowStr}] Correo APROBADO Y ENVIADO vía Chatbot AI Assistant${gmailId ? ` [Gmail ID: ${gmailId}]` : ''} ***\n${targetLead.notas || ''}`;
  onUpdateLead(action.leadId, {
  estado: 'aprobado',
  fecha_envio: nowStr,
@@ -589,21 +618,20 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  }, targetLead.estado);
 
  setMessages(prev => prev.map(m => {
- if (m.id === msgId) {
- return { ...m, actionStatus: 'applied' };
- }
+ if (m.id === msgId) return { ...m, actionStatus: 'applied' };
  return m;
  }));
 
  const successMsg: ChatMessage = {
  id: `sys-${Date.now()}`,
  sender: 'bot',
- text: gmailMessageId
- ? `📧 **¡Correo Enviado con Éxito vía Gmail!**\n\nSe ha enviado el correo oficialmente a **"${recipientEmail}"** (${targetLead.nombre_sala}).\n- **ID de Mensaje Gmail:** \`${gmailMessageId}\`\n- **Estado:** Aprobado/Enviado (${nowStr})\n- **Sincronización:** Google Sheets actualizado.`
+ text: gmailId
+ ? `📧 **¡Correo Enviado con Éxito vía Gmail!**\n\nSe ha enviado el correo oficialmente a **"${recipientEmail}"** (${targetLead.nombre_sala}).\n- **ID de Mensaje Gmail:** \`${gmailId}\`\n- **Estado:** Aprobado/Enviado (${nowStr})\n- **Sincronización:** Google Sheets actualizado.`
  : `✅ **Aprobación Registrada en Google Sheets:** Se ha marcado como aprobado **"${targetLead.nombre_sala}"** en la base de datos.${gmailError ? `\n\n⚠️ *Aviso Gmail:* ${gmailError}` : ''}`,
  timestamp: new Date()
  };
  setMessages(prev => [...prev, successMsg]);
+ }
  }
 
  } else if (action.type === 'propose_status_change') {
@@ -998,8 +1026,9 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  const targetLead = leads.find(l => l.id === action.leadId);
  const today = new Date().toISOString().split('T')[0];
  const nowStr = `${today} ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+ const isDraftOnly = autonomyConfig.dispatchLevel === 'draft_only' || autonomyConfig.dispatchLevel !== 'autonomous_first_contact';
 
- let gmailMessageId = '';
+ let gmailId = '';
  let gmailError = '';
 
  if (targetLead) {
@@ -1022,21 +1051,48 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
    senderName: action.senderName || cleanUserName,
    bandName: bandDisplayName
  });
- const res = await sendGmailMessage(recipientEmail, emailSubject, formatted.html, token, true);
- gmailMessageId = res.id;
+ if (isDraftOnly) {
+   const res = await createGmailDraft(recipientEmail, emailSubject, formatted.html, token, true);
+   gmailId = res.id;
  } else {
- gmailError = 'No hay sesión de Google OAuth activa para enviar el correo.';
+   const res = await sendGmailMessage(recipientEmail, emailSubject, formatted.html, token, true);
+   gmailId = res.id;
+ }
+ } else {
+ gmailError = 'No hay sesión de Google OAuth activa para procesar el correo.';
  }
  } catch (err: any) {
- console.error('Error sending email via Gmail API:', err);
+ console.error('Error processing email via Gmail API:', err);
  gmailError = err.message || 'Error en la API de Gmail';
  }
  } else {
  gmailError = 'El lead/sala no tiene un correo de contacto definido (email_contacto).';
  }
 
- const updatedNotes = `*** [${nowStr}] Correo ENVIADO a ${recipientEmail || 'sin_email'} por ${action.senderName || 'Mánager Virtual Chatbot'}${gmailMessageId ? ` [Gmail Message ID: ${gmailMessageId}]` : ''} ***\n${targetLead.notas || ''}`;
+ if (isDraftOnly) {
+ const updatedNotes = `*** [${nowStr}] Borrador Creado en Gmail por Mánager IA (Bloqueado Modo Solo Borradores)${gmailId ? ` [Gmail Draft ID: ${gmailId}]` : ''} ***\n${targetLead.notas || ''}`;
+ onUpdateLead(action.leadId, {
+ estado: 'pendiente_aprobacion',
+ pitch_generado: emailBody,
+ notas: updatedNotes
+ }, targetLead.estado);
 
+ setMessages(prev => prev.map(m => {
+ if (m.id === msgId) return { ...m, actionStatus: 'applied' };
+ return m;
+ }));
+
+ const draftOnlyMsg: ChatMessage = {
+ id: `sys-${Date.now()}`,
+ sender: 'bot',
+ text: gmailId
+ ? `📝 **Borrador Creado en Gmail (Modo Sólo Borradores Activo):**\n\n🔒 Por seguridad y al estar la autonomía en **SÓLO BORRADORES**, el correo NO se ha enviado directamente.\nSe ha creado el **borrador real en tu Gmail** para **"${recipientEmail}"** (${targetLead.nombre_sala}).\n- **Borrador ID:** \`${gmailId}\`\n- **Estado:** Guardado en tu bandeja de entrada para revisión humana.`
+ : `📝 **Borrador Guardado en Google Sheets:** Se ha registrado el borrador de correo para **"${action.leadName || targetLead.nombre_sala}"** en la base de datos.${gmailError ? `\n\n⚠️ *Aviso:* ${gmailError}` : ''}`,
+ timestamp: new Date()
+ };
+ setMessages(prev => [...prev, draftOnlyMsg]);
+ } else {
+ const updatedNotes = `*** [${nowStr}] Correo ENVIADO a ${recipientEmail || 'sin_email'} por ${action.senderName || 'Mánager Virtual Chatbot'}${gmailId ? ` [Gmail Message ID: ${gmailId}]` : ''} ***\n${targetLead.notas || ''}`;
  onUpdateLead(action.leadId, {
  estado: 'aprobado',
  fecha_envio: nowStr,
@@ -1052,12 +1108,13 @@ export default function Chatbot({ colors, leads, rehearsals, concerts, epkConfig
  const sendSuccessMsg: ChatMessage = {
  id: `sys-${Date.now()}`,
  sender: 'bot',
- text: gmailMessageId
- ? `📧 **¡Correo ENVIADO REALMENTE por Gmail!**\n\nEl correo ha sido enviado oficialmente a **"${recipientEmail}"** (${targetLead.nombre_sala}).\n- **Gmail Message ID:** \`${gmailMessageId}\`\n- **Estado:** Aprobado / Enviado (${nowStr})\n- **Firma & EPK:** Incluidos automáticamente.\n\nSe ha actualizado el estado y registrado la fecha de envío en Google Sheets.`
+ text: gmailId
+ ? `📧 **¡Correo ENVIADO REALMENTE por Gmail!**\n\nEl correo ha sido enviado oficialmente a **"${recipientEmail}"** (${targetLead.nombre_sala}).\n- **Gmail Message ID:** \`${gmailId}\`\n- **Estado:** Aprobado / Enviado (${nowStr})\n- **Firma & EPK:** Incluidos automáticamente.\n\nSe ha actualizado el estado y registrado la fecha de envío en Google Sheets.`
  : `📧 **Correo Marcado como Aprobado en Google Sheets:**\n\nSe ha actualizado el estado de **"${action.leadName || targetLead.nombre_sala}"** a **Aprobado/Enviado** en la base de datos (${nowStr}).\n\n⚠️ **Atención:** ${gmailError}`,
  timestamp: new Date()
  };
  setMessages(prev => [...prev, sendSuccessMsg]);
+ }
  }
 
  } else if (action.type === 'propose_agent_trigger' && action.agentName) {

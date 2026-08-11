@@ -81,7 +81,7 @@ interface MerchanProps {
 }
 
 export default function Merchan({ colors, currentTheme }: MerchanProps) {
-  const isStitchLight = currentTheme === 'stitch_light';
+  const isStitchLight = false;
   
   const [productType, setProductType] = useState<'camiseta' | 'pegatina'>('camiseta');
   const [assetType, setAssetType] = useState<'logo' | 'portada' | 'custom'>('logo');

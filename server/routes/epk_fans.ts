@@ -284,12 +284,15 @@ router.post("/public/fans", async (req, res) => {
 
     await appendFanToSheet(newFan);
 
+    const epkConf = getEpkConfigForBand(state, targetBandId);
+    const bandName = epkConf?.contactoBooking?.nombre || (targetBandId.includes('bakandeya') ? "Bakandeya" : "la banda");
+
     res.json({
       success: true,
-      message: "¡Registro completado con éxito! Bienvenido/a a la familia Bakandeya.",
-      incentivo: state.epkConfig?.incentivoFans || {
+      message: `¡Registro completado con éxito! Bienvenido/a a la familia de ${bandName}.`,
+      incentivo: epkConf?.incentivoFans || {
         mensajeAgradecimiento: "¡Muchas gracias por unirte!",
-        codigoDescuento: "BAKANDEYA-FAN-10"
+        codigoDescuento: "FAN-VIP-10"
       }
     });
   } catch (err: any) {

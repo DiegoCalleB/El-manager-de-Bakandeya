@@ -4,6 +4,7 @@ import { Lead, Rehearsal, Concert } from "../../src/types.js";
 import { loadState, getUserFromRequestLocal, getEpkConfigForBand, getAutonomyConfigForBand, BAKANDEYA_BAND_ID } from "../state.js";
 import { getAiClient, generateContentWithFallback } from "../ai.js";
 import { safeParseJson } from "../utils.js";
+import { getGlobalPitchFeedbackSummary, formatGlobalPitchFeedbackForPrompt } from "./leads.js";
 
 const router = express.Router();
 
@@ -245,6 +246,7 @@ router.post("/chat", async (req, res) => {
     const bandIdForEpk = userReq?.band_id || BAKANDEYA_BAND_ID;
     const epkConfigData = getEpkConfigForBand(state, bandIdForEpk, userReq?.bandName || 'Bakandeya', userReq?.email);
     stateSummary.epkConfig = epkConfigData;
+    stateSummary.globalPitchFeedback = getGlobalPitchFeedbackSummary(state.leads);
 
     if (isLeader) {
       stateSummary.payments = state.payments;
@@ -253,6 +255,8 @@ router.post("/chat", async (req, res) => {
     const targetBandName = userReq?.bandName || epkConfigData?.nombre_banda || 'Bakandeya';
     const cleanBandId = bandIdForEpk.replace(/^(band|reg)-/, '');
     const isBakandeyaBand = cleanBandId === 'bakandeya' || targetBandName.toLowerCase().includes('bakandeya');
+
+    const globalPitchFeedbackText = formatGlobalPitchFeedbackForPrompt(state.leads);
 
     const specificDossierBlock = isBakandeyaBand ? `
 DOSSIER COMPLETO E INFORMACIÓN INTERNA DE LA BANDA BAKANDEYA:
@@ -280,12 +284,15 @@ INFORMACIÓN DE LA BANDA ${targetBandName.toUpperCase()}:
 
     const autonomyPromptBlock = `
 CONFIGURACIÓN VIGENTE DE AUTONOMÍA Y NEGOCIACIÓN DEL MÁNAGER Y AGENTES AI:
-- Modo de Envío (Dispatch Level): ${autonomy.dispatchLevel === 'draft_only' ? 'SÓLO BORRADORES (Cualquier propuesta o correo redactado se guarda como borrador en "pendiente_aprobacion" para revisión humana obligatoria)' : autonomy.dispatchLevel === 'scheduled_window' ? 'VENTANA PROGRAMADA (Margen de 3h para revisión antes de salir)' : 'ENVÍO AUTÓNOMO DE PRIMER CONTACTO (El pitch inicial se aprueba si cumple criterios; negociaciones requieren validación)'}
+- Modo de Envío (Dispatch Level): ${autonomy.dispatchLevel === 'draft_only' ? 'SÓLO BORRADORES (Cualquier propuesta o correo redactado se guarda como borrador en "pendiente_aprobacion" o borrador de Gmail para revisión humana obligatoria)' : autonomy.dispatchLevel === 'scheduled_window' ? 'VENTANA PROGRAMADA (Margen de 3h para revisión antes de salir)' : 'ENVÍO AUTÓNOMO DE PRIMER CONTACTO (El pitch inicial se aprueba si cumple criterios; negociaciones requieren validación)'}
 - Profundidad de Negociación: ${autonomy.negotiationDepth === 'outreach_only' ? 'SÓLO CONTACTO INICIAL / EPK (No negociar cachés ni condiciones en esta fase)' : autonomy.negotiationDepth === 'filter_conditions' ? 'FILTRADO DE CONDICIONES Y CACHÉ (Aceptar/proponer negociaciones solo si el caché está entre ' + (autonomy.minCacheThreshold || 300) + '€ y ' + (autonomy.maxCacheThreshold || 800) + '€)' : 'NEGOCIACIÓN AVANZADA Y RE-OFERTAS (Proponer contraofertas dentro del rango de ' + (autonomy.minCacheThreshold || 300) + '€ y ' + (autonomy.maxCacheThreshold || 800) + '€)'}
 - Caché Mínimo Aceptable: ${autonomy.minCacheThreshold || 300} €
 - Caché Objetivo / Máximo: ${autonomy.maxCacheThreshold || 800} €
 - Auto-rechazar ofertas por debajo de ${autonomy.minCacheThreshold || 300} €: ${autonomy.autoDeclineUnderMinCache ? 'SÍ (Rechazar cortesmente)' : 'NO (Avisar al mánager sin rechazar)'}
 - FIRMA Y CIERRE FINAL HUMANO: SIEMPRE OBLIGATORIO (No se cierra ningún trato ni se firma contrato sin aprobación directa del usuario).
+
+🚨 REGLA CRÍTICA DE SEGURIDAD ABSOLUTA (MODO SÓLO BORRADORES):
+${autonomy.dispatchLevel === 'draft_only' ? `El nivel de autonomía actual es SÓLO BORRADORES ('draft_only'). TIENES ESTRICTAMENTE PROHIBIDO proponer 'propose_send_email' o enviar/afirmar que envías ningún correo electrónico directamente. NUNCA propongas 'propose_send_email'. Usa ÚNICA Y EXCLUSIVAMENTE 'propose_draft_email' para generar y guardar borradores en Gmail o Google Sheets.` : `Puedes proponer 'propose_draft_email' o 'propose_send_email' siempre con la validación explícita del usuario.`}
 
 REGLA DE AUTONOMÍA: Cuando el usuario te pregunte sobre negociaciones, ofertas de salas, o te pida generar/enviar correos, DEBES TENER EN CUENTA ESTOS LÍMITES Y MENCIONARLOS SI CORRESPONDE.
 `;
@@ -303,6 +310,11 @@ DOSSIER OFICIAL & KIT DE PRENSA ALMACENADO (stateSummary.epkConfig):
 - Redes sociales: ${JSON.stringify(epkConfigData?.enlacesRedes || {})}
 
 ${specificDossierBlock}
+
+MEMORIA GLOBAL DE APRENDIZAJES Y ESTILO EN OTROS PITCHES (ENTRENAMIENTO PREVIO DEL MÁNAGER):
+${globalPitchFeedbackText}
+
+REGLA DE APRENDIZAJE CONTINUO: Cada vez que redactes o propongas un borrador de correo o pitch para cualquier sala, medio de comunicación, festival o banda ('propose_draft_email', 'propose_send_email'), DEBES aplicar activamente las preferencias, indicaciones y estilo aprendidos del mánager en el historial global anterior.
 
 ${autonomyPromptBlock}
 

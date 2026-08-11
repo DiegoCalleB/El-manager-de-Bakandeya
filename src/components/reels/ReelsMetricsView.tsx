@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ThemeColors, SocialMetric } from '../../types';
 import { 
-  TrendingUp, Instagram, Youtube, Video, Plus, Table, Edit, Trash2, ChevronRight, RefreshCw
+  TrendingUp, Instagram, Youtube, Video, Plus, Table, Edit, Trash2, ChevronRight, RefreshCw, Radio, Music2
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
@@ -12,6 +12,10 @@ interface ReelsMetricsViewProps {
   onAddMetric?: (metric: SocialMetric) => Promise<void>;
   onUpdateMetric?: (id: string, updatedFields: Partial<SocialMetric>) => Promise<void>;
   onDeleteMetric?: (id: string) => Promise<void>;
+  onScanRealMetrics?: () => Promise<void>;
+  onSyncMetrics?: () => Promise<void>;
+  isScanningMetrics?: boolean;
+  isSyncingMetrics?: boolean;
 }
 
 export function ReelsMetricsView({
@@ -20,12 +24,17 @@ export function ReelsMetricsView({
   metrics = [],
   onAddMetric,
   onUpdateMetric,
-  onDeleteMetric
+  onDeleteMetric,
+  onScanRealMetrics,
+  onSyncMetrics,
+  isScanningMetrics = false,
+  isSyncingMetrics = false
 }: ReelsMetricsViewProps) {
   const [metricDate, setMetricDate] = useState(new Date().toISOString().split('T')[0]);
   const [metricInsta, setMetricInsta] = useState('');
   const [metricTiktok, setMetricTiktok] = useState('');
   const [metricYoutube, setMetricYoutube] = useState('');
+  const [metricSpotify, setMetricSpotify] = useState('');
   const [metricNotes, setMetricNotes] = useState('');
   const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
   const [isSavingMetric, setIsSavingMetric] = useState(false);
@@ -64,6 +73,7 @@ export function ReelsMetricsView({
     setMetricInsta(m.instagram ? String(m.instagram) : '');
     setMetricTiktok(m.tiktok ? String(m.tiktok) : '');
     setMetricYoutube(m.youtube ? String(m.youtube) : '');
+    setMetricSpotify(m.spotify ? String(m.spotify) : '');
     setMetricNotes(m.notas || '');
   };
 
@@ -73,6 +83,7 @@ export function ReelsMetricsView({
     setMetricInsta('');
     setMetricTiktok('');
     setMetricYoutube('');
+    setMetricSpotify('');
     setMetricNotes('');
   };
 
@@ -89,6 +100,7 @@ export function ReelsMetricsView({
         instagram: parseInt(metricInsta, 10) || 0,
         tiktok: parseInt(metricTiktok, 10) || 0,
         youtube: parseInt(metricYoutube, 10) || 0,
+        spotify: parseInt(metricSpotify, 10) || 0,
         notas: metricNotes
       };
 
@@ -105,6 +117,7 @@ export function ReelsMetricsView({
             instagram: parseInt(metricInsta, 10) || 0,
             tiktok: parseInt(metricTiktok, 10) || 0,
             youtube: parseInt(metricYoutube, 10) || 0,
+            spotify: parseInt(metricSpotify, 10) || 0,
             notas: metricNotes
           };
           await onAddMetric(newMetric);
@@ -123,6 +136,64 @@ export function ReelsMetricsView({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {/* 0. Direct Platforms Sync Header Bar */}
+      <div className={`p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4 border ${
+        isStitchLight ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border-emerald-200' : 'bg-gradient-to-r from-emerald-950/30 via-neutral-900 to-indigo-950/30 border-emerald-900/40'
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <Radio className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <h3 className={`text-xs font-bold font-display uppercase tracking-wider flex items-center gap-2 ${
+              isStitchLight ? 'text-slate-900' : 'text-white'
+            }`}>
+              Sincronización Multicanal en Directo
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-mono font-normal">
+                4 Plataformas Activas
+              </span>
+            </h3>
+            <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
+              Escanea automáticamente Spotify (oyentes), Instagram, TikTok y YouTube desde perfiles oficiales y guarda el checkpoint en Google Sheets.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 w-full md:w-auto">
+          {onScanRealMetrics && (
+            <button
+              onClick={onScanRealMetrics}
+              disabled={isScanningMetrics}
+              className={`flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-mono text-[10px] font-bold tracking-wider uppercase cursor-pointer flex items-center justify-center gap-2 transition-all ${
+                isScanningMetrics
+                  ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/30'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isScanningMetrics ? 'animate-spin' : ''}`} />
+              {isScanningMetrics ? 'Escaneando En Directo...' : 'Escanear Redes En Directo'}
+            </button>
+          )}
+
+          {onSyncMetrics && (
+            <button
+              onClick={onSyncMetrics}
+              disabled={isSyncingMetrics}
+              className={`px-3 py-2.5 rounded-xl font-mono text-[10px] font-bold tracking-wider uppercase cursor-pointer flex items-center justify-center gap-2 transition-all ${
+                isSyncingMetrics
+                  ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                  : isStitchLight
+                  ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                  : 'bg-neutral-900 border border-neutral-800 text-neutral-300 hover:bg-neutral-800'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMetrics ? 'animate-spin' : ''}`} />
+              {isSyncingMetrics ? 'Sincronizando...' : 'Google Sheets'}
+            </button>
+          )}
+        </div>
+      </div>
+
       {metricSuccess && (
         <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 font-mono text-xs flex items-center gap-2">
           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -139,11 +210,11 @@ export function ReelsMetricsView({
             {(() => {
               const sorted = [...metrics].sort((a, b) => a.fecha.localeCompare(b.fecha));
               const latest = sorted[sorted.length - 1];
-              const total = latest ? latest.instagram + latest.tiktok + latest.youtube : 0;
+              const total = latest ? (latest.instagram || 0) + (latest.tiktok || 0) + (latest.youtube || 0) + (latest.spotify || 0) : 0;
               return total.toLocaleString();
             })()}
           </span>
-          <span className="text-[8px] font-mono text-neutral-500 mt-1 block font-bold">Suma canales sociales</span>
+          <span className="text-[8px] font-mono text-neutral-500 mt-1 block font-bold">IG + TikTok + YT + Spotify</span>
         </div>
 
         {/* Net Growth */}
@@ -155,8 +226,10 @@ export function ReelsMetricsView({
               const latest = sorted[sorted.length - 1];
               const oldest = sorted[0];
               if (latest && oldest) {
-                const diff = (latest.instagram + latest.tiktok + latest.youtube) - (oldest.instagram + oldest.tiktok + oldest.youtube);
-                return `+${diff.toLocaleString()}`;
+                const latestSum = (latest.instagram || 0) + (latest.tiktok || 0) + (latest.youtube || 0) + (latest.spotify || 0);
+                const oldestSum = (oldest.instagram || 0) + (oldest.tiktok || 0) + (oldest.youtube || 0) + (oldest.spotify || 0);
+                const diff = latestSum - oldestSum;
+                return diff >= 0 ? `+${diff.toLocaleString()}` : `${diff.toLocaleString()}`;
               }
               return "0";
             })()}
@@ -172,8 +245,14 @@ export function ReelsMetricsView({
               const sorted = [...metrics].sort((a, b) => a.fecha.localeCompare(b.fecha));
               const latest = sorted[sorted.length - 1];
               if (latest) {
-                if (latest.instagram >= latest.tiktok && latest.instagram >= latest.youtube) return "Instagram";
-                if (latest.tiktok >= latest.instagram && latest.tiktok >= latest.youtube) return "TikTok";
+                const ig = latest.instagram || 0;
+                const tt = latest.tiktok || 0;
+                const yt = latest.youtube || 0;
+                const sp = latest.spotify || 0;
+                const max = Math.max(ig, tt, yt, sp);
+                if (max === ig) return "Instagram";
+                if (max === tt) return "TikTok";
+                if (max === sp) return "Spotify";
                 return "YouTube";
               }
               return "Pendiente";
@@ -208,6 +287,7 @@ export function ReelsMetricsView({
             <div className="flex gap-4 text-[9px] font-mono text-neutral-400">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-500 block"></span> Instagram</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-cyan-400 block"></span> TikTok</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 block"></span> Spotify</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 block"></span> YouTube</span>
             </div>
           </div>
@@ -225,6 +305,10 @@ export function ReelsMetricsView({
                   <linearGradient id="colorTikTok" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.2}/>
                     <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorSpotify" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorYouTube" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2}/>
@@ -262,6 +346,7 @@ export function ReelsMetricsView({
                 />
                 <Area type="monotone" dataKey="instagram" name="Instagram" stroke="#ec4899" strokeWidth={2} fillOpacity={1} fill="url(#colorInstagram)" />
                 <Area type="monotone" dataKey="tiktok" name="TikTok" stroke="#06b6d4" strokeWidth={2} fillOpacity={1} fill="url(#colorTikTok)" />
+                <Area type="monotone" dataKey="spotify" name="Spotify" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorSpotify)" />
                 <Area type="monotone" dataKey="youtube" name="YouTube" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#colorYouTube)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -279,35 +364,36 @@ export function ReelsMetricsView({
             Estadísticas de visualización directa de los últimos contenidos oficiales publicados por Bakandeya.
           </p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           {realVideos.map((video, idx) => (
-            <div 
-              key={idx} 
-              className={`p-3 rounded-xl flex items-center justify-between gap-3 ${
-                isStitchLight ? 'bg-slate-50/50 border border-slate-100' : 'bg-[#101010] border border-neutral-800'
-              }`}
-            >
-              <div className="space-y-1 min-w-0">
-                <span className={`text-[10px] font-bold block truncate ${isStitchLight ? 'text-slate-800' : 'text-neutral-200'}`}>
+            <div key={idx} className={`p-3.5 rounded-xl border flex flex-col justify-between space-y-2 ${
+              isStitchLight ? 'bg-slate-50/60 border-slate-200/60' : 'bg-neutral-900/60 border-neutral-800'
+            }`}>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] font-mono text-neutral-500">{video.date}</span>
+                  <span className="text-[8px] font-mono font-bold text-red-500 flex items-center gap-1">
+                    <Youtube className="w-2.5 h-2.5" /> Live
+                  </span>
+                </div>
+                <h4 className={`text-xs font-bold line-clamp-2 ${isStitchLight ? 'text-slate-800' : 'text-neutral-200'}`}>
                   {video.title}
-                </span>
-                <span className="text-[8px] font-mono text-neutral-500 block">
-                  Publicado: {video.date || "Reciente"}
-                </span>
+                </h4>
               </div>
-              <div className="text-right shrink-0">
-                <span className="text-sm font-black font-display text-emerald-400 block">
-                  {video.views ? video.views.toLocaleString() : "0"} views
+
+              <div className="flex items-center justify-between pt-2 border-t border-neutral-500/10">
+                <span className="text-lg font-black font-mono text-emerald-500">
+                  {video.views.toLocaleString()} <span className="text-[9px] text-neutral-500 font-normal">views</span>
                 </span>
-                <a 
-                  href={video.link} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className={`text-[8px] font-mono font-bold uppercase tracking-wider hover:underline flex items-center gap-0.5 justify-end ${
-                    isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'
-                  }`}
+                <a
+                  href={video.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-1 rounded bg-neutral-500/10 hover:bg-neutral-500/20 text-neutral-400 hover:text-white transition-colors"
+                  title="Ver video"
                 >
-                  Ver Video <ChevronRight className="w-2.5 h-2.5 inline" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </a>
               </div>
             </div>
@@ -315,25 +401,25 @@ export function ReelsMetricsView({
         </div>
       </div>
 
-      {/* Grid: Formulario Izquierda (5 cols) | Historial Tabla Derecha (7 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        {/* Formulario de Registro (5 columns) */}
+      {/* 4. Formulario de Checkpoint & Tabla Histórica */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Guardar/Editar Log Form (5 columns) */}
         <div className={`lg:col-span-5 ${colors.card} p-5 space-y-4`}>
           <div className={`border-b pb-2 ${isStitchLight ? 'border-slate-100' : 'border-[#99907c]/15'}`}>
             <h3 className={`text-xs font-bold font-display uppercase tracking-widest flex items-center gap-1.5 ${isStitchLight ? 'text-indigo-600' : 'text-[#f2ca50]'}`}>
-              <Plus className="w-3.5 h-3.5" />
-              {editingMetricId ? 'Editar Checkpoint' : 'Registrar Checkpoint'}
+              <Plus className="w-3.5 h-3.5" /> {editingMetricId ? 'Editar Checkpoint' : 'Nuevo Checkpoint Manual'}
             </h3>
             <p className="text-[9px] font-mono text-neutral-500 mt-0.5">
-              {editingMetricId ? 'Modifica los valores del log seleccionado en Sheets' : 'Añade una nueva fila cronológica de seguidores'}
+              Guarda o modifica un registro de audiencia en directo para sincronizarlo con Google Sheets.
             </p>
           </div>
 
-          <form onSubmit={handleSaveMetric} className="space-y-4">
+          <form onSubmit={handleSaveMetric} className="space-y-3">
             <div className="space-y-1">
-              <label className="text-[9px] font-mono uppercase tracking-widest text-neutral-400">Fecha del Checkpoint</label>
+              <label className="text-[9px] font-mono uppercase tracking-widest text-neutral-400">Fecha del Log</label>
               <input
                 type="date"
+                required
                 value={metricDate}
                 onChange={(e) => setMetricDate(e.target.value)}
                 className={`w-full p-2.5 rounded-lg text-xs font-mono focus:outline-none ${
@@ -344,14 +430,14 @@ export function ReelsMetricsView({
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <label className="text-[9px] font-mono uppercase tracking-widest text-neutral-400 flex items-center gap-1">
                   <Instagram className="w-3 h-3 text-pink-500" /> Insta
                 </label>
                 <input
                   type="number"
-                  placeholder="8400"
+                  placeholder="1385"
                   value={metricInsta}
                   onChange={(e) => setMetricInsta(e.target.value)}
                   className={`w-full p-2.5 rounded-lg text-xs font-mono focus:outline-none ${
@@ -368,7 +454,7 @@ export function ReelsMetricsView({
                 </label>
                 <input
                   type="number"
-                  placeholder="12500"
+                  placeholder="253"
                   value={metricTiktok}
                   onChange={(e) => setMetricTiktok(e.target.value)}
                   className={`w-full p-2.5 rounded-lg text-xs font-mono focus:outline-none ${
@@ -385,9 +471,26 @@ export function ReelsMetricsView({
                 </label>
                 <input
                   type="number"
-                  placeholder="3100"
+                  placeholder="42"
                   value={metricYoutube}
                   onChange={(e) => setMetricYoutube(e.target.value)}
+                  className={`w-full p-2.5 rounded-lg text-xs font-mono focus:outline-none ${
+                    isStitchLight
+                      ? 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500'
+                      : 'bg-[#131313] border border-[#99907c]/15 text-neutral-200 focus:border-[#f2ca50]/30'
+                  }`}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-mono uppercase tracking-widest text-neutral-400 flex items-center gap-1">
+                  <Music2 className="w-3 h-3 text-emerald-400" /> Spotify (Oyentes)
+                </label>
+                <input
+                  type="number"
+                  placeholder="150"
+                  value={metricSpotify}
+                  onChange={(e) => setMetricSpotify(e.target.value)}
                   className={`w-full p-2.5 rounded-lg text-xs font-mono focus:outline-none ${
                     isStitchLight
                       ? 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500'
@@ -451,7 +554,7 @@ export function ReelsMetricsView({
               <Table className="w-3.5 h-3.5" /> Registros Históricos ({metrics.length})
             </h3>
             <p className="text-[9px] font-mono text-neutral-500 mt-0.5">
-              Valores absolutos capturados en Google Sheets. Se muestran con el delta calculated.
+              Valores absolutos capturados en Google Sheets. Se muestran con el delta calculado.
             </p>
           </div>
 
@@ -463,6 +566,7 @@ export function ReelsMetricsView({
                   <th className="py-2.5 font-medium text-right">Instagram</th>
                   <th className="py-2.5 font-medium text-right">TikTok</th>
                   <th className="py-2.5 font-medium text-right">YouTube</th>
+                  <th className="py-2.5 font-medium text-right">Spotify</th>
                   <th className="py-2.5 font-medium pl-3">Notas</th>
                   <th className="py-2.5 font-medium text-center">Acciones</th>
                 </tr>
@@ -470,7 +574,7 @@ export function ReelsMetricsView({
               <tbody className="divide-y divide-neutral-500/10">
                 {metrics.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-neutral-500 font-mono text-xs">
+                    <td colSpan={7} className="py-8 text-center text-neutral-500 font-mono text-xs">
                       No hay registros históricos todavía. Añade un checkpoint a la izquierda.
                     </td>
                   </tr>
@@ -483,6 +587,7 @@ export function ReelsMetricsView({
                       const instaDelta = prevLog ? m.instagram - prevLog.instagram : 0;
                       const tiktokDelta = prevLog ? m.tiktok - prevLog.tiktok : 0;
                       const youtubeDelta = prevLog ? m.youtube - prevLog.youtube : 0;
+                      const spotifyDelta = prevLog ? (m.spotify || 0) - (prevLog.spotify || 0) : 0;
 
                       const formatDelta = (delta: number) => {
                         if (delta > 0) return <span className="text-emerald-500 font-bold">+{delta}</span>;
@@ -511,6 +616,10 @@ export function ReelsMetricsView({
                           <td className="py-3 text-right">
                             <div className="font-bold">{m.youtube.toLocaleString()}</div>
                             <div className="text-[8px] text-neutral-500">{formatDelta(youtubeDelta)}</div>
+                          </td>
+                          <td className="py-3 text-right">
+                            <div className="font-bold">{(m.spotify || 0).toLocaleString()}</div>
+                            <div className="text-[8px] text-neutral-500">{formatDelta(spotifyDelta)}</div>
                           </td>
                           <td className="py-3 pl-3 text-neutral-400 font-sans max-w-[120px] truncate" title={m.notas}>
                             {m.notas || <span className="text-neutral-600 font-mono text-[9px]">-</span>}

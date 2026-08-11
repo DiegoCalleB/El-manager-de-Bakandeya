@@ -7,7 +7,7 @@ describe('epkUtils', () => {
     biografia: 'Bakandeya es una banda de ska-fusion y reggae rock formada en 2021. Con más de 50 conciertos a sus espaldas en salas de España...',
     logoUrl: 'https://example.com/logo.png',
     bandPhotos: ['https://example.com/photo1.jpg', 'https://example.com/photo2.jpg'],
-    riderTecnico: '4 canales de microfonía, 2 retornos de monitor, amplificador de guitarra...',
+    riderTecnico: '4 canales de microfonía, 2 retornos de monitor, amplificador de guitarra y sección de metales con caja DI.',
     enlacesRedes: {
       spotify: 'https://spotify.com/artist/bakandeya',
       youtube: 'https://youtube.com/@bakandeya',

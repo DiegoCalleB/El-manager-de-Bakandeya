@@ -475,7 +475,7 @@ router.post("/auth/activate-member", async (req, res) => {
 
 // Google Social OAuth Login / Registration
 router.post("/auth/google", loginRateLimiter, async (req, res) => {
-  const { email, name, uid, accessToken } = req.body;
+  const { email, name, uid, accessToken, bandName: inputBandName, leaderName } = req.body;
   if (!email) {
     return res.status(400).json({ error: "Email de Google es requerido" });
   }
@@ -511,48 +511,127 @@ router.post("/auth/google", loginRateLimiter, async (req, res) => {
       (uid && u.googleUid === uid)
   );
 
-  if (!user) {
+  const customBandName = inputBandName?.trim() || (leaderName ? `Banda de ${leaderName}` : null);
+
+  if (user) {
+    // Update existing user with googleUid / authProvider if not set
+    user.googleUid = uid || user.googleUid;
+    user.authProvider = "google";
+    if (name && (!user.name || user.name === user.username)) {
+      user.name = name;
+    }
+
+    // If a new band name was explicitly requested during registration with existing email
+    if (customBandName) {
+      const existingIds = new Set<string>();
+      (state.users || []).forEach((u: any) => { if (u.id) existingIds.add(u.id); if (u.band_id) existingIds.add(u.band_id); });
+      (state.registeredBands || []).forEach((b: any) => { if (b.id) existingIds.add(b.id); if (b.band_id) existingIds.add(b.band_id); });
+
+      const bandId = generateUniqueSlugId("band", customBandName, existingIds);
+
+      const regBand = {
+        id: `reg-${bandId.replace('band-', '')}`,
+        band_id: bandId,
+        nombre_banda: customBandName,
+        contacto_nombre: user.name || leaderName || cleanEmail.split('@')[0],
+        email: cleanEmail,
+        plan: user.plan || 'emergente',
+        fecha_registro: new Date().toISOString(),
+        estado_cuenta: 'activo',
+        notas: 'Registrado con Google OAuth (Nueva Banda)'
+      };
+      if (!state.registeredBands) state.registeredBands = [];
+      state.registeredBands.push(regBand);
+
+      user.bandName = customBandName;
+      user.band_id = bandId;
+      user.role = "leader";
+
+      if (!state.userBands) state.userBands = [];
+      const newUB = {
+        id: `ub-${user.id}-${bandId}`,
+        user_id: user.id,
+        band_id: bandId,
+        role: "leader"
+      };
+      state.userBands.push(newUB);
+
+      try {
+        await googleSheetsService.appendUserBand(newUB);
+        await googleSheetsService.appendRegisteredBand(regBand);
+        await googleSheetsService.updateUser(user);
+      } catch (e) {
+        console.warn("Notice: Sheets sync warning:", e);
+      }
+    }
+  } else {
     // Auto-register new user authenticated with Google OAuth
     const newUserId = uid || `user-google-${Date.now()}`;
-    const cleanName = name || cleanEmail.split("@")[0] || "Miembro Banda";
+    const cleanName = leaderName || name || cleanEmail.split("@")[0] || "Miembro Banda";
+    const finalBandName = customBandName || `Banda de ${cleanName}`;
+
+    // Gather existing IDs across state to prevent collisions
+    const existingIds = new Set<string>();
+    (state.users || []).forEach((u: any) => {
+      if (u.id) existingIds.add(u.id);
+      if (u.band_id) existingIds.add(u.band_id);
+    });
+    (state.registeredBands || []).forEach((b: any) => {
+      if (b.id) existingIds.add(b.id);
+      if (b.band_id) existingIds.add(b.band_id);
+    });
+
+    const bandId = generateUniqueSlugId("band", finalBandName, existingIds);
+    existingIds.add(bandId);
+
+    // Register new band
+    const regBand = {
+      id: `reg-${bandId.replace('band-', '')}`,
+      band_id: bandId,
+      nombre_banda: finalBandName,
+      contacto_nombre: cleanName,
+      email: cleanEmail,
+      plan: 'emergente',
+      fecha_registro: new Date().toISOString(),
+      estado_cuenta: 'activo',
+      notas: 'Registrado con Google OAuth'
+    };
+    if (!state.registeredBands) state.registeredBands = [];
+    state.registeredBands.push(regBand);
+
     user = {
       id: newUserId,
       username: cleanEmail,
       email: cleanEmail,
       name: cleanName,
-      bandName: "Bakandeya",
-      band_id: BAKANDEYA_BAND_ID,
+      bandName: finalBandName,
+      band_id: bandId,
       role: "leader",
-      plan: "profesional",
+      plan: "emergente",
       createdAt: new Date().toISOString(),
       googleUid: uid,
       authProvider: "google"
     };
 
+    if (!state.users) state.users = [];
     state.users.push(user);
 
     // Sync user-band relationship
     if (!state.userBands) state.userBands = [];
-    const existingUB = state.userBands.find(
-      (ub: any) => ub.user_id === user.id && ub.band_id === BAKANDEYA_BAND_ID
-    );
-    if (!existingUB) {
-      const newUB = {
-        id: `ub-${user.id}-${BAKANDEYA_BAND_ID}`,
-        user_id: user.id,
-        band_id: BAKANDEYA_BAND_ID,
-        role: "leader"
-      };
-      state.userBands.push(newUB);
-      try {
-        await googleSheetsService.appendUserBand(newUB);
-      } catch (e) {}
-    }
+    const newUB = {
+      id: `ub-${user.id}-${bandId}`,
+      user_id: user.id,
+      band_id: bandId,
+      role: "leader"
+    };
+    state.userBands.push(newUB);
 
     try {
+      await googleSheetsService.appendUserBand(newUB);
+      await googleSheetsService.appendRegisteredBand(regBand);
       await googleSheetsService.appendUser(user);
     } catch (err) {
-      console.warn("Could not append new Google user to Sheets:", err);
+      console.warn("Could not sync new Google user and band to Sheets:", err);
     }
   }
 

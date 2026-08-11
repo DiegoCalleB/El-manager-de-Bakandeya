@@ -57,7 +57,7 @@ export default function SpotifyPlayerBar({
       return;
     }
 
-    const rawUrl = song.audioPrincipalUrl || (song.audioIdeas && song.audioIdeas[0]?.audioUrl) || '';
+    const rawUrl = song.audioPrincipalUrl || (song.audioIdeas && song.audioIdeas[0]?.audioUrl) || (song as any).audioUrl || '';
 
     if (!rawUrl) {
       setActiveAudioUrl('');
